@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
-import type { Role } from "@/db/schema";
+import type { Role } from "./types";
 
 export type Session = {
   userId: number;

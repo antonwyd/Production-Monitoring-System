@@ -1,4 +1,3 @@
-import { getDb } from "@/db";
 import { handle } from "@/lib/api";
 import { HttpError, requireApiRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
@@ -9,8 +8,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ kind: string }>
     await requireApiRole(["leader", "manager", "admin"]);
     const { kind } = await ctx.params;
     if (!REPORT_KINDS.includes(kind as ReportKind)) throw new HttpError(404, "Report tidak dikenal.");
-    const db = await getDb();
-    const report = await buildReport(db, kind as ReportKind, parseReportParams(new URL(req.url).searchParams), todayJakarta());
+    const report = await buildReport(kind as ReportKind, parseReportParams(new URL(req.url).searchParams), todayJakarta());
     return Response.json(report);
   });
 }

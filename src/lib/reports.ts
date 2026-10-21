@@ -1,12 +1,11 @@
-// Semua report dihitung hanya dari kiriman yang sudah disetujui leader.
-import { and, eq, gte, lte, sql } from "drizzle-orm";
-import type { DB } from "@/db";
-import * as s from "@/db/schema";
-import { NG_KEYS } from "@/db/schema";
+// Semua report dihitung dari tab Input - Production dan Input - Lost Time di Google Sheet,
+// yaitu kiriman yang sudah disetujui leader (plus baris yang diisi langsung di sheet).
+import { callBackend, type RawRows, type RawSubmission } from "./backend";
+import { catId, memberId as memberIdOf, partId as partIdOf } from "./ids";
 import { achievement, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
-import type { Settings } from "./types";
+import type { MasterData, Settings } from "./types";
 
 export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-lot", "monthly"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
@@ -69,69 +68,73 @@ type Fact = {
 
 type LostFact = { workDate: string; memberId: number; name: string; group: string; minutes: number };
 
-async function loadFacts(db: DB, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {
-  const conds = [eq(s.submissions.status, "approved"), gte(s.submissions.workDate, from), lte(s.submissions.workDate, to)];
-  if (memberId) conds.push(eq(s.submissions.memberId, memberId));
-  const pconds = [...conds];
-  if (categoryId) pconds.push(eq(s.parts.categoryId, categoryId));
-  if (partId) pconds.push(eq(s.parts.id, partId));
-  const rows = await db
-    .select({
-      workDate: s.submissions.workDate,
-      memberId: s.members.id,
-      memberName: s.members.name,
-      nik: s.members.nik,
-      categoryId: s.categories.id,
-      categoryName: s.categories.name,
-      ngGroupId: s.categories.ngGroupId,
-      partId: s.parts.id,
-      partName: s.parts.name,
-      partType: s.parts.type,
-      partStki: s.parts.stki,
-      mcNo: s.machines.mcNo,
-      line: s.machines.line,
-      r: s.productionRows,
-    })
-    .from(s.productionRows)
-    .innerJoin(s.submissions, eq(s.submissions.id, s.productionRows.submissionId))
-    .innerJoin(s.members, eq(s.members.id, s.submissions.memberId))
-    .innerJoin(s.parts, eq(s.parts.id, s.productionRows.partId))
-    .innerJoin(s.categories, eq(s.categories.id, s.parts.categoryId))
-    .leftJoin(s.machines, eq(s.machines.id, s.productionRows.machineId))
-    .where(and(...pconds));
-  const facts: Fact[] = rows.map((x) => ({
-    workDate: x.workDate,
-    memberId: x.memberId,
-    memberName: x.memberName,
-    nik: x.nik,
-    categoryId: x.categoryId,
-    categoryName: x.categoryName,
-    ngGroupId: x.ngGroupId,
-    partId: x.partId,
-    part: partLabel({ name: x.partName, type: x.partType }),
-    mcNo: x.mcNo ?? "-",
-    line: x.line ?? "",
-    lot: x.r.lot || "(tanpa lot)",
-    qty: x.r.qtyNormal + x.r.qtyOt,
-    qtyOt: x.r.qtyOt,
-    minNormal: x.r.minNormal,
-    minOt: x.r.minOt,
-    stki: x.r.stkiSnapshot ?? x.partStki,
-    ng: NG_KEYS.map((k) => x.r[k]),
-  }));
-  const lost = await db
-    .select({
-      workDate: s.submissions.workDate,
-      memberId: s.submissions.memberId,
-      name: s.lostTimeTypes.name,
-      group: s.lostTimeTypes.group,
-      minutes: s.lostTimeRows.minutes,
-    })
-    .from(s.lostTimeRows)
-    .innerJoin(s.submissions, eq(s.submissions.id, s.lostTimeRows.submissionId))
-    .innerJoin(s.lostTimeTypes, eq(s.lostTimeTypes.id, s.lostTimeRows.lostTimeTypeId))
-    .where(and(...conds));
-  return { facts, lost: lost as LostFact[] };
+const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
+const ROWS_TTL = 60_000;
+
+/** Data report disimpan 1 menit di server supaya pindah halaman/filter tidak selalu menunggu Apps Script. */
+function fetchRows(from: string, to: string): Promise<RawRows> {
+  const key = `${from}|${to}`;
+  const hit = rowsCache.get(key);
+  if (hit && Date.now() - hit.at < ROWS_TTL) return hit.data;
+  const data = callBackend<RawRows>("rows", { from, to });
+  data.catch(() => rowsCache.delete(key));
+  if (rowsCache.size > 50) rowsCache.clear();
+  rowsCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+export function clearReportCache() {
+  rowsCache.clear();
+}
+
+async function loadFacts(master: MasterData, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {
+  const raw = await fetchRows(from, to);
+  const nikOf = new Map(master.members.map((m) => [m.name, m.nik]));
+  const catOf = new Map(master.categories.map((c) => [c.name, c]));
+  const facts: Fact[] = [];
+  for (const r of raw.prod) {
+    const [workDate, member, category, part, type, , , , , lot, , mc] = r.map(String);
+    const n = (i: number) => Number(r[i]) || 0;
+    const cid = catId(category);
+    const pid = partIdOf(category, part, type);
+    const mid = memberIdOf(member);
+    if ((categoryId && cid !== categoryId) || (memberId && mid !== memberId) || (partId && pid !== partId)) continue;
+    const mcNo = mc && mc !== "-" ? mc : "-";
+    facts.push({
+      workDate,
+      memberId: mid,
+      memberName: member,
+      nik: nikOf.get(member) ?? "",
+      categoryId: cid,
+      categoryName: category,
+      ngGroupId: catOf.get(category)?.ngGroupId ?? null,
+      partId: pid,
+      part: partLabel({ name: part, type: type === "-" ? "" : type }),
+      mcNo,
+      line: master.machines.find((m) => m.categoryId === cid && m.mcNo === mcNo)?.line ?? "",
+      lot: lot || "(tanpa lot)",
+      qty: n(5) + n(7),
+      qtyOt: n(7),
+      minNormal: n(6),
+      minOt: n(8),
+      stki: n(22) || master.parts.find((p) => p.id === pid)?.stki || 0,
+      ng: Array.from({ length: 10 }, (_, i) => n(12 + i)),
+    });
+  }
+  const lost: LostFact[] = [];
+  for (const r of raw.lost) {
+    const mid = memberIdOf(String(r[1]));
+    if (memberId && mid !== memberId) continue;
+    const name = String(r[2]);
+    lost.push({
+      workDate: String(r[0]),
+      memberId: mid,
+      name,
+      group: master.lostTimeTypes.find((t) => t.name === name)?.group ?? "LOST_TIME",
+      minutes: Number(r[3]) || 0,
+    });
+  }
+  return { facts, lost };
 }
 
 type Agg = { qty: number; ng: number; rated: number; std: number; minNormal: number; minOt: number; count: number };
@@ -209,8 +212,8 @@ function dateRange(from: string, to: string) {
   return out;
 }
 
-export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, today: string): Promise<Report> {
-  const master = await loadMaster(db);
+export async function buildReport(kind: ReportKind, p: ReportParams, today: string): Promise<Report> {
+  const master = await loadMaster();
   const st = master.settings;
   const from = p.from ?? monthStart(today);
   const to = p.to ?? today;
@@ -220,7 +223,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   const base = { kind, title: REPORT_TITLES[kind], kpis: [] as Kpi[], charts: [] as Chart[], tables: [] as Table[] };
 
   if (kind === "dashboard") {
-    const { facts, lost } = await loadFacts(db, from, to, p.categoryId);
+    const { facts, lost } = await loadFacts(master, from, to, p.categoryId);
     const t = totalRow(facts, st, {});
     const { lt, aj } = lostSplit(lost);
     const byDay = groupBy(facts, (f) => f.workDate);
@@ -273,20 +276,17 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
 
   if (kind === "daily") {
     const date = p.date ?? today;
-    const { facts, lost } = await loadFacts(db, date, date, p.categoryId);
-    const pendingRows = await db
-      .select({ memberId: s.submissions.memberId, status: s.submissions.status, n: sql<number>`count(*)::int` })
-      .from(s.submissions)
-      .where(eq(s.submissions.workDate, date))
-      .groupBy(s.submissions.memberId, s.submissions.status);
+    const { facts, lost } = await loadFacts(master, date, date, p.categoryId);
+    const subs = await callBackend<RawSubmission[]>("queue", { date });
     const byMember = groupBy(facts, (f) => f.memberId);
     const rows: Row[] = master.members.map((m) => {
       const g = byMember.get(m.id);
       const ml = lost.filter((l) => l.memberId === m.id);
       const { lt, aj } = lostSplit(ml);
-      const statuses = pendingRows.filter((r) => r.memberId === m.id);
-      const approved = statuses.some((r) => r.status === "approved");
-      const pending = statuses.some((r) => r.status === "pending");
+      const statuses = subs.filter((r) => r.member === m.name).map((r) => r.status);
+      // Baris yang diisi langsung di sheet juga dihitung sudah lapor.
+      const approved = statuses.includes("Disetujui") || !!g || ml.length > 0;
+      const pending = statuses.includes("Menunggu");
       const ag = g ? aggCols(g.agg, st) : { qty: null, ng: null, ngRate: null, hours: null, stdHours: null, ach: null, grade: "-" };
       return {
         nik: m.nik,
@@ -334,7 +334,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   if (kind === "member") {
     const memberId = p.memberId ?? master.members[0]?.id;
     const member = master.members.find((m) => m.id === memberId);
-    const { facts, lost } = await loadFacts(db, from, to, p.categoryId, memberId ?? -1);
+    const { facts, lost } = await loadFacts(master, from, to, p.categoryId, memberId ?? -1);
     const byDay = [...groupBy(facts, (f) => f.workDate).entries()].sort(([a], [b]) => a.localeCompare(b));
     const dayRows = byDay.map(([d, g]) => {
       const { lt, aj } = lostSplit(lost.filter((l) => l.workDate === d));
@@ -372,7 +372,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   }
 
   if (kind === "category") {
-    const { facts } = await loadFacts(db, from, to, p.categoryId);
+    const { facts } = await loadFacts(master, from, to, p.categoryId);
     const catRows = [...groupBy(facts, (f) => f.categoryId).values()].map((g) => ({ category: g.first.categoryName, ...aggCols(g.agg, st) }));
     const partRows = [...groupBy(facts, (f) => f.partId).values()]
       .map((g) => ({ category: g.first.categoryName, part: g.first.part, stki: g.first.stki, ...aggCols(g.agg, st) }))
@@ -392,7 +392,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   }
 
   if (kind === "machine") {
-    const { facts } = await loadFacts(db, from, to, p.categoryId);
+    const { facts } = await loadFacts(master, from, to, p.categoryId);
     const rows = [...groupBy(facts, (f) => `${f.categoryId}|${f.mcNo}`).values()]
       .map((g) => ({ category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line, ...aggCols(g.agg, st) }))
       .sort((a, b) => Number(b.ng) - Number(a.ng));
@@ -412,7 +412,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   }
 
   if (kind === "ng-type") {
-    const { facts } = await loadFacts(db, from, to, p.categoryId);
+    const { facts } = await loadFacts(master, from, to, p.categoryId);
     const map = new Map<string, { group: string; ng: string; qty: number }>();
     let total = 0;
     for (const f of facts)
@@ -452,7 +452,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   }
 
   if (kind === "ng-lot") {
-    const { facts } = await loadFacts(db, from, to, p.categoryId, undefined, p.partId);
+    const { facts } = await loadFacts(master, from, to, p.categoryId, undefined, p.partId);
     const rows = [...groupBy(facts, (f) => `${f.partId}|${f.lot}`).values()]
       .map((g) => {
         const counts = Array(10).fill(0) as number[];
@@ -499,7 +499,7 @@ export async function buildReport(db: DB, kind: ReportKind, p: ReportParams, tod
   const month = p.month && /^\d{4}-\d{2}$/.test(p.month) ? p.month : today.slice(0, 7);
   const mFrom = `${month}-01`;
   const mTo = monthEnd(mFrom);
-  const { facts, lost } = await loadFacts(db, mFrom, mTo, p.categoryId);
+  const { facts, lost } = await loadFacts(master, mFrom, mTo, p.categoryId);
   const memberRows = [...groupBy(facts, (f) => f.memberId).values()]
     .map((g) => {
       const { lt, aj } = lostSplit(lost.filter((l) => l.memberId === g.first.memberId));

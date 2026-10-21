@@ -1,5 +1,8 @@
 // Tipe yang dipakai bersama oleh browser dan server.
 
+export const ROLES = ["operator", "leader", "manager", "admin"] as const;
+export type Role = (typeof ROLES)[number];
+
 export type Settings = {
   normalMin: number;
   otLimitHrs: number;

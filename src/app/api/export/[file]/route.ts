@@ -1,4 +1,3 @@
-import { getDb } from "@/db";
 import { handle } from "@/lib/api";
 import { HttpError, requireApiRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
@@ -12,9 +11,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
     const { file } = await ctx.params;
     const kind = file.replace(/\.xlsx$/, "");
     if (!REPORT_KINDS.includes(kind as ReportKind)) throw new HttpError(404, "Report tidak dikenal.");
-    const db = await getDb();
     const today = todayJakarta();
-    const report = await buildReport(db, kind as ReportKind, parseReportParams(new URL(req.url).searchParams), today);
+    const report = await buildReport(kind as ReportKind, parseReportParams(new URL(req.url).searchParams), today);
     const buf = await reportToXlsx(report);
     return new Response(new Uint8Array(buf), {
       headers: {

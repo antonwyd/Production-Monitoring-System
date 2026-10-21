@@ -1,11 +1,8 @@
-// Lapisan data: semua akses database untuk form, antrian leader, dan master.
-// Tidak bergantung pada request/cookie sehingga bisa dites langsung.
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
-import type { DB } from "@/db";
-import * as s from "@/db/schema";
-import { NG_KEYS } from "@/db/schema";
-import { newSubmissionId } from "./dates";
-import { isBlankPartRow, settingsFromRows, validateSubmission } from "./rules";
+// Lapisan data: form, antrian leader, dan master. Semua data dibaca dan ditulis lewat
+// Google Apps Script ke Google Sheet; di sini hanya validasi dan konversi id <-> nama.
+import { callBackend, type RawItem, type RawLost, type RawMaster, type RawSubmission } from "./backend";
+import { catId, ltId, mcId, memberId, ngGroupId, partId } from "./ids";
+import { isBlankPartRow, validateSubmission } from "./rules";
 import type { MasterData, SubmissionInput, SubmissionStatus, SubmissionView } from "./types";
 
 export class ValidationError extends Error {
@@ -23,38 +20,40 @@ export function invalidateMaster() {
   masterCache = null;
 }
 
-export async function loadMaster(db: DB, opts: { fresh?: boolean } = {}): Promise<MasterData> {
-  if (!opts.fresh && masterCache && Date.now() - masterCache.at < MASTER_TTL) return masterCache.data;
-  const [categories, parts, machines, lostTimeTypes, members, groups, codes, settingRows] = await Promise.all([
-    db.select().from(s.categories).where(eq(s.categories.active, true)).orderBy(asc(s.categories.id)),
-    db.select().from(s.parts).where(eq(s.parts.active, true)).orderBy(asc(s.parts.name), asc(s.parts.type)),
-    db.select().from(s.machines).where(eq(s.machines.active, true)).orderBy(asc(s.machines.id)),
-    db.select().from(s.lostTimeTypes).where(eq(s.lostTimeTypes.active, true)).orderBy(asc(s.lostTimeTypes.id)),
-    db.select().from(s.members).where(eq(s.members.active, true)).orderBy(asc(s.members.name)),
-    db.select().from(s.ngGroups).orderBy(asc(s.ngGroups.id)),
-    db.select().from(s.ngCodes).orderBy(asc(s.ngCodes.code)),
-    db.select().from(s.settings),
-  ]);
-  const data: MasterData = {
-    categories: categories.map(({ id, name, process, area, ngGroupId }) => ({ id, name, process, area, ngGroupId })),
-    parts: parts.map(({ id, categoryId, name, type, stki }) => ({ id, categoryId, name, type, stki })),
-    machines: machines.map(({ id, categoryId, mcNo, line, mainPart, canSwitchTo }) => ({
-      id,
-      categoryId,
-      mcNo,
-      line,
-      mainPart,
-      canSwitchTo,
+export function masterFromRaw(raw: RawMaster): MasterData {
+  const groups = new Map<string, string[]>();
+  for (const c of raw.categories) if (c.ngGroup && !groups.has(c.ngGroup)) groups.set(c.ngGroup, c.ng);
+  return {
+    categories: raw.categories.map((c) => ({
+      id: catId(c.name),
+      name: c.name,
+      process: c.process,
+      area: c.process,
+      ngGroupId: c.ngGroup ? ngGroupId(c.ngGroup) : null,
     })),
-    lostTimeTypes: lostTimeTypes.map(({ id, name, group }) => ({ id, name, group })),
-    members: members.map(({ id, nik, name, area }) => ({ id, nik, name, area })),
-    ngGroups: groups.map((g) => {
-      const names = Array.from({ length: 10 }, (_, i) => `NG${i + 1}`);
-      for (const c of codes) if (c.ngGroupId === g.id && c.code >= 1 && c.code <= 10) names[c.code - 1] = c.name;
-      return { id: g.id, name: g.name, codes: names };
-    }),
-    settings: settingsFromRows(settingRows),
+    parts: raw.parts.map((p) => ({ id: partId(p.category, p.name, p.type), categoryId: catId(p.category), name: p.name, type: p.type, stki: p.stki })),
+    machines: raw.machines.map((m) => ({
+      id: mcId(m.category, m.mc),
+      categoryId: catId(m.category),
+      mcNo: m.mc,
+      line: m.line,
+      mainPart: m.main,
+      canSwitchTo: m.alt.replace(/[;\n]/g, ","),
+    })),
+    lostTimeTypes: raw.lostTypes.map((t) => ({ id: ltId(t.name), name: t.name, group: /another/i.test(t.group) ? "ANOTHER_JOB" : "LOST_TIME" })),
+    members: raw.members.map((m) => ({ id: memberId(m.name), nik: m.nik, name: m.name, area: "" })),
+    ngGroups: [...groups.entries()].map(([name, codes]) => ({
+      id: ngGroupId(name),
+      name,
+      codes: Array.from({ length: 10 }, (_, i) => codes[i] || `NG${i + 1}`),
+    })),
+    settings: { ...raw.settings, stkiHighPct: 150, stkiLowPct: 30 },
   };
+}
+
+export async function loadMaster(opts: { fresh?: boolean } = {}): Promise<MasterData> {
+  if (!opts.fresh && masterCache && Date.now() - masterCache.at < MASTER_TTL) return masterCache.data;
+  const data = masterFromRaw(await callBackend<RawMaster>("master"));
   masterCache = { at: Date.now(), data };
   return data;
 }
@@ -95,242 +94,187 @@ function sanitizeInput(raw: unknown): SubmissionInput {
   };
 }
 
-async function hasApprovedSameDay(db: DB, memberId: number | null, workDate: string) {
-  if (memberId == null || !workDate) return false;
-  const rows = await db
-    .select({ id: s.submissions.id })
-    .from(s.submissions)
-    .where(and(eq(s.submissions.memberId, memberId), eq(s.submissions.workDate, workDate), eq(s.submissions.status, "approved")))
-    .limit(1);
-  return rows.length > 0;
+const STATUS_TO_SHEET: Record<SubmissionStatus, RawSubmission["status"]> = {
+  pending: "Menunggu",
+  approved: "Disetujui",
+  rejected: "Ditolak",
+};
+const STATUS_FROM_SHEET: Record<string, SubmissionStatus> = { Menunggu: "pending", Disetujui: "approved", Ditolak: "rejected" };
+
+async function fetchQueue(f: { status?: SubmissionStatus; workDate?: string; member?: string }) {
+  return callBackend<RawSubmission[]>("queue", {
+    status: f.status ? STATUS_TO_SHEET[f.status] : "",
+    date: f.workDate ?? "",
+    member: f.member ?? "",
+  });
 }
 
-export async function createSubmission(db: DB, raw: unknown, opts: { submittedBy: number | null; forceMemberId?: number | null }) {
+export async function createSubmission(raw: unknown, opts: { submittedBy: string | null; forceMemberId?: number | null }) {
   const input = sanitizeInput(raw);
   if (opts.forceMemberId != null) {
     if (input.memberId != null && input.memberId !== opts.forceMemberId)
       throw new ValidationError(["Operator hanya bisa mengirim laporan atas nama sendiri."]);
     input.memberId = opts.forceMemberId;
   }
-  const master = await loadMaster(db, { fresh: true });
-  const dup = await hasApprovedSameDay(db, input.memberId, input.workDate);
+  const master = await loadMaster({ fresh: true });
+  const member = master.members.find((m) => m.id === input.memberId);
+  const dup =
+    !!member && !!input.workDate && (await fetchQueue({ status: "approved", workDate: input.workDate, member: member.name })).length > 0;
   const v = validateSubmission(input, master, { hasApprovedSameDay: dup });
   if (v.errors.length) throw new ValidationError(v.errors);
 
-  const id = newSubmissionId();
-  await db.transaction(async (tx) => {
-    await tx.insert(s.submissions).values({
-      id,
-      workDate: input.workDate,
-      memberId: input.memberId!,
-      submittedBy: opts.submittedBy,
-      needsCheck: v.needsCheck,
-      warnings: v.warnings,
-    });
-    if (input.parts.length)
-      await tx.insert(s.productionRows).values(
-        input.parts.map((p) => ({
-          submissionId: id,
-          partId: p.partId!,
-          machineId: typeof p.machineId === "number" ? p.machineId : null,
-          qtyNormal: p.qtyNormal ?? 0,
-          minNormal: p.minNormal ?? 0,
-          qtyOt: p.qtyOt ?? 0,
-          minOt: p.minOt ?? 0,
-          lot: p.lot,
-          oiban: p.oiban,
-          ...Object.fromEntries(NG_KEYS.map((k, i) => [k, p.ng[i] ?? 0])),
-        })),
-      );
-    if (input.lostTimes.length)
-      await tx.insert(s.lostTimeRows).values(
-        input.lostTimes.map((l) => ({ submissionId: id, lostTimeTypeId: l.lostTimeTypeId!, minutes: l.minutes!, note: l.note })),
-      );
+  const num = (x: number | null) => (x == null ? "" : x);
+  const items: RawItem[] = input.parts.map((p) => {
+    const part = master.parts.find((x) => x.id === p.partId)!;
+    const cat = master.categories.find((c) => c.id === part.categoryId)!;
+    const mc = typeof p.machineId === "number" ? master.machines.find((m) => m.id === p.machineId)?.mcNo ?? "" : p.machineId === "-" ? "-" : "";
+    return {
+      category: cat.name,
+      part: part.name,
+      type: part.type,
+      mc,
+      normalQty: num(p.qtyNormal),
+      normalMin: num(p.minNormal),
+      otQty: num(p.qtyOt),
+      otMin: num(p.minOt),
+      lot: p.lot,
+      oiban: p.oiban,
+      ng: p.ng.map(num),
+    };
   });
-  return { id, warnings: v.warnings, needsCheck: v.needsCheck };
+  const lostTimes: RawLost[] = input.lostTimes.map((l) => ({
+    type: master.lostTimeTypes.find((t) => t.id === l.lostTimeTypeId)!.name,
+    minutes: num(l.minutes),
+    remarks: l.note,
+  }));
+  const res = await callBackend<{ id: string }>("submit", {
+    payload: {
+      date: input.workDate,
+      member: member!.name,
+      items,
+      lostTimes,
+      meta: { needsCheck: v.needsCheck, warnings: v.warnings, by: opts.submittedBy ?? "", via: "web" },
+    },
+  });
+  return { id: res.id, warnings: v.warnings, needsCheck: v.needsCheck };
+}
+
+/** "2026-10-21 08:15" waktu Jakarta -> ISO. */
+function jakartaIso(t: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(t)) return null;
+  return new Date(`${t.replace(" ", "T")}:00+07:00`).toISOString();
+}
+
+export function toView(s: RawSubmission, master: MasterData): SubmissionView {
+  const n = (v: unknown) => Number(v) || 0;
+  const parts = s.items.map((it) => {
+    const cat = master.categories.find((c) => c.name === it.category);
+    const codes = master.ngGroups.find((g) => g.id === cat?.ngGroupId)?.codes;
+    return {
+      categoryName: it.category,
+      partName: it.part,
+      type: it.type ?? "",
+      mcNo: it.mc || "-",
+      qtyNormal: n(it.normalQty),
+      minNormal: n(it.normalMin),
+      qtyOt: n(it.otQty),
+      minOt: n(it.otMin),
+      lot: it.lot ?? "",
+      oiban: it.oiban ?? "",
+      ng: (it.ng ?? []).map((q, i) => ({ label: codes?.[i] ?? `NG${i + 1}`, qty: n(q) })).filter((x) => x.qty > 0),
+    };
+  });
+  const lostTimes = s.lostTimes.map((l) => ({
+    name: l.type,
+    group: master.lostTimeTypes.find((t) => t.name === l.type)?.group ?? "LOST_TIME",
+    minutes: n(l.minutes),
+    note: l.remarks ?? "",
+  }));
+  const warnings = [...(s.meta?.warnings ?? [])];
+  if (s.edited) warnings.push(`Diedit oleh ${s.edited}.`);
+  return {
+    id: s.id,
+    workDate: s.date,
+    memberId: memberId(s.member),
+    memberName: s.member,
+    memberNik: master.members.find((m) => m.name === s.member)?.nik ?? "",
+    submittedAt: jakartaIso(s.sent) ?? new Date(0).toISOString(),
+    status: STATUS_FROM_SHEET[s.status] ?? "pending",
+    leaderName: s.leader || null,
+    decidedAt: jakartaIso(s.decided),
+    leaderNote: s.note || null,
+    needsCheck: !!s.meta?.needsCheck,
+    warnings,
+    parts,
+    lostTimes,
+    totals: {
+      qty: parts.reduce((a, p) => a + p.qtyNormal + p.qtyOt, 0),
+      minNormal: parts.reduce((a, p) => a + p.minNormal, 0),
+      minOt: parts.reduce((a, p) => a + p.minOt, 0),
+      lostMin: lostTimes.reduce((a, l) => a + l.minutes, 0),
+      ng: parts.reduce((a, p) => a + p.ng.reduce((b, x) => b + x.qty, 0), 0),
+    },
+  };
 }
 
 export type SubmissionFilter = {
   status?: SubmissionStatus;
   workDate?: string;
   memberId?: number;
-  area?: string; // area leader; kosong = semua
-  ids?: string[];
   limit?: number;
 };
 
-export async function listSubmissions(db: DB, f: SubmissionFilter): Promise<SubmissionView[]> {
-  const conds: SQL[] = [];
-  if (f.status) conds.push(eq(s.submissions.status, f.status));
-  if (f.workDate) conds.push(eq(s.submissions.workDate, f.workDate));
-  if (f.memberId) conds.push(eq(s.submissions.memberId, f.memberId));
-  if (f.area) conds.push(eq(s.members.area, f.area));
-  if (f.ids) conds.push(inArray(s.submissions.id, f.ids.length ? f.ids : ["__none__"]));
-  const order =
-    f.status === "pending" ? [asc(s.submissions.submittedAt)] : [desc(sql`coalesce(${s.submissions.decidedAt}, ${s.submissions.submittedAt})`)];
-  const leader = sql<string | null>`(select name from users where users.id = ${s.submissions.leaderId})`;
-  const subs = await db
-    .select({
-      id: s.submissions.id,
-      workDate: s.submissions.workDate,
-      memberId: s.submissions.memberId,
-      memberName: s.members.name,
-      memberNik: s.members.nik,
-      submittedAt: s.submissions.submittedAt,
-      status: s.submissions.status,
-      leaderName: leader,
-      decidedAt: s.submissions.decidedAt,
-      leaderNote: s.submissions.leaderNote,
-      needsCheck: s.submissions.needsCheck,
-      warnings: s.submissions.warnings,
-    })
-    .from(s.submissions)
-    .innerJoin(s.members, eq(s.members.id, s.submissions.memberId))
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(...order)
-    .limit(f.limit ?? 100);
-  if (!subs.length) return [];
-  const ids = subs.map((x) => x.id);
-
-  const prod = await db
-    .select({
-      submissionId: s.productionRows.submissionId,
-      row: s.productionRows,
-      partName: s.parts.name,
-      type: s.parts.type,
-      categoryName: s.categories.name,
-      ngGroupId: s.categories.ngGroupId,
-      mcNo: s.machines.mcNo,
-    })
-    .from(s.productionRows)
-    .innerJoin(s.parts, eq(s.parts.id, s.productionRows.partId))
-    .innerJoin(s.categories, eq(s.categories.id, s.parts.categoryId))
-    .leftJoin(s.machines, eq(s.machines.id, s.productionRows.machineId))
-    .where(inArray(s.productionRows.submissionId, ids))
-    .orderBy(asc(s.productionRows.id));
-  const lost = await db
-    .select({ submissionId: s.lostTimeRows.submissionId, row: s.lostTimeRows, name: s.lostTimeTypes.name, group: s.lostTimeTypes.group })
-    .from(s.lostTimeRows)
-    .innerJoin(s.lostTimeTypes, eq(s.lostTimeTypes.id, s.lostTimeRows.lostTimeTypeId))
-    .where(inArray(s.lostTimeRows.submissionId, ids))
-    .orderBy(asc(s.lostTimeRows.id));
-  const codes = await db.select().from(s.ngCodes);
-  const ngName = (g: number | null, code: number) => codes.find((c) => c.ngGroupId === g && c.code === code)?.name ?? `NG${code}`;
-
-  return subs.map((x) => {
-    const parts = prod
-      .filter((p) => p.submissionId === x.id)
-      .map((p) => ({
-        categoryName: p.categoryName,
-        partName: p.partName,
-        type: p.type,
-        mcNo: p.mcNo ?? "-",
-        qtyNormal: p.row.qtyNormal,
-        minNormal: p.row.minNormal,
-        qtyOt: p.row.qtyOt,
-        minOt: p.row.minOt,
-        lot: p.row.lot,
-        oiban: p.row.oiban,
-        ng: NG_KEYS.map((k, i) => ({ label: ngName(p.ngGroupId, i + 1), qty: p.row[k] })).filter((n) => n.qty > 0),
-      }));
-    const lostTimes = lost
-      .filter((l) => l.submissionId === x.id)
-      .map((l) => ({ name: l.name, group: l.group, minutes: l.row.minutes, note: l.row.note }));
-    return {
-      ...x,
-      submittedAt: new Date(x.submittedAt).toISOString(),
-      decidedAt: x.decidedAt ? new Date(x.decidedAt).toISOString() : null,
-      parts,
-      lostTimes,
-      totals: {
-        qty: parts.reduce((a, p) => a + p.qtyNormal + p.qtyOt, 0),
-        minNormal: parts.reduce((a, p) => a + p.minNormal, 0),
-        minOt: parts.reduce((a, p) => a + p.minOt, 0),
-        lostMin: lostTimes.reduce((a, l) => a + l.minutes, 0),
-        ng: parts.reduce((a, p) => a + p.ng.reduce((b, n) => b + n.qty, 0), 0),
-      },
-    };
-  });
+function sortViews(list: SubmissionView[], status?: SubmissionStatus) {
+  return status === "pending"
+    ? list.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))
+    : list.sort((a, b) => (b.decidedAt ?? b.submittedAt).localeCompare(a.decidedAt ?? a.submittedAt));
 }
 
-export async function countByStatus(db: DB, area: string) {
-  const rows = await db
-    .select({ status: s.submissions.status, n: sql<number>`count(*)::int` })
-    .from(s.submissions)
-    .innerJoin(s.members, eq(s.members.id, s.submissions.memberId))
-    .where(area ? eq(s.members.area, area) : undefined)
-    .groupBy(s.submissions.status);
-  const out = { pending: 0, approved: 0, rejected: 0 };
-  for (const r of rows) out[r.status] = Number(r.n);
-  return out;
+export async function listSubmissions(f: SubmissionFilter): Promise<SubmissionView[]> {
+  const master = await loadMaster();
+  const member = f.memberId ? master.members.find((m) => m.id === f.memberId)?.name ?? "__none__" : "";
+  const raw = await fetchQueue({ status: f.status, workDate: f.workDate, member });
+  return sortViews(raw.map((s) => toView(s, master)), f.status).slice(0, f.limit ?? 100);
+}
+
+/** Antrian leader + jumlah per status dalam satu panggilan ke Apps Script. */
+export async function queueOverview(status: SubmissionStatus, workDate?: string) {
+  const [master, all] = await Promise.all([loadMaster(), fetchQueue({})]);
+  const counts = { pending: 0, approved: 0, rejected: 0 };
+  for (const s of all) counts[STATUS_FROM_SHEET[s.status] ?? "pending"]++;
+  const items = all
+    .filter((s) => (STATUS_FROM_SHEET[s.status] ?? "pending") === status && (!workDate || s.date === workDate))
+    .map((s) => toView(s, master));
+  return { items: sortViews(items, status).slice(0, status === "pending" ? 500 : 100), counts };
 }
 
 export type DecideResult = { id: string; ok: boolean; message?: string };
 
 /**
- * Approve atau reject. Tiap kiriman diproses dalam transaksi sendiri dengan
- * SELECT ... FOR UPDATE, dan hanya status pending yang bisa diputuskan (R14).
+ * Approve atau reject. Apps Script mengunci sheet, memproses hanya kiriman yang masih
+ * Menunggu (R14), dan saat approve memvalidasi ulang terhadap Master Data (R13) lalu
+ * menulis baris ke Input - Production / Input - Lost Time.
  */
-export async function decide(
-  db: DB,
-  opts: { ids: string[]; action: "approve" | "reject"; note?: string; leaderId: number; area: string; bulk?: boolean },
-): Promise<DecideResult[]> {
+export async function decide(opts: { ids: string[]; action: "approve" | "reject"; note?: string; leaderName: string; bulk?: boolean }): Promise<DecideResult[]> {
   const note = (opts.note ?? "").trim();
   if (opts.action === "reject" && !note) throw new ValidationError(["Alasan reject wajib diisi."]); // R12
+  let ids = [...new Set(opts.ids)].slice(0, 200);
   const results: DecideResult[] = [];
-  for (const id of [...new Set(opts.ids)].slice(0, 200)) {
-    try {
-      const r = await db.transaction(async (tx) => {
-        const locked = await tx.execute(sql`select s.id, s.status, s.needs_check, m.area from submissions s join members m on m.id = s.member_id where s.id = ${id} for update of s`);
-        const row = locked.rows[0] as { id: string; status: string; needs_check: boolean; area: string } | undefined;
-        if (!row) return { id, ok: false, message: "Kiriman tidak ditemukan." };
-        if (opts.area && row.area !== opts.area) return { id, ok: false, message: "Kiriman di luar area Anda." };
-        if (row.status !== "pending") return { id, ok: false, message: "Sudah diputuskan sebelumnya." };
-        if (opts.action === "approve" && opts.bulk && row.needs_check)
-          return { id, ok: false, message: "Perlu dicek: buka dan approve satu per satu." }; // R11
-
-        if (opts.action === "approve") {
-          // R13: validasi ulang terhadap master saat approve, lalu snapshot STKI.
-          const prods = await tx
-            .select({ id: s.productionRows.id, partActive: s.parts.active, stki: s.parts.stki, catActive: s.categories.active, partName: s.parts.name })
-            .from(s.productionRows)
-            .innerJoin(s.parts, eq(s.parts.id, s.productionRows.partId))
-            .innerJoin(s.categories, eq(s.categories.id, s.parts.categoryId))
-            .where(eq(s.productionRows.submissionId, id));
-          const bad = prods.find((p) => !p.partActive || !p.catActive);
-          if (bad) return { id, ok: false, message: `Part ${bad.partName} sudah tidak aktif di master.` };
-          const lts = await tx
-            .select({ active: s.lostTimeTypes.active, name: s.lostTimeTypes.name })
-            .from(s.lostTimeRows)
-            .innerJoin(s.lostTimeTypes, eq(s.lostTimeTypes.id, s.lostTimeRows.lostTimeTypeId))
-            .where(eq(s.lostTimeRows.submissionId, id));
-          const badLt = lts.find((l) => !l.active);
-          if (badLt) return { id, ok: false, message: `Jenis lost time ${badLt.name} sudah tidak aktif di master.` };
-          for (const p of prods) await tx.update(s.productionRows).set({ stkiSnapshot: p.stki }).where(eq(s.productionRows.id, p.id));
-        }
-        await tx
-          .update(s.submissions)
-          .set({
-            status: opts.action === "approve" ? "approved" : "rejected",
-            leaderId: opts.leaderId,
-            decidedAt: new Date(),
-            leaderNote: note || null,
-          })
-          .where(eq(s.submissions.id, id));
-        await tx.insert(s.auditLog).values({
-          userId: opts.leaderId,
-          action: opts.action,
-          tableName: "submissions",
-          recordId: id,
-          before: { status: "pending" },
-          after: { status: opts.action === "approve" ? "approved" : "rejected", note: note || null },
-        });
-        return { id, ok: true };
-      });
-      results.push(r);
-    } catch (e) {
-      results.push({ id, ok: false, message: e instanceof Error ? e.message : "Gagal memproses." });
-    }
+  if (opts.action === "approve" && opts.bulk) {
+    // R11: kiriman "Perlu dicek" tidak boleh ikut approve massal.
+    const pending = await fetchQueue({ status: "pending" });
+    const flagged = new Set(pending.filter((s) => s.meta?.needsCheck).map((s) => s.id));
+    for (const id of ids.filter((x) => flagged.has(x))) results.push({ id, ok: false, message: "Perlu dicek: buka dan approve satu per satu." });
+    ids = ids.filter((x) => !flagged.has(x));
+  }
+  if (ids.length) {
+    const r = await callBackend<{ detail?: DecideResult[] }>("decide", {
+      leader: opts.leaderName,
+      ids,
+      action: opts.action === "approve" ? "ok" : "no",
+      note,
+    });
+    results.push(...(r.detail ?? []));
   }
   return results;
 }
