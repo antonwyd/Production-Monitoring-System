@@ -19,7 +19,7 @@ export interface SheetsIO {
   /** Jumlah baris grid per tab. */
   rowCounts(): Promise<Record<string, { sheetId: number; rows: number }>>;
   /** Tambah `count` baris di akhir tab; rumus baris terakhir ikut disalin, kolom input dikosongkan. */
-  growSheet(title: string, count: number, clearCols: string): Promise<void>;
+  growSheet(title: string, count: number, clearCols: string[]): Promise<void>;
 }
 
 type ServiceAccount = { client_email: string; private_key: string };
@@ -145,7 +145,14 @@ export const googleSheets: SheetsIO = {
         ],
       },
     });
-    const [c0, c1] = clearCols.split(":");
-    await api(`/values/${enc(`'${title}'!${c0}${last + 1}:${c1}${last + count}`)}:clear`, { method: "POST", body: {} });
+    await api(`/values:batchClear`, {
+      method: "POST",
+      body: {
+        ranges: clearCols.map((cols) => {
+          const [c0, c1] = cols.split(":");
+          return `'${title}'!${c0}${last + 1}:${c1}${last + count}`;
+        }),
+      },
+    });
   },
 };

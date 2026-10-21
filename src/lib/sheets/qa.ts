@@ -2,6 +2,8 @@
 // Struktur Google Sheet tidak berubah: Master Data, Leader, Users, Antrian Validasi,
 // Input - Production, Input - Lost Time. Nama fungsi sengaja sama dengan Code.gs v1.5 karena
 // halaman form member dan leader (public/legacy) memanggilnya lewat /api/rpc/<nama>.
+// v1.7: menit MC per mesin (AM:AN), waktu operator per laporan (op), oiban rentang (AO:AP),
+// Standar MC PF di Master Data BI:BM.
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -14,6 +16,10 @@ const SHEET_QUEUE = "Antrian Validasi";
 const SHEET_LEADER = "Leader";
 const SHEET_USERS = "Users";
 const FIRST_DATA_ROW = 7;
+const PROD_WIDTH = 22; // B..W
+const LT_WIDTH = 5; // B..F
+const PROD_EXTRA = "AM"; // AM..AP: MC Min Normal, MC Min OT, Oiban List, Jml Oiban
+const PROD_EXTRA_END = "AP";
 const ST_WAIT = "Menunggu",
   ST_OK = "Disetujui",
   ST_NO = "Ditolak";
@@ -76,6 +82,7 @@ export type V1Master = {
 type FullMaster = V1Master & {
   nik: Record<string, string>;
   stki: Record<string, number>;
+  stdMc: Record<string, number>;
   settings: Record<string, Cell>;
 };
 
@@ -91,7 +98,7 @@ async function readMaster(): Promise<FullMaster> {
   if (masterCache && Date.now() - masterCache.at < MASTER_TTL) return masterCache.data;
   const [[F, L], [U, SET]] = await Promise.all([
     io.get([`${q(SHEET_MASTER)}!A1:CZ`, `${q(SHEET_LEADER)}!A2:B`], "FORMATTED_VALUE"),
-    io.get([`${q(SHEET_MASTER)}!G7:K`, `${q(SHEET_MASTER)}!S7:T20`], "UNFORMATTED_VALUE"),
+    io.get([`${q(SHEET_MASTER)}!A7:CZ`, `${q(SHEET_MASTER)}!S7:T20`], "UNFORMATTED_VALUE"),
   ]);
   const members: string[] = [];
   const nik: Record<string, string> = {};
@@ -130,7 +137,7 @@ async function readMaster(): Promise<FullMaster> {
     if (type && !partIdx[key].types.includes(type)) partIdx[key].types.push(type);
   }
   const stki: Record<string, number> = {};
-  for (const row of U) if (row[0] && row[2]) stki[`${s(row[0])}|${s(row[2])}|${s(row[3])}`] = Number(row[4]) || 0;
+  for (const row of U) if (row[6] && row[8]) stki[`${s(row[6])}|${s(row[8])}|${s(row[9])}`] = Number(row[10]) || 0;
 
   // Kolom tabel mesin & NG dicari dari judul di baris 6, jadi aman bila kolom disisipkan.
   const head = (F[5] ?? []).map(s);
@@ -168,6 +175,15 @@ async function readMaster(): Promise<FullMaster> {
       }
     }
 
+  // Standar MC khusus PF (pcs/jam per MC), terpisah dari STKI part.
+  const stdMc: Record<string, number> = {};
+  const stdCol = col("Std Category");
+  if (stdCol > 0)
+    for (const row of U) {
+      const v = Number(row[stdCol + 3]);
+      if (s(row[stdCol]) && s(row[stdCol + 1]) && v > 0) stdMc[`${s(row[stdCol])}|${s(row[stdCol + 1])}|${s(row[stdCol + 2])}`] = v;
+    }
+
   const settings: Record<string, Cell> = {};
   for (const row of SET) if (s(row[0])) settings[s(row[0])] = row[1] ?? "";
   const setting = (label: string, def: number) => {
@@ -186,6 +202,7 @@ async function readMaster(): Promise<FullMaster> {
     today: todayJakarta(),
     nik,
     stki,
+    stdMc,
     settings,
   };
   masterCache = { at: Date.now(), data };
@@ -198,7 +215,7 @@ export function clearMasterCache() {
 
 /** Master Data untuk form member & leader (bentuk sama dengan Code.gs getMasterData). */
 export async function getMasterData(): Promise<V1Master> {
-  const { nik: _n, stki: _s, settings: _x, ...m } = await readMaster();
+  const { nik: _n, stki: _s, stdMc: _m, settings: _x, ...m } = await readMaster();
   return { ...m, today: todayJakarta() };
 }
 
@@ -253,6 +270,7 @@ export type QueueEntry = {
   note: string;
   items: Item[];
   lostTimes: Item[];
+  op: Op | null;
   edited: string;
   meta: Record<string, unknown> | null;
   raw: Record<string, unknown>;
@@ -281,6 +299,7 @@ async function readQueue(): Promise<QueueEntry[]> {
         note: s(r[10]),
         items: (data.items as Item[]) || [],
         lostTimes: (data.lostTimes as Item[]) || [],
+        op: (data.op as Op) || null,
         edited: s(data.editedBy),
         meta: (data.meta as Record<string, unknown>) || null,
         raw: data,
@@ -293,31 +312,109 @@ const pub = ({ row: _r, raw: _x, ...rest }: QueueEntry) => rest;
 
 // ---------- Validasi & baris Input ----------
 
-type Payload = { date?: string; member?: string; items?: Item[]; lostTimes?: Item[]; replaceId?: string; meta?: unknown };
+/** Waktu operator jaga mesin per laporan (menit normal & OT), bukan per MC. */
+export type Op = { min?: unknown; ot?: unknown };
+type Payload = { date?: string; member?: string; items?: Item[]; lostTimes?: Item[]; op?: Op | null; replaceId?: string; meta?: unknown };
+
+/** Part di mesin (bagian PF): kategori punya MC, MC dipilih, dan diisi format baru (menit MC jalan). */
+function isMc(it: Item, c: V1Category | undefined) {
+  return !!(c && c.machines.length && it.mc && it.mc !== "-" && it.mcMin !== undefined);
+}
+
+/**
+ * Waktu operator (op.min normal, op.ot lembur) dibagi ke part mesin sesuai menit MC jalan,
+ * supaya Normal Min / OT Min di Input - Production tetap waktu orang (total 480), sedangkan
+ * menit mesin disimpan terpisah di kolom AM:AN.
+ */
+export function alokasiOp(items: Item[], op: Op | null | undefined, cats: Record<string, V1Category>): Item[] {
+  const n = (v: unknown) => Number(v) || 0;
+  const out = items.map((it) => ({ ...it }));
+  const mc = out.filter((it) => isMc(it, cats[s(it.category)]));
+  if (!mc.length) return out;
+  if (!op) {
+    mc.forEach((it) => {
+      it.normalMin = it.mcMin;
+      it.otMin = it.mcOtMin;
+    });
+    return out;
+  }
+  const bagi = (opMin: unknown, mcKey: string, minKey: string, qtyKey: string) => {
+    const total = n(opMin);
+    const ikut = mc.filter((it) => n(it[mcKey]) || n(it[qtyKey]));
+    mc.forEach((it) => (it[minKey] = ""));
+    if (!total || !ikut.length) return;
+    const sum = ikut.reduce((a, it) => a + n(it[mcKey]), 0);
+    let sisa = total;
+    ikut.forEach((it, i) => {
+      const v = i === ikut.length - 1 ? sisa : Math.round(total * (sum ? n(it[mcKey]) / sum : 1 / ikut.length) * 100) / 100;
+      it[minKey] = Math.round(v * 100) / 100;
+      sisa -= it[minKey] as number;
+    });
+  };
+  bagi(op.min, "mcMin", "normalMin", "normalQty");
+  bagi(op.ot, "mcOtMin", "otMin", "otQty");
+  return out;
+}
+
+/** "1-6, 8, 10-12" -> ['1',...,'6','8','10','11','12']. Pemisah koma, titik, spasi; rentang pakai - atau s/d. */
+export function uraiOiban(text: unknown): { list: string[]; err: string } {
+  let x = s(text).trim();
+  if (!x) return { list: [], err: "" };
+  x = x
+    .replace(/\s*(s\/d|s\.d\.?|sampai|~|–|—)\s*/gi, "-")
+    .replace(/(\d)\s*sd\s*(\d)/gi, "$1-$2")
+    .replace(/\s*-\s*/g, "-");
+  const list: string[] = [];
+  let err = "";
+  x.split(/[,;.\s/]+/).forEach((t) => {
+    if (!t) return;
+    const mm = t.match(/^(\d+)-(\d+)$/);
+    if (!mm) {
+      list.push(t);
+      return;
+    }
+    const a = Number(mm[1]),
+      b = Number(mm[2]),
+      w = mm[1].charAt(0) === "0" ? mm[1].length : 0;
+    if (b < a || b - a > 500) {
+      err = `rentang oiban "${t}" tidak wajar`;
+      return;
+    }
+    for (let k = a; k <= b; k++) list.push(w ? String(k).padStart(w, "0") : String(k));
+  });
+  return { list, err };
+}
 
 function bangunBaris(payload: Payload, m: V1Master) {
   const p = s(payload.date).split("-").map(Number);
   if (p.length !== 3 || !p[0]) throw new QaError("Tanggal belum diisi.");
   if (!m.members.includes(s(payload.member))) throw new QaError("Nama member tidak ada di Master Data.");
-  const items = payload.items || [];
   const lost = payload.lostTimes || [];
-  if (!items.length && !lost.length) throw new QaError("Belum ada part atau lost time yang diisi.");
   const cats: Record<string, V1Category> = {};
   m.categories.forEach((c) => (cats[c.name] = c));
+  const items = alokasiOp(payload.items || [], payload.op, cats);
+  if (!items.length && !lost.length) throw new QaError("Belum ada part atau lost time yang diisi.");
   const dateFormula = `=DATE(${p[0]},${p[1]},${p[2]})`;
   const prodRows: Cell[][] = items.map((it, i) => {
     const c = cats[s(it.category)];
     if (!c) throw new QaError(`Part #${i + 1}: kategori tidak dikenal.`);
     if (!c.parts.some((x) => x.name === it.part)) throw new QaError(`Part #${i + 1}: part tidak ada di kategori ${c.name}.`);
+    const ob = uraiOiban(it.oiban);
+    if (ob.err) throw new QaError(`Part #${i + 1}: ${ob.err}.`);
     const ng: Cell[] = [];
     for (let k = 0; k < 10; k++) ng.push(num((it.ng || [])[k]));
     return [dateFormula, asText(payload.member), asText(c.name), asText(it.part), asText(txt(it.type)), num(it.normalQty), num(it.normalMin), num(it.otQty), num(it.otMin), asText(txt(it.lot)), asText(txt(it.oiban)), asText(txt(it.mc)), ...ng];
+  });
+  const extraRows: Cell[][] = items.map((it) => {
+    const mc = isMc(it, cats[s(it.category)]),
+      ob = uraiOiban(it.oiban);
+    return [mc ? num(it.mcMin) : "", mc ? num(it.mcOtMin) : "", asText(ob.list.join(", ")), ob.list.length || ""];
   });
   const ltRows: Cell[][] = lost.map((l, i) => {
     if (!m.lostTypes.includes(s(l.type))) throw new QaError(`Lost time #${i + 1}: jenis tidak dikenal.`);
     return [dateFormula, asText(payload.member), asText(l.type), num(l.minutes), asText(txt(l.remarks))];
   });
-  return { prodRows, ltRows };
+  return { prodRows, ltRows, extraRows, items };
 }
 
 const colLetter = (n: number) => {
@@ -326,8 +423,8 @@ const colLetter = (n: number) => {
   return x;
 };
 
-/** Tulis baris setelah baris terakhir yang terisi di kolom input (B..). */
-async function tulis(title: string, rows: Cell[][], width: number) {
+/** Tulis baris setelah baris terakhir yang terisi di kolom input (B..). Mengembalikan nomor baris pertama. */
+async function tulis(title: string, rows: Cell[][], width: number, extraClear: string[] = []) {
   const end = colLetter(1 + width);
   const [[data], counts] = await Promise.all([io.get([`${q(title)}!B${FIRST_DATA_ROW}:${end}`], "UNFORMATTED_VALUE"), io.rowCounts()]);
   let lastFilled = -1;
@@ -339,8 +436,9 @@ async function tulis(title: string, rows: Cell[][], width: number) {
   const start = FIRST_DATA_ROW + lastFilled + 1;
   const maxRows = counts[title]?.rows ?? 0;
   const need = start + rows.length - 1 - maxRows;
-  if (need > 0) await io.growSheet(title, Math.max(need, 200), `B:${end}`);
+  if (need > 0) await io.growSheet(title, Math.max(need, 200), [`B:${end}`, ...extraClear]);
   await io.update([{ range: `${q(title)}!B${start}:${end}${start + rows.length - 1}`, values: rows }]);
+  return start;
 }
 
 // ---------- Fungsi yang dipanggil halaman form member ----------
@@ -363,6 +461,7 @@ export async function cekLaporan(dateStr: string, member: string) {
       leader: x.leader,
       items: x.status === ST_NO ? x.items : [],
       lostTimes: x.status === ST_NO ? x.lostTimes : [],
+      op: x.status === ST_NO ? x.op : null,
     }));
   return { prod: count(prod), lt: count(lt), subs };
 }
@@ -370,12 +469,13 @@ export async function cekLaporan(dateStr: string, member: string) {
 export async function submitReport(payload: Payload) {
   const m = await getMasterData();
   const rows = bangunBaris(payload, m); // validasi sekarang, tulis ke Input setelah disetujui
-  const items = payload.items || [],
+  const items = rows.items,
     lost = payload.lostTimes || [];
   const n = (v: unknown) => Number(v) || 0;
   const totalQty = items.reduce((a, it) => a + n(it.normalQty) + n(it.otQty), 0);
   const ltMin = lost.reduce((a, l) => a + n(l.minutes), 0);
   const rec: Record<string, unknown> = { date: payload.date, member: payload.member, items, lostTimes: lost };
+  if (payload.op) rec.op = payload.op; // waktu operator di mesin {min, ot}
   if (payload.meta) rec.meta = payload.meta;
   const data = JSON.stringify(rec);
   return locked(async () => {
@@ -404,7 +504,7 @@ export async function riwayatMember(member: string) {
     .filter((x) => x.member === member && x.date >= batas)
     .sort((a, b) => (a.date === b.date ? (a.sent < b.sent ? 1 : -1) : a.date < b.date ? 1 : -1))
     .slice(0, 40)
-    .map((x) => ({ id: x.id, date: x.date, sent: x.sent, status: x.status, qty: x.qty, ltMin: x.ltMin, note: x.note, leader: x.leader, items: x.items, lostTimes: x.lostTimes }));
+    .map((x) => ({ id: x.id, date: x.date, sent: x.sent, status: x.status, qty: x.qty, ltMin: x.ltMin, note: x.note, leader: x.leader, items: x.items, lostTimes: x.lostTimes, op: x.op }));
 }
 
 // ---------- Fungsi yang dipanggil halaman leader ----------
@@ -454,9 +554,13 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
       }
       if (action === "ok") {
         try {
-          const rows = bangunBaris({ date: x.date, member: x.member, items: x.items, lostTimes: x.lostTimes }, m!);
-          if (rows.prodRows.length) await tulis(SHEET_PROD, rows.prodRows, 22);
-          if (rows.ltRows.length) await tulis(SHEET_LT, rows.ltRows, 5);
+          const rows = bangunBaris({ date: x.date, member: x.member, items: x.items, lostTimes: x.lostTimes, op: x.op }, m!);
+          if (rows.prodRows.length) {
+            const start = await tulis(SHEET_PROD, rows.prodRows, PROD_WIDTH, [`${PROD_EXTRA}:${PROD_EXTRA_END}`]);
+            const endRow = start + rows.extraRows.length - 1;
+            await io.update([{ range: `${q(SHEET_PROD)}!${PROD_EXTRA}${start}:${PROD_EXTRA_END}${endRow}`, values: rows.extraRows }]);
+          }
+          if (rows.ltRows.length) await tulis(SHEET_LT, rows.ltRows, LT_WIDTH);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           hasil.errors.push(`${x.member}: ${msg}`);
@@ -474,16 +578,16 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
 }
 
 /** Leader memperbaiki isi kiriman yang masih Menunggu. Data asli disimpan di JSON (original). */
-export async function editKiriman(name: string, pin: string, id: string, data: { items?: Item[]; lostTimes?: Item[] }) {
+export async function editKiriman(name: string, pin: string, id: string, data: { items?: Item[]; lostTimes?: Item[]; op?: Op | null }) {
   await cekLeader(name, pin);
   const m = await getMasterData();
-  const items = data?.items || [],
-    lost = data?.lostTimes || [];
+  const lost = data?.lostTimes || [],
+    op = data?.op || undefined;
   return locked(async () => {
     const x = (await readQueue()).find((y) => y.id === id);
     if (!x) throw new QaError("Kiriman tidak ditemukan.");
     if (x.status !== ST_WAIT) throw new QaError(`Kiriman ini sudah ${x.status.toLowerCase()}.`);
-    bangunBaris({ date: x.date, member: x.member, items, lostTimes: lost }, m);
+    const items = bangunBaris({ date: x.date, member: x.member, items: data?.items || [], lostTimes: lost, op }, m).items;
     const n = (v: unknown) => Number(v) || 0;
     const totalQty = items.reduce((a, it) => a + n(it.normalQty) + n(it.otQty), 0);
     const ltMin = lost.reduce((a, l) => a + n(l.minutes), 0);
@@ -494,7 +598,8 @@ export async function editKiriman(name: string, pin: string, id: string, data: {
       member: x.member,
       items,
       lostTimes: lost,
-      original: old.original || { items: old.items || [], lostTimes: old.lostTimes || [] },
+      ...(op ? { op } : {}),
+      original: old.original || { items: old.items || [], lostTimes: old.lostTimes || [], op: old.op },
       editedBy: name,
       editedAt: nowJakarta().slice(0, 16),
     };
@@ -533,16 +638,20 @@ export async function apiQueue(a: { status?: string; date?: string; member?: str
 /** Baris Input - Production dan Input - Lost Time pada rentang tanggal (yyyy-MM-dd). */
 export async function apiRows(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(to || "")) throw new QaError("Rentang tanggal tidak valid.");
-  // B..AJ: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori (diturunkan dari baris atas).
+  // B..AN: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori, AM/AN menit MC.
   // B..I: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis.
-  const [prodG, ltG] = await io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AJ`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE");
+  const [[prodG, ltG], m] = await Promise.all([io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AN`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE"), readMaster()]);
   const n = (v: unknown) => Number(v) || 0;
+  const opt = (v: unknown) => (v === "" || v === null || v === undefined ? "" : Number(v) || 0);
   const prod: (string | number)[][] = [];
   for (const r of prodG) {
     const d = dayOf(r[32]) || dayOf(r[0]);
     if (!d || d < from || d > to || !s(r[3])) continue;
     const ng = Array.from({ length: 10 }, (_, i) => n(r[12 + i]));
-    prod.push([d, s(r[33]) || s(r[1]), s(r[34]) || s(r[2]), s(r[3]), s(r[4]), n(r[5]), n(r[6]), n(r[7]), n(r[8]), s(r[9]), s(r[10]), s(r[11]), ...ng, n(r[25])]);
+    const cat = s(r[34]) || s(r[2]);
+    // 23/24 = menit MC normal/OT ("" untuk baris lama atau part non-mesin), 25 = Standar MC PF (pcs/jam)
+    const mcStd = m.stdMc[`${cat}|${s(r[3])}|${s(r[4])}`] || 0;
+    prod.push([d, s(r[33]) || s(r[1]), cat, s(r[3]), s(r[4]), n(r[5]), n(r[6]), n(r[7]), n(r[8]), s(r[9]), s(r[10]), s(r[11]), ...ng, n(r[25]), opt(r[37]), opt(r[38]), mcStd]);
   }
   const lost: (string | number)[][] = [];
   for (const r of ltG) {

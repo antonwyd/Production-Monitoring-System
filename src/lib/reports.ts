@@ -63,6 +63,10 @@ type Fact = {
   minNormal: number;
   minOt: number;
   stki: number;
+  /** Jam mesin jalan: menit MC (AM+AN) bila ada, baris lama/non-PF pakai menit orang. 0 bila tanpa MC. */
+  mcHours: number;
+  /** Standar MC PF (pcs/jam per MC) dari Master Data BI:BL, 0 bila belum diisi. */
+  mcStd: number;
   ng: number[];
 };
 
@@ -118,6 +122,8 @@ async function loadFacts(master: MasterData, from: string, to: string, categoryI
       minNormal: n(6),
       minOt: n(8),
       stki: n(22) || master.parts.find((p) => p.id === pid)?.stki || 0,
+      mcHours: mcNo === "-" ? 0 : r[23] === "" && r[24] === "" ? (n(6) + n(8)) / 60 : (n(23) + n(24)) / 60,
+      mcStd: n(25),
       ng: Array.from({ length: 10 }, (_, i) => n(12 + i)),
     });
   }
@@ -392,9 +398,34 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
   }
 
   if (kind === "machine") {
+    // Sama dengan tab Report - Machine di Sheet: jam MC jalan per mesin dan Standar MC PF (bukan STKI part).
     const { facts } = await loadFacts(master, from, to, p.categoryId);
     const rows = [...groupBy(facts, (f) => `${f.categoryId}|${f.mcNo}`).values()]
-      .map((g) => ({ category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line, ...aggCols(g.agg, st) }))
+      .map((g) => {
+        const fs = facts.filter((f) => f.categoryId === g.first.categoryId && f.mcNo === g.first.mcNo);
+        let mcHours = 0,
+          stdHours = 0,
+          ratedHours = 0;
+        for (const f of fs) {
+          mcHours += f.mcHours;
+          if (f.mcStd > 0) {
+            stdHours += f.qty / f.mcStd;
+            ratedHours += f.mcHours;
+          }
+        }
+        return {
+          category: g.first.categoryName,
+          mcNo: g.first.mcNo,
+          line: g.first.line,
+          qty: g.agg.qty,
+          ng: g.agg.ng,
+          ngRate: ngRate(g.agg.ng, g.agg.qty),
+          mcHours,
+          pcsHr: mcHours > 0 ? g.agg.qty / mcHours : null,
+          stdHours: ratedHours > 0 ? stdHours : null,
+          eff: ratedHours > 0 ? stdHours / ratedHours : null,
+        };
+      })
       .sort((a, b) => Number(b.ng) - Number(a.ng));
     return {
       ...base,
@@ -404,7 +435,18 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       tables: [
         {
           title: "Per MC No (urut NG tertinggi)",
-          columns: [{ key: "category", label: "Kategori" }, { key: "mcNo", label: "MC No" }, { key: "line", label: "Line" }, ...AGG_COLUMNS],
+          columns: [
+            { key: "category", label: "Kategori" },
+            { key: "mcNo", label: "MC No" },
+            { key: "line", label: "Line" },
+            { key: "qty", label: "Total Qty", format: "int" },
+            { key: "ng", label: "Total NG", format: "int" },
+            { key: "ngRate", label: "NG Rate", format: "pct" },
+            { key: "mcHours", label: "MC Hours", format: "dec1" },
+            { key: "pcsHr", label: "Actual pcs/hr", format: "dec1" },
+            { key: "stdHours", label: "Std Hours (Std MC)", format: "dec1" },
+            { key: "eff", label: "Efficiency", format: "pct" },
+          ],
           rows,
         },
       ],

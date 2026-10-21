@@ -76,7 +76,7 @@ export class FakeSheet implements SheetsIO {
     return Object.fromEntries(Object.keys(this.data).map((t, i) => [t, { sheetId: i, rows: this.rows[t] }]));
   }
 
-  async growSheet(title: string, count: number) {
+  async growSheet(title: string, count: number, _clear?: string[]) {
     this.grown.push(title);
     this.rows[title] += count;
   }
