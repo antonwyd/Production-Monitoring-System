@@ -14,7 +14,7 @@ export default async function FormPage() {
   return (
     <AppShell session={session} active="form">
       {session.role === "operator" && session.memberId == null ? (
-        <p className="m-6 rounded-lg bg-red-50 p-4 text-red-800">Akun Anda belum terhubung ke data member. Hubungi admin.</p>
+        <p className="mx-auto mt-8 max-w-md rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Akun Anda belum terhubung ke data member. Hubungi admin.</p>
       ) : (
         <OperatorForm
           master={master}

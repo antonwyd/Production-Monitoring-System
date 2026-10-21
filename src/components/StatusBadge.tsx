@@ -1,12 +1,17 @@
 import type { SubmissionStatus } from "@/lib/types";
 
-const STYLE: Record<SubmissionStatus, [string, string]> = {
-  pending: ["Menunggu", "bg-amber-100 text-amber-800"],
-  approved: ["Disetujui", "bg-emerald-100 text-emerald-800"],
-  rejected: ["Ditolak", "bg-red-100 text-red-800"],
+const STYLE: Record<SubmissionStatus, [string, string, string]> = {
+  pending: ["Menunggu", "badge-warning", "bg-amber-500"],
+  approved: ["Disetujui", "badge-success", "bg-emerald-500"],
+  rejected: ["Ditolak", "badge-danger", "bg-red-500"],
 };
 
 export default function StatusBadge({ status }: { status: SubmissionStatus }) {
-  const [label, cls] = STYLE[status];
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>{label}</span>;
+  const [label, cls, dot] = STYLE[status];
+  return (
+    <span className={cls}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {label}
+    </span>
+  );
 }
