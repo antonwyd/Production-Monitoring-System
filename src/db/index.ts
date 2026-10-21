@@ -20,7 +20,10 @@ export async function createDb(opts: { url?: string; dataDir?: string } = {}): P
     const { Pool } = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { migrate } = await import("drizzle-orm/node-postgres/migrator");
-    const db = drizzle(new Pool({ connectionString: url, max: 10 }), { schema });
+    // Supabase dan PostgreSQL cloud lain mewajibkan SSL; server lokal biasanya tidak.
+    const local = /@(localhost|127\.0\.0\.1|db|postgres)(:|\/)/.test(url);
+    const ssl = process.env.DATABASE_SSL === "false" || local ? undefined : { rejectUnauthorized: false };
+    const db = drizzle(new Pool({ connectionString: url, max: 5, ssl }), { schema });
     await migrate(db, { migrationsFolder: MIGRATIONS });
     return db;
   }

@@ -38,13 +38,15 @@ Akun contoh (PIN semua `1234`):
 
 ## Produksi (Vercel + Supabase, sesuai rekomendasi PRD)
 
-1. Buat project Supabase, salin connection string PostgreSQL.
-2. Set environment variable:
-   - `DATABASE_URL` = connection string PostgreSQL
+1. Buat project di [Supabase](https://supabase.com). Di tombol **Connect**, salin connection string **Transaction pooler** (port 6543) dan ganti `[YOUR-PASSWORD]` dengan password database.
+2. Di [Vercel](https://vercel.com), **Add New → Project**, pilih repo ini, lalu isi Environment Variables:
+   - `DATABASE_URL` = connection string dari langkah 1
    - `SESSION_SECRET` = string acak panjang (wajib; aplikasi menolak login tanpa ini di produksi)
    - `ADMIN_NIK` dan `ADMIN_PIN` = akun admin pertama (default `admin` / `1234`, segera ganti)
-   - `SEED_DEMO=0` agar tidak membuat member dan laporan contoh
-3. Deploy ke Vercel. Migrasi database (`drizzle/`) dijalankan otomatis saat aplikasi pertama terhubung.
+   - `SEED_DEMO` = `1` untuk mencoba dengan member dan laporan contoh, `0` untuk data kosong
+3. Klik **Deploy**. Tabel dibuat otomatis (migrasi `drizzle/`) dan master data diisi saat aplikasi pertama dibuka.
+
+Koneksi ke database cloud memakai SSL otomatis; set `DATABASE_SSL=false` untuk PostgreSQL lokal tanpa SSL.
 
 Bisa juga di server lokal pabrik: `npm run build && npm start` dengan PostgreSQL lokal.
 
