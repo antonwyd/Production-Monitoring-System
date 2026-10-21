@@ -59,3 +59,16 @@ export function formatDateTimeId(t: Date | string | null | undefined): string {
   const { y, m, d, hh, mm } = jakartaParts(new Date(t));
   return `${formatDateId(`${y}-${p2(m)}-${p2(d)}`)} ${p2(hh)}:${p2(mm)}`;
 }
+
+/** Waktu sekarang di Jakarta, "yyyy-MM-dd HH:mm:ss" (ditulis ke sheet sebagai tanggal-jam). */
+export function nowJakarta(now = new Date()): string {
+  const { y, m, d, hh, mm, ss } = jakartaParts(now);
+  return `${y}-${p2(m)}-${p2(d)} ${p2(hh)}:${p2(mm)}:${p2(ss)}`;
+}
+
+/** Serial number tanggal Google Sheets (hari sejak 30-12-1899, waktu lokal sheet) -> "yyyy-MM-dd HH:mm". */
+export function serialToText(serial: number, withTime = false): string {
+  const t = new Date(Math.round((serial - 25569) * 86400) * 1000);
+  const day = t.toISOString().slice(0, 10);
+  return withTime ? `${day} ${t.toISOString().slice(11, 16)}` : day;
+}

@@ -5,7 +5,7 @@ import { memberId, userId } from "@/lib/ids";
 import { loadMaster } from "@/lib/service";
 import type { Role } from "@/lib/types";
 
-/** NIK + PIN dicek Apps Script terhadap tab "Users" di Google Sheet. */
+/** NIK + PIN dicek terhadap tab "Users" di Google Sheet. */
 export async function POST(req: Request) {
   return handle(async () => {
     const body = await readJson(req);

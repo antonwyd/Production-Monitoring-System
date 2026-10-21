@@ -71,7 +71,7 @@ type LostFact = { workDate: string; memberId: number; name: string; group: strin
 const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
 const ROWS_TTL = 60_000;
 
-/** Data report disimpan 1 menit di server supaya pindah halaman/filter tidak selalu menunggu Apps Script. */
+/** Data report disimpan 1 menit di server supaya pindah halaman/filter tidak selalu menunggu Google Sheet. */
 function fetchRows(from: string, to: string): Promise<RawRows> {
   const key = `${from}|${to}`;
   const hit = rowsCache.get(key);

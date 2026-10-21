@@ -1,187 +1,160 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { setTransport, type RawMaster, type RawSubmission } from "@/lib/backend";
-import { createSubmission, decide, invalidateMaster, listSubmissions, loadMaster, queueOverview, ValidationError } from "@/lib/service";
+import { setTransport } from "@/lib/backend";
 import { buildReport, clearReportCache } from "@/lib/reports";
+import { invalidateMaster } from "@/lib/service";
+import * as qa from "@/lib/sheets/qa";
+import { FakeSheet } from "./fakeSheet";
 
-// Apps Script palsu di memori yang meniru kontrak API di Code.gs (doPost).
 const DATE = "2026-10-20";
-const RAW: RawMaster = {
-  today: DATE,
-  members: [
-    { nik: "201003", name: "Harjuki" },
-    { nik: "201004", name: "Suharyanto" },
-  ],
-  categories: [
-    { name: "PF Iron Cage", process: "Bowl PF", ngGroup: "Iron Cage", ng: ["Part Tercampur", "Kizu", "Henkei"] },
-    { name: "Seiretsu Iron Cage", process: "Seiretsu", ngGroup: "Iron Cage", ng: ["Part Tercampur", "Kizu", "Henkei"] },
-  ],
-  parts: [
-    { category: "PF Iron Cage", name: "6902-J", type: "D1", stki: 1100 },
-    { category: "Seiretsu Iron Cage", name: "608JCL-1-J", type: "D1", stki: 6656 },
-  ],
-  machines: [{ category: "PF Iron Cage", mc: "MC 01", line: "EXPO", main: "6902-J D1", alt: "" }],
-  lostTypes: [
-    { name: "5S", group: "Another Job" },
-    { name: "Ganti Pole", group: "Lost Time" },
-  ],
-  settings: { normalMin: 480, otLimitHrs: 4, target: 100, gradeA: 100, gradeB: 90, gradeC: 80 },
-};
+let fs: FakeSheet;
 
-let queue: RawSubmission[];
-let prod: (string | number)[][];
-let lost: (string | number)[][];
-let seq = 0;
-let partActive = true;
-
-beforeEach(() => {
-  queue = [];
-  prod = [];
-  lost = [];
-  partActive = true;
-  invalidateMaster();
-  clearReportCache();
-  setTransport(async (action, a: Record<string, any>) => {
-    switch (action) {
-      case "master":
-        return RAW;
-      case "queue":
-        return structuredClone(queue.filter((s) => (!a.status || s.status === a.status) && (!a.date || s.date === a.date) && (!a.member || s.member === a.member)));
-      case "submit": {
-        const p = a.payload;
-        const id = `QA${String(++seq).padStart(14, "0")}`;
-        queue.push({ id, sent: `${DATE} 08:00`, date: p.date, member: p.member, parts: p.items.length, qty: 0, ltMin: 0, status: "Menunggu", leader: "", decided: "", note: "", items: p.items, lostTimes: p.lostTimes, edited: "", meta: p.meta });
-        return { id, pending: true };
-      }
-      case "decide": {
-        const detail = [];
-        for (const id of a.ids) {
-          const s = queue.find((x) => x.id === id);
-          if (!s || s.status !== "Menunggu") {
-            detail.push({ id, ok: false, message: "Sudah diputuskan sebelumnya." });
-            continue;
-          }
-          if (a.action === "ok") {
-            if (!partActive) {
-              detail.push({ id, ok: false, message: "Part #1: part tidak ada di kategori PF Iron Cage." });
-              continue;
-            }
-            for (const it of s.items) prod.push([s.date, s.member, it.category, it.part, it.type, it.normalQty, it.normalMin, it.otQty, it.otMin, it.lot, it.oiban, it.mc, ...it.ng.map(Number), 0]);
-            for (const l of s.lostTimes) lost.push([s.date, s.member, l.type, l.minutes, l.remarks]);
-          }
-          Object.assign(s, { status: a.action === "ok" ? "Disetujui" : "Ditolak", leader: a.leader, decided: `${DATE} 09:00`, note: a.note });
-          detail.push({ id, ok: true });
-        }
-        return { detail };
-      }
-      case "rows":
-        return { cols: [], prod: prod.filter((r) => r[0] >= a.from && r[0] <= a.to), lost: lost.filter((r) => r[0] >= a.from && r[0] <= a.to) };
-    }
-    throw new Error(`aksi ${action}`);
-  });
-});
-
-async function validInput() {
-  const m = await loadMaster({ fresh: true });
-  const cat = m.categories.find((c) => c.name === "PF Iron Cage")!;
-  const part = m.parts.find((p) => p.categoryId === cat.id && p.name === "6902-J")!;
-  const mc = m.machines.find((x) => x.categoryId === cat.id)!;
-  return {
-    m,
-    part,
-    input: {
-      workDate: DATE,
-      memberId: m.members[0].id,
-      parts: [{ categoryId: cat.id, partId: part.id, machineId: mc.id, qtyNormal: 7920, minNormal: 450, lot: "L1", ng: [0, 5, 3] }],
-      lostTimes: [{ lostTimeTypeId: m.lostTimeTypes[0].id, minutes: 30, note: "" }],
-    },
-  };
+/** Isi Google Sheet palsu dengan tata letak yang sama seperti sheet asli. */
+function seed() {
+  fs = new FakeSheet();
+  const set = (t: string, r: number, c: number, v: string | number) => fs.setCell(t, r - 1, c, v);
+  const M = "Master Data";
+  // Baris 6 = judul tabel. Kolom: B NIK, C nama, D status | G..K part | P,Q kategori + lost time | S,T setting
+  const head: Record<number, string> = { 1: "NIK", 2: "Member Name", 3: "Status", 6: "Category", 8: "Part Name", 9: "Type", 10: "STKI (pcs/hr)", 15: "Category", 16: "Process", 18: "Parameter", 19: "Value", 39: "No", 40: "Category", 41: "MC No", 42: "Line", 43: "Part utama", 44: "Bisa ganti ke", 45: "Status", 51: "Code", 52: "NG Group", 53: "NG Type", 55: "Category", 56: "NG Group" };
+  Object.entries(head).forEach(([c, v]) => set(M, 6, +c, v));
+  [["201003", "Harjuki", "Active"], ["201004", "Suharyanto", "Active"], ["201005", "Keluar", "Inactive"]].forEach((m, i) => m.forEach((v, j) => set(M, 7 + i, 1 + j, v)));
+  [["PF Iron Cage", "Bowl PF", "6902-J", "D1", 1100], ["PF Iron Cage", "Bowl PF", "627-J", "D1", 2000], ["Seiretsu Iron Cage", "Seiretsu", "608JCL-1-J", "D1", 6656]].forEach((p, i) =>
+    p.forEach((v, j) => set(M, 7 + i, 6 + j, v)),
+  );
+  [["PF Iron Cage", "Bowl PF"], ["Seiretsu Iron Cage", "Seiretsu"], ["", ""], ["Lost Time Type", ""], ["5S", "Another Job"], ["Ganti Pole", "Lost Time"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 15 + j, v)));
+  [["Normal working time / day (min)", 480], ["OT limit / member / day (hrs)", 4], ["Achievement target", 1], ["Grade A  (≥)", 1], ["Grade B  (≥)", 0.9], ["Grade C  (≥)", 0.8]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 18 + j, v)));
+  [[1, "PF Iron Cage", "MC 01", "EXPO", "6902-J D1", "627-J D1", "Active"], [2, "PF Iron Cage", "MC 02", "EXPO", "627-J D1", "", "Inactive"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 39 + j, v)));
+  [[1, "Iron Cage", "Part Tercampur"], [2, "Iron Cage", "Kizu"], [3, "Iron Cage", "Henkei"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 51 + j, v)));
+  [["PF Iron Cage", "Iron Cage"], ["Seiretsu Iron Cage", "Iron Cage"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 55 + j, v)));
+  set("Leader", 1, 0, "Nama Leader");
+  set("Leader", 2, 0, "Dian Kartika");
+  set("Leader", 2, 1, "4139");
+  ["NIK", "Nama", "Peran", "PIN", "Status"].forEach((v, j) => set("Users", 1, j, v));
+  ["2016162", "Anton Wahyudi", "admin", "6162", "Aktif"].forEach((v, j) => set("Users", 2, j, v));
+  ["201004", "Suharyanto", "operator", "1004", "Nonaktif"].forEach((v, j) => set("Users", 3, j, v));
+  ["ID", "Waktu Kirim", "Tanggal", "Member", "Jumlah Part", "Total Qty", "Lost Time (menit)", "Status", "Leader", "Waktu Validasi", "Catatan Leader", "Data"].forEach((v, j) => set("Antrian Validasi", 1, j, v));
+  fs.sheet("Input - Production", 7); // grid kecil: approve kedua harus menambah baris
+  fs.sheet("Input - Lost Time", 1000);
+  set("Input - Production", 6, 1, "Input Date");
+  set("Input - Lost Time", 6, 1, "Input Date");
 }
 
-describe("master dari Google Sheet", () => {
-  it("id tetap sama walau urutan baris berubah", async () => {
-    const a = await loadMaster({ fresh: true });
-    RAW.parts.reverse();
-    const b = await loadMaster({ fresh: true });
-    RAW.parts.reverse();
-    expect(new Set(b.parts.map((p) => p.id))).toEqual(new Set(a.parts.map((p) => p.id)));
-    expect(a.ngGroups[0].codes).toHaveLength(10);
-    expect(a.ngGroups[0].codes[3]).toBe("NG4");
-    expect(a.lostTimeTypes.find((t) => t.name === "5S")!.group).toBe("ANOTHER_JOB");
+const payload = () => ({
+  date: DATE,
+  member: "Harjuki",
+  items: [{ category: "PF Iron Cage", part: "6902-J", type: "D1", mc: "MC 01", normalQty: "7920", normalMin: "450", otQty: "", otMin: "", lot: "0123", oiban: "509", ng: ["", "5", "3", "", "", "", "", "", "", ""] }],
+  lostTimes: [{ type: "5S", minutes: "30", remarks: "pagi" }],
+});
+
+beforeEach(() => {
+  seed();
+  qa.setSheetsIO(fs);
+  setTransport(null);
+  invalidateMaster();
+  clearReportCache();
+});
+
+describe("Master Data dari sheet", () => {
+  it("dibaca sama seperti Code.gs", async () => {
+    const m = await qa.getMasterData();
+    expect(m.members).toEqual(["Harjuki", "Suharyanto"]);
+    expect(m.lostTypes).toEqual(["5S", "Ganti Pole"]);
+    expect(m.lostGroups["5S"]).toBe("Another Job");
+    expect(m.leaders).toEqual(["Dian Kartika"]);
+    expect(m.normalMin).toBe(480);
+    const pf = m.categories.find((c) => c.name === "PF Iron Cage")!;
+    expect(pf.parts.map((p) => p.name)).toEqual(["6902-J", "627-J"]);
+    expect(pf.machines).toEqual(["MC 01"]); // MC 02 Inactive
+    expect(pf.mcInfo!["MC 01"]).toEqual({ line: "EXPO", main: "6902-J D1", alt: "627-J D1" });
+    expect(pf.ng).toEqual(["Part Tercampur", "Kizu", "Henkei"]);
+    const raw = await qa.apiMaster();
+    expect(raw.parts.find((p) => p.name === "6902-J")!.stki).toBe(1100);
+    expect(raw.settings).toMatchObject({ gradeB: 90, target: 100 });
   });
 });
 
-describe("alur kirim → approve → report", () => {
-  it("server menolak kiriman yang melanggar aturan form", async () => {
-    const { input } = await validInput();
-    await expect(createSubmission({ ...input, lostTimes: [] }, { submittedBy: null })).rejects.toBeInstanceOf(ValidationError);
-    expect(queue).toHaveLength(0);
-  });
+describe("form member → leader → report", () => {
+  it("alur lengkap tersimpan di sheet dengan format v1", async () => {
+    const r = await qa.submitReport(payload());
+    expect(r.id).toMatch(/^QA\d{14}$/);
+    const q = fs.data["Antrian Validasi"][1];
+    expect(q.slice(3, 8)).toEqual(["Harjuki", 1, 7920, 30, "Menunggu"]);
+    expect(JSON.parse(String(q[11])).items[0].lot).toBe("0123");
 
-  it("operator tidak bisa mengirim atas nama member lain", async () => {
-    const { input } = await validInput();
-    await expect(createSubmission(input, { submittedBy: null, forceMemberId: 999 })).rejects.toThrow(/atas nama sendiri/);
-  });
+    const cek = await qa.cekLaporan(DATE, "Harjuki");
+    expect(cek).toMatchObject({ prod: 0, lt: 0, subs: [{ id: r.id, status: "Menunggu" }] });
+    expect((await qa.riwayatMember("Harjuki")).map((x) => x.id)).toEqual([r.id]);
 
-  it("kiriman disimpan dengan nama (format v1) dan masuk report setelah approve", async () => {
-    const { input, part } = await validInput();
-    const res = await createSubmission(input, { submittedBy: "Harjuki" });
-    expect(queue[0]).toMatchObject({ member: "Harjuki", items: [{ category: "PF Iron Cage", part: "6902-J", type: "D1", mc: "MC 01", normalQty: 7920 }], lostTimes: [{ type: "5S", minutes: 30 }] });
+    await expect(qa.getAntrian("Dian Kartika", "0000", "Menunggu", "")).rejects.toThrow(/PIN salah/);
+    const ant = await qa.getAntrian("Dian Kartika", "4139", "Menunggu", "");
+    expect(ant.counts).toEqual({ Menunggu: 1, Disetujui: 0, Ditolak: 0 });
+    expect(ant.list[0]).toMatchObject({ id: r.id, date: DATE, member: "Harjuki" });
 
-    let r = await buildReport("dashboard", { from: DATE, to: DATE }, DATE);
-    expect(r.kpis[0].value).toBe(0);
+    // Leader mengedit qty; data asli tetap tersimpan.
+    const edited = { ...payload(), items: [{ ...payload().items[0], normalQty: "7000" }] };
+    await qa.editKiriman("Dian Kartika", "4139", r.id, edited);
+    const rec = JSON.parse(String(fs.data["Antrian Validasi"][1][11]));
+    expect(rec.items[0].normalQty).toBe("7000");
+    expect(rec.original.items[0].normalQty).toBe("7920");
+    expect(fs.data["Antrian Validasi"][1][10]).toBe("Diedit oleh Dian Kartika");
 
-    await expect(decide({ ids: [res.id], action: "reject", leaderName: "Dian" })).rejects.toBeInstanceOf(ValidationError);
-    const ok = await decide({ ids: [res.id], action: "approve", leaderName: "Dian" });
-    expect(ok[0]).toEqual({ id: res.id, ok: true });
-    const again = await decide({ ids: [res.id], action: "reject", note: "x", leaderName: "Dian" });
-    expect(again[0].ok).toBe(false);
+    await expect(qa.putuskan("Dian Kartika", "4139", [r.id], "no", "")).rejects.toThrow(/alasan/);
+    const ok = await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
+    expect(ok).toMatchObject({ ok: 1, skip: 0 });
+    expect(fs.grown).toEqual([]);
+    const row = fs.data["Input - Production"][6];
+    expect(row.slice(1, 14)).toEqual([46315, "Harjuki", "PF Iron Cage", "6902-J", "D1", 7000, 450, "", "", "0123", "509", "MC 01", ""]);
+    expect(fs.data["Input - Lost Time"][6].slice(1, 6)).toEqual([46315, "Harjuki", "5S", 30, "pagi"]);
+    expect(fs.data["Antrian Validasi"][1].slice(7, 9)).toEqual(["Disetujui", "Dian Kartika"]);
 
-    const q = await queueOverview("approved");
-    expect(q.counts).toEqual({ pending: 0, approved: 1, rejected: 0 });
-    expect(q.items[0]).toMatchObject({ memberNik: "201003", leaderName: "Dian", totals: { qty: 7920, ng: 8, lostMin: 30 } });
-    expect(q.items[0].parts[0].ng).toEqual([{ label: "Kizu", qty: 5 }, { label: "Henkei", qty: 3 }]);
+    // Keputusan ganda diabaikan; member tidak bisa mengedit kiriman yang sudah disetujui.
+    expect(await qa.putuskan("Dian Kartika", "4139", [r.id], "no", "x")).toMatchObject({ ok: 0, skip: 1 });
+    await expect(qa.submitReport({ ...payload(), replaceId: r.id })).rejects.toThrow(/tidak bisa diedit/);
 
-    clearReportCache();
-    r = await buildReport("dashboard", { from: DATE, to: DATE }, DATE);
-    expect(r.kpis[0].value).toBe(7920);
-    expect(r.kpis[1].value).toBe(8);
-    expect(r.kpis[3].value as number).toBeCloseTo(7920 / part.stki / 7.5, 5);
-    expect(r.kpis[6].value).toBeCloseTo(0.5, 5); // 5S = another job 30 menit
+    // Kiriman kedua ditulis di bawah baris pertama.
+    const r2 = await qa.submitReport({ ...payload(), member: "Suharyanto" });
+    await qa.putuskan("Dian Kartika", "4139", [r2.id], "ok", "");
+    expect(fs.data["Input - Production"][7][2]).toBe("Suharyanto");
+    expect(fs.grown).toEqual(["Input - Production"]);
 
+    const dash = await buildReport("dashboard", { from: DATE, to: DATE }, DATE);
+    expect(dash.kpis[0].value).toBe(14920);
+    expect(dash.kpis[1].value).toBe(16);
     const daily = await buildReport("daily", { date: DATE }, DATE);
     expect(daily.tables[0].rows.find((x) => x.member === "Harjuki")!.status).toBe("Disetujui");
-    expect(daily.tables[0].rows.find((x) => x.member === "Suharyanto")!.status).toBe("Belum lapor");
-
-    for (const kind of ["member", "category", "machine", "ng-type", "ng-lot", "monthly"] as const) {
-      const rep = await buildReport(kind, { from: DATE, to: DATE, month: "2026-10" }, DATE);
-      expect(rep.tables.length).toBeGreaterThan(0);
-    }
-    const machine = await buildReport("machine", { from: DATE, to: DATE }, DATE);
-    expect(machine.tables[0].rows[0]).toMatchObject({ mcNo: "MC 01", line: "EXPO" });
     const ngType = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
-    expect(ngType.tables[0].rows[0]).toMatchObject({ ng: "Kizu", qty: 5 });
-    const cat = await buildReport("category", { from: DATE, to: DATE, categoryId: input.parts[0].categoryId }, DATE);
-    expect(cat.tables[0].rows).toHaveLength(1);
+    expect(ngType.tables[0].rows[0]).toMatchObject({ ng: "Kizu", qty: 10 });
+    for (const kind of ["member", "category", "machine", "ng-lot", "monthly"] as const)
+      expect((await buildReport(kind, { from: DATE, to: DATE, month: "2026-10" }, DATE)).tables.length).toBeGreaterThan(0);
   });
 
-  it("kiriman perlu dicek tidak ikut bulk approve (R11)", async () => {
-    const { input } = await validInput();
-    const first = await createSubmission(input, { submittedBy: null });
-    await decide({ ids: [first.id], action: "approve", leaderName: "Dian" });
-    const res = await createSubmission(input, { submittedBy: null }); // dobel → perlu dicek (R16)
-    expect(res.needsCheck).toBe(true);
-    const bulk = await decide({ ids: [res.id], action: "approve", leaderName: "Dian", bulk: true });
-    expect(bulk[0].ok).toBe(false);
-    const [view] = await listSubmissions({ status: "pending" });
-    expect(view).toMatchObject({ id: res.id, status: "pending", needsCheck: true });
+  it("member mengedit kiriman sendiri yang masih Menunggu", async () => {
+    const r = await qa.submitReport(payload());
+    await qa.submitReport({ ...payload(), replaceId: r.id, lostTimes: [{ type: "Ganti Pole", minutes: "30", remarks: "" }] });
+    expect(fs.data["Antrian Validasi"]).toHaveLength(2);
+    expect(fs.data["Antrian Validasi"][1][10]).toBe("Diedit member");
+    await expect(qa.submitReport({ ...payload(), member: "Suharyanto", replaceId: r.id })).rejects.toThrow(/tidak ditemukan/);
   });
 
-  it("pesan gagal approve dari Apps Script diteruskan (R13)", async () => {
-    const { input } = await validInput();
-    const res = await createSubmission(input, { submittedBy: null });
-    partActive = false;
-    const r = await decide({ ids: [res.id], action: "approve", leaderName: "Dian" });
-    expect(r[0].ok).toBe(false);
-    expect(r[0].message).toMatch(/tidak ada/);
+  it("menolak isian yang tidak ada di Master Data", async () => {
+    await expect(qa.submitReport({ ...payload(), member: "Orang Lain" })).rejects.toThrow(/member/);
+    await expect(qa.submitReport({ ...payload(), lostTimes: [{ type: "Tidur", minutes: "30" }] })).rejects.toThrow(/jenis tidak dikenal/);
+    expect(fs.data["Antrian Validasi"]).toHaveLength(1);
+  });
+
+  it("ditolak dengan alasan tidak menulis ke Input", async () => {
+    const r = await qa.submitReport(payload());
+    await qa.putuskan("Dian Kartika", "4139", [r.id], "no", "Qty salah");
+    expect(fs.data["Antrian Validasi"][1].slice(7, 11)).toEqual(["Ditolak", "Dian Kartika", expect.any(Number), "Qty salah"]);
+    expect(fs.data["Input - Production"]).toHaveLength(6);
+    const cek = await qa.cekLaporan(DATE, "Harjuki");
+    expect(cek.subs[0].items).toHaveLength(1); // data dikirim balik untuk "Perbaiki & kirim ulang"
+  });
+});
+
+describe("login report dari tab Users", () => {
+  it("NIK + PIN, status nonaktif ditolak", async () => {
+    expect(await qa.apiLogin("2016162", "6162")).toMatchObject({ ok: true, role: "admin", name: "Anton Wahyudi" });
+    expect(await qa.apiLogin("2016162", "0000")).toEqual({ ok: false });
+    expect(await qa.apiLogin("201004", "1004")).toEqual({ ok: false, inactive: true });
   });
 });

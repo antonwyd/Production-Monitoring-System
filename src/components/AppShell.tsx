@@ -3,8 +3,8 @@ import type { Session } from "@/lib/auth";
 import LogoutButton from "./LogoutButton";
 
 const LINKS: { href: string; label: string; roles: Session["role"][] }[] = [
-  { href: "/form", label: "Form", roles: ["operator", "leader", "admin"] },
-  { href: "/leader", label: "Validasi", roles: ["leader", "admin"] },
+  { href: "/", label: "Form", roles: ["operator", "leader", "admin"] },
+  { href: "/?page=leader", label: "Validasi", roles: ["leader", "admin"] },
   { href: "/dashboard", label: "Dashboard", roles: ["leader", "manager", "admin"] },
   { href: "/reports/daily", label: "Report", roles: ["leader", "manager", "admin"] },
   { href: "/admin", label: "Admin", roles: ["admin"] },
@@ -23,23 +23,27 @@ export default function AppShell({ session, active, children }: { session: Sessi
     <div className="min-h-screen">
       <header className="no-print sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2">
-          <Link href="/" className="flex items-center gap-2 font-bold text-brand-700">
+          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-brand-700">
             <img src="/icon.svg" alt="" className="h-7 w-7" />
             <span className="hidden sm:inline">Produksi QA</span>
           </Link>
           {links.length > 1 && (
             <nav className="flex flex-1 gap-1 overflow-x-auto">
-              {links.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    active === l.href.split("/")[1] ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {l.label}
-                </Link>
-              ))}
+              {links.map((l) => {
+                const cls = `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  active === l.href.split("/")[1] ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-100"
+                }`;
+                // Form member & leader bukan halaman Next.js (disajikan src/app/route.ts), jadi pakai <a> biasa.
+                return l.href === "/" || l.href.startsWith("/?") ? (
+                  <a key={l.href} href={l.href} className={cls}>
+                    {l.label}
+                  </a>
+                ) : (
+                  <Link key={l.href} href={l.href} className={cls}>
+                    {l.label}
+                  </Link>
+                );
+              })}
             </nav>
           )}
           {links.length <= 1 && <div className="flex-1" />}

@@ -1,51 +1,43 @@
-// Penghubung ke Google Apps Script (backend) yang membaca dan menulis Google Sheet.
-// Dipanggil hanya dari server Next.js, jadi APPS_SCRIPT_KEY tidak pernah sampai ke browser.
+// Penghubung data untuk Dashboard & Report: memanggil logika Google Sheet (src/lib/sheets/qa.ts).
+// Lapisan tipis ini memudahkan tes memakai data palsu tanpa Google Sheet.
+import { SheetsError } from "./sheets/client";
+import { apiLogin, apiMaster, apiQueue, apiRows, QaError } from "./sheets/qa";
 
 export class BackendError extends Error {}
 
 type Transport = (action: string, args: Record<string, unknown>) => Promise<unknown>;
 
-async function httpTransport(action: string, args: Record<string, unknown>): Promise<unknown> {
-  const url = process.env.APPS_SCRIPT_URL;
-  const key = process.env.APPS_SCRIPT_KEY;
-  if (!url || !key) throw new BackendError("APPS_SCRIPT_URL dan APPS_SCRIPT_KEY belum diisi di environment.");
-  let res: Response;
+async function directTransport(action: string, a: Record<string, unknown>): Promise<unknown> {
   try {
-    // text/plain: Apps Script membaca isi body apa adanya (e.postData.contents).
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ key, action, args }),
-      redirect: "follow",
-      cache: "no-store",
-      signal: AbortSignal.timeout(45_000),
-    });
-  } catch {
-    throw new BackendError("Google Apps Script tidak bisa dihubungi. Coba lagi sebentar.");
+    switch (action) {
+      case "master":
+        return await apiMaster();
+      case "login":
+        return await apiLogin(String(a.nik ?? ""), String(a.pin ?? ""));
+      case "queue":
+        return await apiQueue(a as { status?: string; date?: string; member?: string });
+      case "rows":
+        return await apiRows(String(a.from ?? ""), String(a.to ?? ""));
+    }
+  } catch (e) {
+    if (e instanceof QaError || e instanceof SheetsError) throw new BackendError(e.message);
+    throw e;
   }
-  const text = await res.text();
-  let body: { ok?: boolean; data?: unknown; error?: string };
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw new BackendError(`Apps Script tidak membalas JSON (HTTP ${res.status}). Cek deploy web app dan aksesnya "Anyone".`);
-  }
-  if (!body.ok) throw new BackendError(body.error || "Apps Script mengembalikan error.");
-  return body.data;
+  throw new BackendError(`Aksi tidak dikenal: ${action}`);
 }
 
-let transport: Transport = httpTransport;
+let transport: Transport = directTransport;
 
-/** Untuk tes: ganti Apps Script dengan backend palsu di memori. */
+/** Untuk tes: ganti sumber data dengan backend palsu di memori. */
 export function setTransport(t: Transport | null) {
-  transport = t ?? httpTransport;
+  transport = t ?? directTransport;
 }
 
 export async function callBackend<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
   return (await transport(action, args)) as T;
 }
 
-// ---------- Bentuk data dari Apps Script ----------
+// ---------- Bentuk data ----------
 
 export type RawMaster = {
   today: string;

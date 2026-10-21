@@ -19,8 +19,7 @@ export default async function AdminPage() {
       <div className="mx-auto max-w-5xl px-3 py-4">
         <h1 className="mb-1 text-2xl font-bold">Master data</h1>
         <p className="mb-4 text-slate-600">
-          Database aplikasi ini adalah Google Sheet. Ubah master data dan akun langsung di sheet; perubahan terbaca di web paling lambat
-          sekitar 10 menit.
+          Database aplikasi ini adalah Google Sheet. Ubah master data dan akun langsung di sheet; perubahan terbaca di web paling lambat sekitar 1 menit.
         </p>
         {sheetUrl ? (
           <a href={sheetUrl} target="_blank" rel="noreferrer" className="btn-primary mb-4 inline-block px-4 py-2">
