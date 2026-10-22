@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
-import type { Role } from "@/db/schema";
+import type { Role } from "./types";
 
 export type Session = {
   userId: number;
@@ -61,10 +61,10 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export const HOME_BY_ROLE: Record<Role, string> = {
-  operator: "/form",
-  leader: "/leader",
-  manager: "/dashboard",
-  admin: "/dashboard",
+  operator: "/",
+  leader: "/hari-ini",
+  manager: "/laporan",
+  admin: "/hari-ini",
 };
 
 /** Untuk halaman: arahkan ke login bila belum login atau perannya tidak cocok. */

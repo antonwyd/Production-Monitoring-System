@@ -1,9 +1,9 @@
-import { getDb } from "@/db";
 import { handle } from "@/lib/api";
 import { HttpError, requireApiRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
 import { reportToXlsx } from "@/lib/excel";
 import { buildReport, parseReportParams, REPORT_KINDS, type ReportKind } from "@/lib/reports";
+import { buildLaporan, buildToday, laporanToReport, todayToReport } from "@/lib/views";
 
 /** GET /api/export/{jenis}.xlsx?from=&to=&category= */
 export async function GET(req: Request, ctx: { params: Promise<{ file: string }> }) {
@@ -11,10 +11,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
     await requireApiRole(["leader", "manager", "admin"]);
     const { file } = await ctx.params;
     const kind = file.replace(/\.xlsx$/, "");
-    if (!REPORT_KINDS.includes(kind as ReportKind)) throw new HttpError(404, "Report tidak dikenal.");
-    const db = await getDb();
+    if (kind !== "laporan" && kind !== "hari-ini" && !REPORT_KINDS.includes(kind as ReportKind)) throw new HttpError(404, "Report tidak dikenal.");
     const today = todayJakarta();
-    const report = await buildReport(db, kind as ReportKind, parseReportParams(new URL(req.url).searchParams), today);
+    const params = parseReportParams(new URL(req.url).searchParams);
+    const report =
+      kind === "laporan"
+        ? laporanToReport(await buildLaporan({ from: params.from, to: params.to, categoryId: params.categoryId }, today))
+        : kind === "hari-ini"
+          ? todayToReport(await buildToday(params.date ?? today))
+          : await buildReport(kind as ReportKind, params, today);
     const buf = await reportToXlsx(report);
     return new Response(new Uint8Array(buf), {
       headers: {

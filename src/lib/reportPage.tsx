@@ -1,6 +1,5 @@
 import AppShell from "@/components/AppShell";
 import ReportView from "@/components/report/ReportView";
-import { getDb } from "@/db";
 import { requirePageRole } from "@/lib/auth";
 import { monthStart, todayJakarta } from "@/lib/dates";
 import { buildReport, parseReportParams, type ReportKind } from "@/lib/reports";
@@ -11,11 +10,10 @@ export async function renderReportPage(kind: ReportKind, searchParams: Record<st
   const flat: Record<string, string> = {};
   for (const [k, v] of Object.entries(searchParams)) if (typeof v === "string" && v) flat[k] = v;
   const params = parseReportParams(flat);
-  const db = await getDb();
   const today = todayJakarta();
-  const [report, master] = await Promise.all([buildReport(db, kind, params, today), loadMaster(db)]);
+  const [report, master] = await Promise.all([buildReport(kind, params, today), loadMaster()]);
   return (
-    <AppShell session={session} active={kind === "dashboard" ? "dashboard" : "reports"}>
+    <AppShell session={session} active={`report:${kind}`}>
       <ReportView
         report={report}
         params={params}
