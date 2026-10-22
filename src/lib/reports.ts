@@ -5,9 +5,10 @@ import { catId, memberId as memberIdOf, partId as partIdOf } from "./ids";
 import { achievement, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
+import { uraiOiban } from "./sheets/qa";
 import type { MasterData, Settings } from "./types";
 
-export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-lot", "monthly"] as const;
+export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-lot", "monthly", "waktu", "disiplin"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
@@ -19,9 +20,11 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   "ng-type": "Laporan Kualitas (NG)",
   "ng-lot": "Laporan NG per Lot",
   monthly: "Rekap Bulanan",
+  waktu: "Laporan Waktu & Lost Time",
+  disiplin: "Laporan Disiplin Lapor",
 };
 
-export type ColFormat = "text" | "int" | "dec1" | "dec2" | "pct" | "grade";
+export type ColFormat = "text" | "int" | "dec1" | "dec2" | "pct" | "grade" | "date";
 export type Column = { key: string; label: string; format?: ColFormat };
 export type Row = Record<string, string | number | null>;
 export type Table = { title: string; columns: Column[]; rows: Row[]; total?: Row };
@@ -43,6 +46,8 @@ export type ReportParams = {
   categoryId?: number;
   memberId?: number;
   partId?: number;
+  /** Cari nomor lot atau oiban (report Kualitas). */
+  q?: string;
 };
 
 export type Fact = {
@@ -58,6 +63,7 @@ export type Fact = {
   mcNo: string;
   line: string;
   lot: string;
+  oiban: string;
   qty: number;
   qtyOt: number;
   minNormal: number;
@@ -72,7 +78,7 @@ export type Fact = {
   ng: number[];
 };
 
-export type LostFact = { workDate: string; memberId: number; name: string; group: string; minutes: number };
+export type LostFact = { workDate: string; memberId: number; memberName: string; name: string; group: string; minutes: number; remarks: string };
 
 const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
 const ROWS_TTL = 60_000;
@@ -99,7 +105,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
   const catOf = new Map(master.categories.map((c) => [c.name, c]));
   const facts: Fact[] = [];
   for (const r of raw.prod) {
-    const [workDate, member, category, part, type, , , , , lot, , mc] = r.map(String);
+    const [workDate, member, category, part, type, , , , , lot, oiban, mc] = r.map(String);
     const n = (i: number) => Number(r[i]) || 0;
     const cid = catId(category);
     const pid = partIdOf(category, part, type);
@@ -119,6 +125,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
       mcNo,
       line: master.machines.find((m) => m.categoryId === cid && m.mcNo === mcNo)?.line ?? "",
       lot: lot || "(tanpa lot)",
+      oiban: oiban === "-" ? "" : oiban,
       qty: n(5) + n(7),
       qtyOt: n(7),
       minNormal: n(6),
@@ -138,9 +145,11 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
     lost.push({
       workDate: String(r[0]),
       memberId: mid,
+      memberName: String(r[1]),
       name,
       group: master.lostTimeTypes.find((t) => t.name === name)?.group ?? "LOST_TIME",
       minutes: Number(r[3]) || 0,
+      remarks: String(r[4] ?? ""),
     });
   }
   return { facts, lost };
@@ -371,7 +380,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       tables: [
         {
           title: "Per hari",
-          columns: [{ key: "date", label: "Tanggal" }, ...AGG_COLUMNS, { key: "lostMin", label: "Lost Time (mnt)", format: "int" }, { key: "ajMin", label: "Another Job (mnt)", format: "int" }],
+          columns: [{ key: "date", label: "Tanggal", format: "date" }, ...AGG_COLUMNS, { key: "lostMin", label: "Lost Time (mnt)", format: "int" }, { key: "ajMin", label: "Another Job (mnt)", format: "int" }],
           rows: dayRows,
           total: t,
         },
@@ -475,6 +484,63 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: d.slice(5), ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty) }));
     // Kualitas = jenis NG + NG per lot dalam satu halaman.
     const lotTable = (await buildReport("ng-lot", p, today)).tables[0];
+    // Matriks part x jenis NG: 8 jenis NG terbanyak jadi kolom, sisanya "Lainnya".
+    const topNames = [...new Set(rows.map((r) => r.ng))].slice(0, 8);
+    const matrix = [...groupBy(facts, (f) => f.partId).values()]
+      .map((g) => {
+        const out: Row = { part: g.first.part, category: g.first.categoryName, qty: g.agg.qty, ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty), other: 0 };
+        topNames.forEach((_, j) => (out[`n${j}`] = 0));
+        for (const f of facts.filter((x) => x.partId === g.first.partId))
+          f.ng.forEach((n, i) => {
+            if (!n) return;
+            const j = topNames.indexOf(label(f.ngGroupId, i));
+            const k = j >= 0 ? `n${j}` : "other";
+            out[k] = Number(out[k]) + n;
+          });
+        return out;
+      })
+      .filter((r) => Number(r.ng) > 0)
+      .sort((a, b) => Number(b.ng) - Number(a.ng));
+    const matrixTable: Table = {
+      title: "Part x jenis NG",
+      columns: [
+        { key: "part", label: "Part" },
+        { key: "category", label: "Kategori" },
+        { key: "qty", label: "Hasil (pcs)", format: "int" },
+        { key: "ng", label: "NG (pcs)", format: "int" },
+        { key: "ngRate", label: "NG rate", format: "pct" },
+        ...topNames.map((n, j) => ({ key: `n${j}`, label: n, format: "int" as const })),
+        ...(matrix.some((r) => Number(r.other) > 0) ? [{ key: "other", label: "Lainnya", format: "int" as const }] : []),
+      ],
+      rows: matrix,
+    };
+    const ngDetail = (f: Fact) =>
+      f.ng
+        .map((n, i) => (n ? `${label(f.ngGroupId, i)} ${n}` : ""))
+        .filter(Boolean)
+        .join(", ");
+    const search: Table[] = [];
+    if (p.q) {
+      const q = p.q.toLowerCase();
+      const hits = facts.filter((f) => f.lot.toLowerCase().includes(q) || (f.oiban && uraiOiban(f.oiban).list.includes(p.q!)));
+      search.push({
+        title: `Hasil cari lot / oiban "${p.q}"`,
+        columns: [
+          { key: "date", label: "Tanggal", format: "date" },
+          { key: "member", label: "Member" },
+          { key: "part", label: "Part" },
+          { key: "mc", label: "Mesin" },
+          { key: "lot", label: "Lot" },
+          { key: "oiban", label: "Oiban" },
+          { key: "qty", label: "Hasil (pcs)", format: "int" },
+          { key: "ng", label: "NG (pcs)", format: "int" },
+          { key: "detail", label: "Rincian NG" },
+        ],
+        rows: hits
+          .sort((a, b) => a.workDate.localeCompare(b.workDate))
+          .map((f) => ({ date: f.workDate, member: f.memberName, part: f.part, mc: f.mcNo, lot: f.lot, oiban: f.oiban, qty: f.qty, ng: f.ng.reduce((a, v) => a + v, 0), detail: ngDetail(f) })),
+      });
+    }
     return {
       ...base,
       subtitle: period,
@@ -484,6 +550,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { type: "line", title: "Tren NG harian", xKey: "date", series: [{ key: "ng", label: "NG", format: "int" }], data: trend },
       ],
       tables: [
+        ...search,
         {
           title: "NG per jenis",
           columns: [
@@ -494,11 +561,12 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           ],
           rows,
         },
+        matrixTable,
         lotTable,
         {
           title: "Catatan NG Lain-lain",
           columns: [
-            { key: "date", label: "Tanggal" },
+            { key: "date", label: "Tanggal", format: "date" },
             { key: "member", label: "Member" },
             { key: "part", label: "Part" },
             { key: "lot", label: "Lot" },
@@ -545,13 +613,265 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "lot", label: "Lot" },
             { key: "category", label: "Kategori" },
             { key: "part", label: "Part" },
-            { key: "firstDate", label: "Tanggal pertama" },
+            { key: "firstDate", label: "Tanggal pertama", format: "date" },
             { key: "qty", label: "Hasil (pcs)", format: "int" },
             { key: "ng", label: "NG (pcs)", format: "int" },
             { key: "ngRate", label: "NG rate", format: "pct" },
             { key: "topNg", label: "NG terbanyak" },
           ],
           rows,
+        },
+      ],
+    };
+  }
+
+  if (kind === "waktu") {
+    const { facts, lost: allLost } = await loadFacts(master, from, to, p.categoryId);
+    // Bila kategori dipilih, lost time hanya dari member-hari yang bekerja di kategori itu.
+    const dayKey = (d: string, m: number) => `${d}|${m}`;
+    const worked = new Set(facts.map((f) => dayKey(f.workDate, f.memberId)));
+    const lost = p.categoryId ? allLost.filter((l) => worked.has(dayKey(l.workDate, l.memberId))) : allLost;
+    // STKI rata-rata (berbobot menit) per member-hari, untuk menghitung potensi hasil yang hilang.
+    const stkiDay = new Map<string, { w: number; min: number }>();
+    for (const f of facts) {
+      if (!f.stki) continue;
+      const k = dayKey(f.workDate, f.memberId);
+      const e = stkiDay.get(k) ?? { w: 0, min: 0 };
+      e.w += f.stki * (f.minNormal + f.minOt);
+      e.min += f.minNormal + f.minOt;
+      stkiDay.set(k, e);
+    }
+    const pcsLost = (l: LostFact) => {
+      if (l.group === "ANOTHER_JOB") return 0;
+      const e = stkiDay.get(dayKey(l.workDate, l.memberId));
+      return e && e.min ? (l.minutes / 60) * (e.w / e.min) : 0;
+    };
+    const { lt, aj } = lostSplit(lost);
+    const workMin = facts.reduce((a, f) => a + f.minNormal, 0);
+    const otMin = facts.reduce((a, f) => a + f.minOt, 0);
+    const totalPcsLost = lost.reduce((a, l) => a + pcsLost(l), 0);
+
+    const byType = new Map<string, { name: string; group: string; minutes: number; count: number; pcs: number }>();
+    for (const l of lost) {
+      const e = byType.get(l.name) ?? { name: l.name, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", minutes: 0, count: 0, pcs: 0 };
+      e.minutes += l.minutes;
+      e.count++;
+      e.pcs += pcsLost(l);
+      byType.set(l.name, e);
+    }
+    const typeRows = [...byType.values()]
+      .sort((a, b) => b.minutes - a.minutes)
+      .map((e) => ({ name: e.name, group: e.group, hours: e.minutes / 60, count: e.count, pcs: e.group === "Lost Time" ? Math.round(e.pcs) : null, share: lt + aj ? e.minutes / (lt + aj) : null }));
+
+    const members = new Map<number, Row & { member: string }>();
+    const mrow = (id: number, name: string) => {
+      let r = members.get(id);
+      if (!r) members.set(id, (r = { member: name, nik: master.members.find((m) => m.name === name)?.nik ?? "", days: 0, workHrs: 0, otHrs: 0, ltHrs: 0, ajHrs: 0, pcs: 0 }));
+      return r;
+    };
+    for (const f of facts) {
+      const r = mrow(f.memberId, f.memberName);
+      r.workHrs = Number(r.workHrs) + f.minNormal / 60;
+      r.otHrs = Number(r.otHrs) + f.minOt / 60;
+    }
+    for (const l of lost) {
+      const r = mrow(l.memberId, l.memberName);
+      if (l.group === "ANOTHER_JOB") r.ajHrs = Number(r.ajHrs) + l.minutes / 60;
+      else r.ltHrs = Number(r.ltHrs) + l.minutes / 60;
+      r.pcs = Number(r.pcs) + pcsLost(l);
+    }
+    for (const [id, r] of members) r.days = new Set([...facts.filter((f) => f.memberId === id).map((f) => f.workDate), ...lost.filter((l) => l.memberId === id).map((l) => l.workDate)]).size;
+    const memberRows: Row[] = [...members.values()].sort((a, b) => Number(b.ltHrs) - Number(a.ltHrs)).map((r) => ({ ...r, pcs: Math.round(Number(r.pcs)) }));
+
+    // Tren per minggu (Senin) supaya hasil perbaikan kelihatan.
+    const weekOf = (d: string) => addDays(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
+    const weeks = new Map<string, { lt: number; aj: number; ot: number }>();
+    for (const l of lost) {
+      const w = weeks.get(weekOf(l.workDate)) ?? { lt: 0, aj: 0, ot: 0 };
+      if (l.group === "ANOTHER_JOB") w.aj += l.minutes;
+      else w.lt += l.minutes;
+      weeks.set(weekOf(l.workDate), w);
+    }
+    for (const f of facts) {
+      const w = weeks.get(weekOf(f.workDate)) ?? { lt: 0, aj: 0, ot: 0 };
+      w.ot += f.minOt;
+      weeks.set(weekOf(f.workDate), w);
+    }
+    const weekRows = [...weeks.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([w, e]) => ({ week: `${formatDateId(w).slice(0, -5)}`, ltHrs: e.lt / 60, ajHrs: e.aj / 60, otHrs: e.ot / 60 }));
+
+    return {
+      ...base,
+      subtitle: period,
+      kpis: [
+        { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
+        { label: "Potensi hasil hilang (pcs)", value: Math.round(totalPcsLost), format: "int", hint: "Lost Time x STKI part hari itu" },
+        { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
+        { label: "Jam lembur (OT)", value: otMin / 60, format: "dec1" },
+        { label: "Porsi lost time", value: workMin + lt + aj ? lt / (workMin + lt + aj) : null, format: "pct", hint: "dari total jam normal" },
+      ],
+      charts: [
+        { type: "bar", title: "Lost Time & Another Job per jenis (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: typeRows.slice(0, 12) },
+        { type: "line", title: "Lost Time per minggu (jam)", xKey: "week", series: [{ key: "ltHrs", label: "Lost Time", format: "dec1" }], data: weekRows },
+      ],
+      tables: [
+        {
+          title: "Per jenis",
+          columns: [
+            { key: "name", label: "Jenis" },
+            { key: "group", label: "Grup" },
+            { key: "hours", label: "Jam", format: "dec1" },
+            { key: "count", label: "Kejadian", format: "int" },
+            { key: "share", label: "Porsi", format: "pct" },
+            { key: "pcs", label: "Potensi hilang (pcs)", format: "int" },
+          ],
+          rows: typeRows,
+        },
+        {
+          title: "Per member",
+          columns: [
+            { key: "nik", label: "NIK" },
+            { key: "member", label: "Member" },
+            { key: "days", label: "Hari", format: "int" },
+            { key: "workHrs", label: "Jam kerja normal", format: "dec1" },
+            { key: "otHrs", label: "Jam OT", format: "dec1" },
+            { key: "ltHrs", label: "Lost Time (jam)", format: "dec1" },
+            { key: "ajHrs", label: "Another Job (jam)", format: "dec1" },
+            { key: "pcs", label: "Potensi hilang (pcs)", format: "int" },
+          ],
+          rows: memberRows,
+          total: { member: "TOTAL", workHrs: workMin / 60, otHrs: otMin / 60, ltHrs: lt / 60, ajHrs: aj / 60, pcs: Math.round(totalPcsLost) },
+        },
+        {
+          title: "Per minggu",
+          columns: [
+            { key: "week", label: "Minggu mulai" },
+            { key: "ltHrs", label: "Lost Time (jam)", format: "dec1" },
+            { key: "ajHrs", label: "Another Job (jam)", format: "dec1" },
+            { key: "otHrs", label: "Jam OT", format: "dec1" },
+          ],
+          rows: weekRows,
+        },
+        {
+          title: "Rincian lost time",
+          columns: [
+            { key: "date", label: "Tanggal", format: "date" },
+            { key: "member", label: "Member" },
+            { key: "group", label: "Grup" },
+            { key: "name", label: "Jenis" },
+            { key: "minutes", label: "Menit", format: "int" },
+            { key: "remarks", label: "Keterangan" },
+          ],
+          rows: [...lost]
+            .sort((a, b) => b.workDate.localeCompare(a.workDate) || a.memberName.localeCompare(b.memberName))
+            .map((l) => ({ date: l.workDate, member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.name, minutes: l.minutes, remarks: l.remarks })),
+        },
+      ],
+    };
+  }
+
+  if (kind === "disiplin") {
+    const all = await callBackend<RawSubmission[]>("queue", {});
+    const subs = all.filter((s) => s.date >= from && s.date <= to);
+    const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 864e5);
+    const hoursBetween = (a: string, b: string) => (Date.parse(`${b.replace(" ", "T")}:00Z`) - Date.parse(`${a.replace(" ", "T")}:00Z`)) / 36e5;
+    const workDays = [...new Set(subs.map((s) => s.date))].sort();
+    type M = { member: string; sent: number; sameDay: number; nextDay: number; later: number; rejected: number; days: Set<string>; first: string };
+    const per = new Map<string, M>();
+    for (const s of subs) {
+      const m = per.get(s.member) ?? { member: s.member, sent: 0, sameDay: 0, nextDay: 0, later: 0, rejected: 0, days: new Set<string>(), first: s.date };
+      m.sent++;
+      const late = dayDiff(s.date, s.sent);
+      if (late <= 0) m.sameDay++;
+      else if (late === 1) m.nextDay++;
+      else m.later++;
+      if (s.status === "Ditolak") m.rejected++;
+      m.days.add(s.date);
+      if (s.date < m.first) m.first = s.date;
+      per.set(s.member, m);
+    }
+    const memberRows = [...per.values()]
+      .map((m) => {
+        // Hari tidak lapor: hari kerja (ada kiriman dari siapa pun) sejak member pertama lapor di periode ini.
+        const expected = workDays.filter((d) => d >= m.first).length;
+        return {
+          nik: master.members.find((x) => x.name === m.member)?.nik ?? "",
+          member: m.member,
+          sent: m.sent,
+          sameDay: m.sameDay,
+          nextDay: m.nextDay,
+          later: m.later,
+          onTime: m.sent ? m.sameDay / m.sent : null,
+          rejected: m.rejected,
+          missing: Math.max(0, expected - m.days.size),
+        };
+      })
+      .sort((a, b) => (a.onTime ?? 1) - (b.onTime ?? 1) || b.missing - a.missing);
+    const decided = subs.filter((s) => s.status !== "Menunggu" && s.decided && s.sent);
+    const avgHrs = decided.length ? decided.reduce((a, s) => a + Math.max(0, hoursBetween(s.sent, s.decided)), 0) / decided.length : null;
+    const sameDay = subs.filter((s) => dayDiff(s.date, s.sent) <= 0).length;
+    const rejected = subs.filter((s) => s.status === "Ditolak");
+    const waiting = subs.filter((s) => s.status === "Menunggu");
+    const byDay = workDays.map((d) => {
+      const ds = subs.filter((s) => s.date === d);
+      return {
+        date: d,
+        sent: ds.length,
+        approved: ds.filter((s) => s.status === "Disetujui").length,
+        waiting: ds.filter((s) => s.status === "Menunggu").length,
+        rejected: ds.filter((s) => s.status === "Ditolak").length,
+      };
+    });
+    return {
+      ...base,
+      subtitle: `${formatDateId(from)} – ${formatDateId(to)} · dari semua kiriman (termasuk yang belum/ditolak)`,
+      kpis: [
+        { label: "Kiriman", value: subs.length, format: "int" },
+        { label: "Dikirim di hari yang sama", value: subs.length ? sameDay / subs.length : null, format: "pct" },
+        { label: "Ditolak leader", value: rejected.length, format: "int" },
+        { label: "Rata-rata waktu validasi (jam)", value: avgHrs, format: "dec1" },
+        { label: "Masih menunggu", value: waiting.length, format: "int" },
+      ],
+      charts: [
+        { type: "bar", title: "Kirim di hari yang sama per member", xKey: "member", series: [{ key: "onTime", label: "Tepat hari itu", format: "pct" }], data: memberRows.slice(0, 20) },
+      ],
+      tables: [
+        {
+          title: "Per member",
+          columns: [
+            { key: "nik", label: "NIK" },
+            { key: "member", label: "Member" },
+            { key: "sent", label: "Kiriman", format: "int" },
+            { key: "sameDay", label: "Hari yang sama", format: "int" },
+            { key: "nextDay", label: "H+1", format: "int" },
+            { key: "later", label: "Lebih dari H+1", format: "int" },
+            { key: "onTime", label: "Tepat waktu", format: "pct" },
+            { key: "rejected", label: "Ditolak", format: "int" },
+            { key: "missing", label: "Hari tidak lapor", format: "int" },
+          ],
+          rows: memberRows,
+        },
+        {
+          title: "Alasan penolakan",
+          columns: [
+            { key: "date", label: "Tanggal", format: "date" },
+            { key: "member", label: "Member" },
+            { key: "leader", label: "Leader" },
+            { key: "note", label: "Alasan" },
+          ],
+          rows: rejected.sort((a, b) => b.date.localeCompare(a.date)).map((s) => ({ date: s.date, member: s.member, leader: s.leader, note: s.note })),
+        },
+        {
+          title: "Per hari",
+          columns: [
+            { key: "date", label: "Tanggal", format: "date" },
+            { key: "sent", label: "Kiriman", format: "int" },
+            { key: "approved", label: "Disetujui", format: "int" },
+            { key: "waiting", label: "Menunggu", format: "int" },
+            { key: "rejected", label: "Ditolak", format: "int" },
+          ],
+          rows: byDay.reverse(),
         },
       ],
     };
@@ -621,5 +941,6 @@ export function parseReportParams(sp: URLSearchParams | Record<string, string | 
     categoryId: int("category"),
     memberId: int("member"),
     partId: int("part"),
+    q: get("q")?.trim().slice(0, 40) || undefined,
   };
 }

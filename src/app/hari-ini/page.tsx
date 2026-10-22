@@ -26,6 +26,9 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               <input type="date" name="date" defaultValue={date} className="input mt-1 h-11" />
             </label>
             <button className="btn-secondary h-11">Lihat</button>
+            <a className="btn-primary h-11" href={`/api/export/hari-ini.xlsx?date=${date}`}>
+              Download Excel
+            </a>
           </form>
         </div>
 

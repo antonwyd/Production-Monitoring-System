@@ -251,20 +251,22 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           </section>
         </div>
 
-        <p className="no-print text-sm text-slate-500">
-          Perlu tabel lengkap?{" "}
-          <Link href={`/reports/ng-type?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
-            Kualitas (NG)
-          </Link>{" "}
-          ·{" "}
-          <Link href={`/reports/machine?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
-            Mesin PF
-          </Link>{" "}
-          ·{" "}
-          <Link href={`/reports/member?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
-            Per Member
-          </Link>
-        </p>
+        <section className="no-print card px-5 py-4">
+          <h2 className="mb-3 font-bold">Report detail (semua bisa diunduh ke Excel)</h2>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ["member", "Per Member"],
+              ["ng-type", "Kualitas (NG) & cari lot"],
+              ["waktu", "Waktu & Lost Time"],
+              ["machine", "Mesin PF"],
+              ["disiplin", "Disiplin Lapor"],
+            ].map(([k, l]) => (
+              <Link key={k} href={`/reports/${k}?from=${v.from}&to=${v.to}${categoryId && k !== "disiplin" ? `&category=${categoryId}` : ""}`} className="btn-secondary min-h-11">
+                {l}
+              </Link>
+            ))}
+          </div>
+        </section>
       </main>
     </AppShell>
   );

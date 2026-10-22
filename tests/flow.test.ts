@@ -209,8 +209,8 @@ describe("v1.8: catatan NG Lain-lain", () => {
     await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
     expect(fs.data["Input - Production"][6][48]).toBe("retak");
     const rep = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
-    expect(rep.tables[2].rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
-    expect(rep.tables[1].title).toMatch(/lot/i);
+    expect(rep.tables.find((t) => t.title === "Catatan NG Lain-lain")!.rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
+    expect(rep.tables.some((t) => /lot/i.test(t.title))).toBe(true);
   });
 });
 
@@ -239,5 +239,46 @@ describe("tampilan baru: Hari Ini dan Laporan", () => {
     expect(lap.totalNg).toBe(8);
     expect(lap.month.problems.length).toBeGreaterThan(0);
     expect(laporanToReport(lap).tables.length).toBeGreaterThan(0);
+  });
+});
+
+describe("report baru dan Excel", () => {
+  it("waktu, disiplin, cari lot/oiban, dan semua halaman bisa jadi Excel", async () => {
+    const { reportToXlsx } = await import("@/lib/excel");
+    const { buildToday, buildLaporan, laporanToReport, todayToReport } = await import("@/lib/views");
+    const r = await qa.submitReport({ ...payload(), lostTimes: [{ type: "Ganti Pole", minutes: "30", remarks: "pole aus" }] });
+    await qa.putuskanTanpaPin("Dian Kartika", [r.id], "ok", "");
+    const r2 = await qa.submitReport({ ...payload(), member: "Suharyanto", lostTimes: [] });
+    await qa.putuskanTanpaPin("Dian Kartika", [r2.id], "no", "menit kurang");
+    clearReportCache();
+
+    const waktu = await buildReport("waktu", { from: DATE, to: DATE }, DATE);
+    expect(waktu.tables[0].rows[0]).toMatchObject({ name: "Ganti Pole", group: "Lost Time", count: 1 });
+    // 30 menit x STKI 1100 pcs/jam = 550 pcs
+    expect(waktu.kpis[1].value).toBe(550);
+    expect(waktu.tables[3].rows[0]).toMatchObject({ member: "Harjuki", minutes: 30, remarks: "pole aus" });
+
+    const dis = await buildReport("disiplin", { from: DATE, to: DATE }, DATE);
+    expect(dis.kpis[0].value).toBe(2);
+    expect(dis.tables[1].rows).toEqual([expect.objectContaining({ member: "Suharyanto", note: "menit kurang" })]);
+
+    const byOiban = await buildReport("ng-type", { from: DATE, to: DATE, q: "509" }, DATE);
+    expect(byOiban.tables[0].rows).toEqual([expect.objectContaining({ member: "Harjuki", lot: "0123", detail: "Kizu 5, Lain-Lain 3" })]);
+    const byLot = await buildReport("ng-type", { from: DATE, to: DATE, q: "012" }, DATE);
+    expect(byLot.tables[0].rows).toHaveLength(1);
+    expect(byLot.tables.find((t) => t.title === "Part x jenis NG")!.rows[0]).toMatchObject({ part: "6902-J D1", ng: 8 });
+
+    const reports = [
+      waktu,
+      dis,
+      byOiban,
+      todayToReport(await buildToday(DATE)),
+      laporanToReport(await buildLaporan({ from: "2026-10-01", to: DATE }, DATE)),
+      ...(await Promise.all((["member", "machine", "monthly"] as const).map((k) => buildReport(k, { from: DATE, to: DATE, month: "2026-10" }, DATE)))),
+    ];
+    for (const rep of reports) {
+      const buf = await reportToXlsx(rep);
+      expect(buf.subarray(0, 2).toString()).toBe("PK");
+    }
   });
 });

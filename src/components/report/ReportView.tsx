@@ -11,9 +11,11 @@ import PrintButton from "./PrintButton";
 const NAV: { k: ReportKind; label: string }[] = [
   { k: "member", label: "Per Member" },
   { k: "ng-type", label: "Kualitas (NG)" },
+  { k: "waktu", label: "Waktu & Lost Time" },
   { k: "machine", label: "Mesin PF" },
+  { k: "disiplin", label: "Disiplin Lapor" },
 ];
-const isNum = (f?: string) => !!f && f !== "text" && f !== "grade";
+const isNum = (f?: string) => !!f && f !== "text" && f !== "grade" && f !== "date";
 
 export default function ReportView({
   report,
@@ -30,7 +32,7 @@ export default function ReportView({
 }) {
   const k = report.kind;
   const usesRange = !["daily", "monthly"].includes(k);
-  const usesCategory = k !== "member";
+  const usesCategory = k !== "member" && k !== "disiplin";
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-6">
       <div>
@@ -118,6 +120,12 @@ export default function ReportView({
                   </option>
                 ))}
             </select>
+          </label>
+        )}
+        {k === "ng-type" && (
+          <label>
+            <span className="block text-sm text-slate-500">Cari lot / oiban</span>
+            <input type="search" name="q" className="input mt-1 h-11 w-44" placeholder="mis. 0123 atau 509" defaultValue={params.q ?? ""} />
           </label>
         )}
         <button className="btn-secondary h-11">Tampilkan</button>

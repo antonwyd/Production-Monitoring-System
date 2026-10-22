@@ -11,6 +11,7 @@ import {
   loadFacts,
   ngLabeler,
   type Fact,
+  type Kpi,
   type LostFact,
   type Report,
   type Row,
@@ -86,6 +87,9 @@ export type TodayView = {
   missing: string[];
   topNg: { name: string; qty: number; bar: number }[];
   expected: number;
+  kpis: Kpi[];
+  detail: Row[];
+  lostDetail: Row[];
 };
 
 function card(s: RawSubmission, normalMin: number): QueueCard {
@@ -160,6 +164,24 @@ export async function buildToday(date: string): Promise<TodayView> {
     missing,
     topNg: topNg(today, master, 5),
     expected: expected.length,
+    kpis: [
+      { label: "Hasil (pcs)", value: t.qty, format: "int" },
+      { label: "NG (pcs)", value: t.ng, format: "int" },
+      { label: "NG rate", value: t.rate, format: "pct" },
+      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}` },
+      { label: "Laporan masuk", value: `${reported} dari ${expected.length}`, hint: `${queue.length} menunggu, ${missing.length} belum kirim` },
+    ],
+    detail: today
+      .sort((a, b) => a.memberName.localeCompare(b.memberName))
+      .map((f) => {
+        const a = emptyAgg();
+        add(a, f);
+        const c = aggCols(a, st);
+        return { member: f.memberName, category: f.categoryName, part: f.part, mc: f.mcNo, lot: f.lot, oiban: f.oiban, qty: f.qty, ng: a.ng, ngRate: c.ngRate, min: f.minNormal + f.minOt, ach: c.ach, grade: String(c.grade) };
+      }),
+    lostDetail: lost
+      .filter((l) => l.workDate === date)
+      .map((l) => ({ member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.name, minutes: l.minutes, remarks: l.remarks })),
   };
 }
 
@@ -180,6 +202,7 @@ export type LaporanView = {
   period: string;
   vsLabel: string;
   tiles: Tile[];
+  kpis: Kpi[];
   month: { label: string; deadline: string; total: number; complete: number; problems: { date: string; reason: string }[] };
   people: PersonRow[];
   ngTypes: { name: string; qty: number; share: number; bar: number }[];
@@ -304,6 +327,14 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
       { label: "Achievement", value: p0(t.ach), sub: t.ach == null ? "belum ada data" : `Grade ${t.grade}`, trend: trendPoint(t.ach, pt.ach, vsLabel) },
       { label: "Waktu hilang", value: h1(lt), sub: "lost time, tanpa Another Job", trend: trendPct(lt, plt, vsLabel, false) },
     ],
+    kpis: [
+      { label: "Hasil (pcs)", value: t.qty, format: "int" },
+      { label: "NG (pcs)", value: t.ng, format: "int" },
+      { label: "NG rate", value: t.rate, format: "pct" },
+      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}` },
+      { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
+      { label: "Hari kerja lengkap", value: `${days.length - problems.length} dari ${days.length}`, hint: `bulan ${BULAN[Number(mFrom.slice(5, 7)) - 1]}, batas kirim 10 ${BULAN[Number(next.slice(5, 7)) - 1]}` },
+    ],
     month: {
       label: `Laporan bulan ${BULAN[Number(mFrom.slice(5, 7)) - 1]} ${mFrom.slice(0, 4)}`,
       deadline: `10 ${BULAN[Number(next.slice(5, 7)) - 1]}`,
@@ -332,9 +363,20 @@ export function laporanToReport(v: LaporanView): Report {
     kind: "monthly",
     title: "Laporan Produksi QA",
     subtitle: v.period,
-    kpis: v.tiles.map((t) => ({ label: t.label, value: t.value, hint: t.sub })),
+    kpis: v.kpis,
     charts: [],
     tables: [
+      {
+        title: "Per kategori",
+        columns: [
+          { key: "name", label: "Kategori" },
+          { key: "qty", label: "Hasil (pcs)", format: "int" },
+          { key: "ngRate", label: "NG rate", format: "pct" },
+          { key: "ach", label: "Achievement", format: "pct" },
+          { key: "grade", label: "Grade", format: "grade" },
+        ],
+        rows: v.categories as unknown as Row[],
+      },
       {
         title: "Orang",
         columns: [
@@ -353,8 +395,8 @@ export function laporanToReport(v: LaporanView): Report {
         title: "NG per jenis",
         columns: [
           { key: "name", label: "Jenis NG" },
-          { key: "qty", label: "Qty NG", format: "int" },
-          { key: "share", label: "Share", format: "pct" },
+          { key: "qty", label: "NG (pcs)", format: "int" },
+          { key: "share", label: "Porsi", format: "pct" },
         ],
         rows: v.ngTypes as unknown as Row[],
       },
@@ -387,6 +429,70 @@ export function laporanToReport(v: LaporanView): Report {
           { key: "eff", label: "Efisiensi", format: "pct" },
         ],
         rows: v.machines as unknown as Row[],
+      },
+    ],
+  };
+}
+
+/** Halaman Hari Ini dalam bentuk Report, untuk diunduh ke Excel. */
+export function todayToReport(v: TodayView): Report {
+  return {
+    kind: "daily",
+    title: "Laporan Hari Ini",
+    subtitle: v.dateLabel,
+    kpis: v.kpis,
+    charts: [],
+    tables: [
+      {
+        title: "Detail produksi (disetujui)",
+        columns: [
+          { key: "member", label: "Member" },
+          { key: "category", label: "Kategori" },
+          { key: "part", label: "Part" },
+          { key: "mc", label: "Mesin" },
+          { key: "lot", label: "Lot" },
+          { key: "oiban", label: "Oiban" },
+          { key: "qty", label: "Hasil (pcs)", format: "int" },
+          { key: "ng", label: "NG (pcs)", format: "int" },
+          { key: "ngRate", label: "NG rate", format: "pct" },
+          { key: "min", label: "Menit", format: "int" },
+          { key: "ach", label: "Achievement", format: "pct" },
+          { key: "grade", label: "Grade", format: "grade" },
+        ],
+        rows: v.detail,
+      },
+      {
+        title: "Lost time",
+        columns: [
+          { key: "member", label: "Member" },
+          { key: "group", label: "Grup" },
+          { key: "name", label: "Jenis" },
+          { key: "minutes", label: "Menit", format: "int" },
+          { key: "remarks", label: "Keterangan" },
+        ],
+        rows: v.lostDetail,
+      },
+      {
+        title: "Menunggu validasi",
+        columns: [
+          { key: "member", label: "Member" },
+          { key: "sent", label: "Jam kirim" },
+          { key: "detail", label: "Isi" },
+          { key: "qty", label: "Hasil (pcs)", format: "int" },
+          { key: "ng", label: "NG (pcs)", format: "int" },
+          { key: "minutes", label: "Menit", format: "int" },
+          { key: "warn", label: "Perlu dicek" },
+        ],
+        rows: v.queue.map((c) => ({ member: c.member, sent: c.sent, detail: c.detail, qty: c.qty, ng: c.ng, minutes: c.minutes, warn: c.warnings.join("; ") })),
+      },
+      { title: "Belum kirim", columns: [{ key: "member", label: "Member" }], rows: v.missing.map((m) => ({ member: m })) },
+      {
+        title: "Ditolak",
+        columns: [
+          { key: "member", label: "Member" },
+          { key: "note", label: "Alasan" },
+        ],
+        rows: v.rejected,
       },
     ],
   };
