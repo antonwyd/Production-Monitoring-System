@@ -4,32 +4,20 @@ import LoginForm from "./LoginForm";
 
 export const metadata = { title: "Masuk · Produksi QA" };
 
-/** Gambar bearing sederhana (SVG), pengganti foto produk. */
-function Bearing({ className }: { className?: string }) {
-  const balls = Array.from({ length: 12 }, (_, i) => {
-    const a = (i / 12) * Math.PI * 2;
-    return <circle key={i} cx={100 + Math.cos(a) * 62} cy={100 + Math.sin(a) * 62} r={13} fill="url(#ball)" stroke="#0f172a" strokeOpacity={0.25} />;
-  });
+/** Foto produk bearing TKI (sudah diperkecil ke WebP: 480px ≈24 KB, 900px ≈49 KB). */
+function BearingPhoto({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 200 200" className={className} aria-hidden>
-      <defs>
-        <radialGradient id="ball" cx="35%" cy="35%" r="70%">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="0.5" stopColor="#cbd5e1" />
-          <stop offset="1" stopColor="#64748b" />
-        </radialGradient>
-        <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#f1f5f9" />
-          <stop offset="0.5" stopColor="#94a3b8" />
-          <stop offset="1" stopColor="#e2e8f0" />
-        </linearGradient>
-      </defs>
-      <circle cx="100" cy="100" r="96" fill="url(#ring)" />
-      <circle cx="100" cy="100" r="78" fill="#3f0a0c" />
-      {balls}
-      <circle cx="100" cy="100" r="46" fill="url(#ring)" />
-      <circle cx="100" cy="100" r="30" fill="#3f0a0c" />
-    </svg>
+    <img
+      src="/login-bearing-900.webp"
+      srcSet="/login-bearing-480.webp 480w, /login-bearing-900.webp 900w"
+      sizes="(min-width: 640px) 420px, 100vw"
+      width={900}
+      height={600}
+      alt="Produk bearing PT Takai Seiki Indonesia"
+      fetchPriority="high"
+      decoding="async"
+      className={className}
+    />
   );
 }
 
@@ -39,19 +27,23 @@ export default async function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-0 sm:p-6">
       <div className="anim-in flex min-h-screen w-full max-w-4xl flex-col overflow-hidden bg-white shadow-xl sm:min-h-0 sm:flex-row sm:rounded-2xl">
-        <section className="relative flex flex-col justify-between gap-6 overflow-hidden bg-gradient-to-br from-brand-600 to-brand-900 px-8 py-8 text-white sm:w-[46%] sm:py-12">
-          <div>
-            <span className="inline-block rounded-lg bg-white px-3 py-2">
-              <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-9 w-auto" />
-            </span>
-            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">PT Takai Seiki Indonesia</div>
+        <section className="relative flex flex-col overflow-hidden border-b border-slate-200 bg-gradient-to-b from-white to-[#f4f5f7] sm:w-[48%] sm:border-b-0 sm:border-r">
+          <div aria-hidden className="absolute inset-y-0 left-0 z-20 w-1.5 bg-brand-600" />
+          <div className="relative z-10 px-8 pt-8 sm:pt-10">
+            <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-10 w-auto" />
+            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">PT Takai Seiki Indonesia</div>
+            <div className="anim-in mt-6 sm:mt-10" style={{ animationDelay: ".15s" }}>
+              <h1 className="text-2xl font-bold leading-tight text-slate-900 sm:text-[2rem]">
+                Production <span className="text-brand-600">Monitoring</span> System
+              </h1>
+              <div className="mt-3 h-1 w-14 rounded-full bg-brand-600" />
+              <p className="mt-3 max-w-xs text-sm text-slate-600">Monitoring produksi, kualitas, dan produktivitas secara real-time.</p>
+            </div>
           </div>
-          <div className="anim-in relative z-10 sm:mb-28" style={{ animationDelay: ".15s" }}>
-            <h1 className="text-2xl font-bold sm:text-3xl">Production Monitoring System</h1>
-            <p className="mt-2 max-w-xs text-sm text-white/80">Monitoring produksi, kualitas, dan produktivitas secara real-time.</p>
+          <div className="relative mt-4 h-40 sm:mt-auto sm:h-auto">
+            <BearingPhoto className="h-full w-full object-cover object-[50%_60%] sm:h-auto" />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#f4f5f7] via-[#f4f5f7]/75 to-transparent sm:h-40" />
           </div>
-          <Bearing className="pointer-events-none absolute -bottom-24 -right-24 hidden h-64 w-64 opacity-70 drop-shadow-2xl sm:block" />
-          <Bearing className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 opacity-25 sm:hidden" />
         </section>
         <section className="anim-in flex flex-1 flex-col justify-center px-6 py-10 sm:px-12" style={{ animationDelay: ".1s" }}>
           <h2 className="text-2xl font-bold">Selamat Datang 👋</h2>
