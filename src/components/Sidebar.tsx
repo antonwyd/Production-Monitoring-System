@@ -110,11 +110,8 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   );
 
   const brand = (
-    <Link href="/hari-ini" className="flex flex-col gap-1.5 px-5 pb-4 pt-5">
-      <span className="w-fit rounded-lg bg-white px-2.5 py-1.5">
-        <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-7 w-auto" />
-      </span>
-      <span className="sb-hide text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">PT Takai Seiki Indonesia</span>
+    <Link href="/hari-ini" className="sb-brand flex items-center px-5 pb-5 pt-6">
+      <img src="/logo-tki-dark.png" alt="PT. Takai Seiki Indonesia" className="h-auto w-full max-w-[11.5rem]" />
     </Link>
   );
 
@@ -144,9 +141,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="rounded-md bg-white px-2 py-1">
-          <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-6 w-auto" />
-        </span>
+        <img src="/logo-tki-dark.png" alt="PT. Takai Seiki Indonesia" className="h-8 w-auto" />
         <span className="font-bold">Produksi &amp; QA</span>
       </header>
       {/* HP: menu bawah */}
