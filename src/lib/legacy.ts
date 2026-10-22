@@ -16,7 +16,10 @@ const CALL_WEB = `function call(fn,args,ok,fail){
 const LEADER_BAR = `+'<span style="font-size:12px;color:var(--muted);margin-left:auto">Masuk sebagai`;
 const LEADER_BAR_WEB = `+'<a class="btn ghost" href="/hari-ini" style="height:42px;display:inline-flex;align-items:center;text-decoration:none">Hari Ini &amp; Laporan</a>'${LEADER_BAR}`;
 
-for (const s of [CALL_V1, LEADER_BAR, "%%VERSI%%", "<head>"])
+// Warna marun TAKAI seperti halaman web lain; isi dan alur form tidak berubah.
+const THEME = `<style>:root{--red:#9B1B1F;--red-d:#7F1519;--red-soft:#F8E8E8}</style><meta name="theme-color" content="#9b1b1f">`;
+
+for (const s of [CALL_V1, LEADER_BAR, "%%VERSI%%", "<head>", "</head>"])
   if (!PAGE_HTML.includes(s)) throw new Error(`legacyPage: penanda "${s}" tidak ditemukan`);
 
 export function renderLegacyPage(boot: { page: string; m?: unknown }) {
@@ -24,6 +27,7 @@ export function renderLegacyPage(boot: { page: string; m?: unknown }) {
   return PAGE_HTML.replace("%%VERSI%%", APP_VERSION)
     .replace(CALL_V1, CALL_WEB)
     .replace(LEADER_BAR, LEADER_BAR_WEB)
+    .replace("</head>", `${THEME}</head>`)
     .replace(
       "<head>",
       `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>Laporan Produksi QA • Takai</title><link rel="icon" href="/icon.svg"><script>window.BOOT=${json};</script>`,
