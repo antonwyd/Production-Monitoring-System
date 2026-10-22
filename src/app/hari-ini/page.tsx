@@ -58,7 +58,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
   const first = session.name.split(" ")[0];
   return (
     <AppShell session={session} active="hari-ini">
-      <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-6">
+      <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="anim-in text-2xl font-bold sm:text-[28px]">

@@ -4,7 +4,7 @@ export default function Loading() {
     <div className="min-h-screen lg:pl-[var(--sb-w)]" aria-busy="true" aria-label="Memuat data">
       <div className="fixed inset-y-0 left-0 hidden w-[var(--sb-w)] bg-[#1d2430] lg:block" />
       <div className="h-[52px] bg-[#1d2430] lg:hidden" />
-      <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-6">
+      <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-2">
             <div className="skel h-8 w-72" />

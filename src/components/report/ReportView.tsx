@@ -26,7 +26,7 @@ export default function ReportView({
   const usesRange = !["daily", "monthly"].includes(k);
   const usesCategory = k !== "member" && k !== "disiplin";
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-12 pt-6">
+    <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
       <div>
         <Link href="/laporan" className="no-print text-sm text-slate-500 hover:text-brand-600">
           ← Kembali ke Laporan
