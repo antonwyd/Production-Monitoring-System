@@ -42,29 +42,29 @@ export default function LoginForm() {
 
   const field = "flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-100";
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="space-y-4 xl:space-y-5">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="nik">
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 xl:text-base" htmlFor="nik">
           NIK
         </label>
         <div className={field}>
-          <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+          <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400 xl:h-6 xl:w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
             <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z" />
           </svg>
-          <input id="nik" className="h-12 w-full bg-transparent text-lg outline-none" inputMode="numeric" autoComplete="username" placeholder="Nomor induk karyawan" value={nik} onChange={(e) => setNik(e.target.value)} required />
+          <input id="nik" className="h-12 w-full bg-transparent text-lg outline-none xl:h-14 xl:text-xl" inputMode="numeric" autoComplete="username" placeholder="Nomor induk karyawan" value={nik} onChange={(e) => setNik(e.target.value)} required />
         </div>
       </div>
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="pin">
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 xl:text-base" htmlFor="pin">
           PIN
         </label>
         <div className={field}>
-          <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+          <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-400 xl:h-6 xl:w-6" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
             <path d="M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V7a4 4 0 0 1 8 0v4" />
           </svg>
           <input
             id="pin"
-            className="h-12 w-full bg-transparent text-lg tracking-widest outline-none"
+            className="h-12 w-full bg-transparent text-lg tracking-widest outline-none xl:h-14 xl:text-xl"
             type={show ? "text" : "password"}
             inputMode="numeric"
             autoComplete="current-password"
@@ -77,12 +77,12 @@ export default function LoginForm() {
           </button>
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm text-slate-600">
+      <label className="flex items-center gap-2 text-sm text-slate-600 xl:text-base">
         <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
         Ingat NIK saya
       </label>
       {error && <p role="alert" className="anim-in rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <button className="btn-primary w-full py-3 text-lg" disabled={busy}>
+      <button className="btn-primary w-full py-3 text-lg xl:py-4 xl:text-xl" disabled={busy}>
         {busy && <span className="spinner" aria-hidden />}
         {busy ? "Memeriksa…" : "Masuk"}
         {!busy && (
@@ -91,7 +91,7 @@ export default function LoginForm() {
           </svg>
         )}
       </button>
-      <p className="text-center text-xs text-slate-400">Lupa PIN? Hubungi admin produksi.</p>
+      <p className="text-center text-xs text-slate-400 xl:text-sm">Lupa PIN? Hubungi admin produksi.</p>
     </form>
   );
 }
