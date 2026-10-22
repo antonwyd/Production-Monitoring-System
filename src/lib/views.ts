@@ -91,6 +91,10 @@ export type TodayView = {
   stats: { qty: number; ng: number; rate: number | null; ach: number | null; grade: string; target: number; reported: number; waiting: number; qtyTrend: Trend; rateTrend: Trend };
   /** 7 hari sampai tanggal itu: hasil, NG, NG rate per hari. */
   trend: { date: string; label: string; qty: number; ng: number; rate: number | null }[];
+  /** Kiriman & keputusan leader untuk tanggal itu, terbaru dulu. */
+  activity: { time: string; kind: "kirim" | "ok" | "no"; text: string; by: string }[];
+  /** Mesin dengan NG terbanyak pada tanggal itu. */
+  machines: { mc: string; category: string; ng: number; rate: number | null; bar: number }[];
   kpis: Kpi[];
   detail: Row[];
   lostDetail: Row[];
@@ -180,6 +184,31 @@ export async function buildToday(date: string): Promise<TodayView> {
       qtyTrend: vs ? trendPct(t.qty, p.qty, vs) : null,
       rateTrend: vs ? trendPoint(t.rate, p.rate, vs, false, 2) : null,
     },
+    activity: subs
+      .flatMap((x) => {
+        const parts = x.items?.length ? `${x.items.length} part` : "lost time";
+        const a: TodayView["activity"] = [{ time: x.sent, kind: "kirim", text: `Laporan ${x.member} dikirim (${parts})`, by: x.member }];
+        if (x.status !== "Menunggu" && x.decided)
+          a.push({ time: x.decided, kind: x.status === "Disetujui" ? "ok" : "no", text: `Laporan ${x.member} ${x.status === "Disetujui" ? "disetujui" : "ditolak"}`, by: x.leader });
+        return a;
+      })
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 6)
+      .map((a) => ({ ...a, time: a.time.slice(0, 10) === date ? a.time.slice(11, 16) : `${formatDateId(a.time.slice(0, 10)).split(" ").slice(0, 2).join(" ")} ${a.time.slice(11, 16)}` })),
+    machines: (() => {
+      const by = new Map<string, { mc: string; category: string; ng: number; qty: number }>();
+      for (const f of today) {
+        if (!f.mcNo || f.mcNo === "-") continue;
+        const k = `${f.categoryName}|${f.mcNo}`;
+        const m = by.get(k) ?? { mc: f.mcNo, category: f.categoryName, ng: 0, qty: 0 };
+        m.ng += f.ng.reduce((x, y) => x + y, 0);
+        m.qty += f.qty;
+        by.set(k, m);
+      }
+      const rows = [...by.values()].filter((m) => m.ng > 0).sort((a, b) => b.ng - a.ng).slice(0, 5);
+      const max = rows[0]?.ng ?? 0;
+      return rows.map((m) => ({ mc: m.mc, category: m.category, ng: m.ng, rate: ngRate(m.ng, m.qty), bar: max ? Math.round((m.ng / max) * 100) : 0 }));
+    })(),
     trend: Array.from({ length: 7 }, (_, i) => {
       const d = addDays(date, i - 6);
       const x = totals(facts.filter((f) => f.workDate === d), st);

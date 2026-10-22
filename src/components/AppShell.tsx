@@ -44,9 +44,9 @@ function navFor(role: Session["role"]): NavGroup[] {
 
 export default function AppShell({ session, active, children }: { session: Session; active: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-screen lg:pl-64">
+    <div className="min-h-screen pb-20 transition-[padding] duration-200 ease-out lg:pb-0 lg:pl-[var(--sb-w)]">
       <Sidebar groups={navFor(session.role)} active={active} user={{ name: session.name, role: ROLE_LABEL[session.role] }} />
-      <div className="mx-auto max-w-6xl">{children}</div>
+      <div className="anim-page mx-auto max-w-6xl">{children}</div>
     </div>
   );
 }

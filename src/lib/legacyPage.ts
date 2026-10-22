@@ -106,9 +106,11 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 @media(max-width:420px){.stats{gap:12px}.stat b{font-size:14px}.btn{padding:0 16px}}
 /* Sheets / modal */
 .ov{position:fixed;inset:0;background:rgba(16,18,24,.45);z-index:40;display:none;align-items:flex-end;justify-content:center}
-.ov.open{display:flex}
-.sheet{background:#fff;width:100%;max-width:560px;max-height:86vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;animation:up .22s ease}
-@media(min-width:640px){.ov{align-items:center}.sheet{border-radius:20px;max-height:80vh}}
+.ov.open{display:flex;animation:ovIn .18s ease-out}
+@keyframes ovIn{from{background:rgba(16,18,24,0)}}
+.sheet{background:#fff;width:100%;max-width:560px;max-height:86vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;animation:up .22s cubic-bezier(.2,.7,.2,1)}
+@media(min-width:640px){.ov{align-items:center}.sheet{border-radius:20px;max-height:80vh;animation-name:pop}}
+@keyframes pop{from{transform:scale(.96);opacity:0}to{transform:none;opacity:1}}
 @keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
 .sheet-h{padding:18px 18px 10px}
 .sheet-h h3{margin:0 0 12px;font-size:17px}
@@ -186,8 +188,8 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .login h2{margin:0 0 4px;font-size:20px}
 .login p{margin:0 0 18px;color:var(--muted);font-size:13px}
 @media(max-width:480px){.hero p{display:none}.hero h1{font-size:16px}.hero img{height:22px}.hero-in{gap:10px;padding:12px 16px}.hero-in .mode{padding:7px 10px;font-size:12px}}
-.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
-.toast.show{opacity:1}
+.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;z-index:60;opacity:0;transition:opacity .2s ease,transform .22s cubic-bezier(.2,.7,.2,1);pointer-events:none;max-width:90vw;box-shadow:0 10px 30px rgba(16,24,40,.25)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
 
 /* ---- Tampilan v2.3 (marun TAKAI): isi dan alur sama ---- */
 .band{background:var(--red);color:#fff;margin:0 -16px;padding:2px 16px 18px;box-shadow:0 0 0 100vmax var(--red);clip-path:inset(0 -100vmax)}
@@ -308,6 +310,22 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .lg2-r .ft{margin-top:26px;text-align:center;font-size:11px;color:var(--muted)}
 @media(max-width:640px){.lg2{flex-direction:column;margin:0 -16px;border-radius:0;box-shadow:none}.lg2-l{width:auto;min-height:0;padding:24px 20px}.lg2-l svg{width:150px;height:150px;right:-40px;top:-40px;bottom:auto;opacity:.3}.lg2-r{padding:26px 20px}}
 #revOv .sheet-f{display:grid;grid-template-columns:1fr 2fr}#revOv .sheet-f .btn{justify-content:center}
+/* motion: cepat, halus, tidak menghalangi input */
+.btn,.seg button,.cchips button,.qchips button,.mcg button,.stp button,.ltabs button,.pick,.icon-btn,.add,.idc{transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .2s ease,transform .15s ease}
+.btn:active:not(:disabled),.seg button:active,.cchips button:active,.qchips button:active,.mcg button:active,.stp button:active,.ltabs button:active,.add:active,.idc:active{transform:scale(.97)}
+.btn:focus-visible,.pick:focus-visible,.cchips button:focus-visible,.mcg button:focus-visible{outline:none;box-shadow:0 0 0 4px rgba(155,27,31,.18)}
+.btn.green:hover{box-shadow:0 8px 20px -6px rgba(22,101,52,.5)}
+.stp input,.in{transition:border-color .15s ease,box-shadow .15s ease}
+.stp input:focus{box-shadow:0 0 0 4px rgba(22,24,29,.06)}
+.err .in,.err .pick,.idc.err{animation:errIn .25s ease}
+@keyframes errIn{from{box-shadow:0 0 0 6px rgba(155,27,31,.25)}to{box-shadow:0 0 0 0 rgba(155,27,31,0)}}
+.lg2,#done{animation:fadeUp .24s cubic-bezier(.2,.7,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.lc{transition:box-shadow .2s ease}.lc:hover{box-shadow:0 6px 24px rgba(16,24,40,.08)}
+.mt-bar i{transition:width .3s cubic-bezier(.2,.7,.2,1)}
+.ngr{transition:border-color .15s ease,background-color .15s ease}
+.btn .spin{animation-duration:.7s}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>

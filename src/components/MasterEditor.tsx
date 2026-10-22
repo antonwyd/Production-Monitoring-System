@@ -103,10 +103,11 @@ export default function MasterEditor({ table }: { table: TableSpec }) {
           </button>
         )}
         <button className="btn-primary h-11" onClick={save} disabled={!dirty || saving}>
+          {saving && <span className="spinner" aria-hidden />}
           {saving ? "Menyimpan…" : "Simpan"}
         </button>
       </div>
-      {msg && <div className={`px-5 py-2.5 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-orange-50 text-orange-900"}`}>{msg.text}</div>}
+      {msg && <div className={`anim-in px-5 py-2.5 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-orange-50 text-orange-900"}`}>{msg.text}</div>}
       {dirty && !msg && <div className="bg-brand-50 px-5 py-2 text-sm text-brand-700">Ada perubahan yang belum disimpan.</div>}
       {loading ? (
         <p className="px-5 py-10 text-center text-sm text-slate-400">Memuat dari Google Sheet…</p>

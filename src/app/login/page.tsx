@@ -38,7 +38,7 @@ export default async function LoginPage() {
   if (s) redirect(HOME_BY_ROLE[s.role]);
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-0 sm:p-6">
-      <div className="flex min-h-screen w-full max-w-4xl flex-col overflow-hidden bg-white shadow-xl sm:min-h-0 sm:flex-row sm:rounded-2xl">
+      <div className="anim-in flex min-h-screen w-full max-w-4xl flex-col overflow-hidden bg-white shadow-xl sm:min-h-0 sm:flex-row sm:rounded-2xl">
         <section className="relative flex flex-col justify-between gap-6 overflow-hidden bg-gradient-to-br from-brand-600 to-brand-900 px-8 py-8 text-white sm:w-[46%] sm:py-12">
           <div>
             <span className="inline-block rounded-lg bg-white px-3 py-2">
@@ -46,14 +46,14 @@ export default async function LoginPage() {
             </span>
             <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">PT Takai Seiki Indonesia</div>
           </div>
-          <div className="relative z-10 sm:mb-28">
+          <div className="anim-in relative z-10 sm:mb-28" style={{ animationDelay: ".15s" }}>
             <h1 className="text-2xl font-bold sm:text-3xl">Production Monitoring System</h1>
             <p className="mt-2 max-w-xs text-sm text-white/80">Monitoring produksi, kualitas, dan produktivitas secara real-time.</p>
           </div>
           <Bearing className="pointer-events-none absolute -bottom-24 -right-24 hidden h-64 w-64 opacity-70 drop-shadow-2xl sm:block" />
           <Bearing className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 opacity-25 sm:hidden" />
         </section>
-        <section className="flex flex-1 flex-col justify-center px-6 py-10 sm:px-12">
+        <section className="anim-in flex flex-1 flex-col justify-center px-6 py-10 sm:px-12" style={{ animationDelay: ".1s" }}>
           <h2 className="text-2xl font-bold">Selamat Datang 👋</h2>
           <p className="mb-7 mt-1 text-sm text-slate-500">Masuk ke sistem untuk melanjutkan</p>
           <LoginForm />

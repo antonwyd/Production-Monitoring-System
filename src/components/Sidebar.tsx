@@ -31,29 +31,48 @@ function Icon({ name }: { name: string }) {
   );
 }
 
+export const SB_KEY = "qa:sidebar";
+
 export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; active: string; user: { name: string; role: string } }) {
   const [open, setOpen] = useState(false);
+  const [mini, setMini] = useState(false);
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
   }, [open]);
+  useEffect(() => {
+    let v = false;
+    try {
+      v = localStorage.getItem(SB_KEY) === "mini";
+    } catch {}
+    document.documentElement.dataset.sb = v ? "mini" : "";
+    setMini(v);
+  }, []);
+  function toggleMini() {
+    const v = !mini;
+    setMini(v);
+    document.documentElement.dataset.sb = v ? "mini" : "";
+    try {
+      localStorage.setItem(SB_KEY, v ? "mini" : "");
+    } catch {}
+  }
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
       {groups.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
-          {g.title && <div className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>}
+          {g.title && <div className="sb-hide px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>}
           {g.items.map((it) => {
             const on = it.key === active;
-            const cls = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] ${on ? "bg-brand-600 font-semibold text-white shadow-lg shadow-black/20" : "font-medium text-slate-300 hover:bg-white/5 hover:text-white"}`;
+            const cls = `sb-item relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-[background-color,color,transform] duration-200 ease-out active:scale-[0.98] ${on ? "bg-brand-600 font-semibold text-white shadow-lg shadow-black/20 before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-100" : "font-medium text-slate-300 hover:translate-x-0.5 hover:bg-white/5 hover:text-white"}`;
             return it.external ? (
-              <a key={it.key} href={it.href} target={it.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className={cls}>
+              <a key={it.key} href={it.href} target={it.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className={cls} title={it.label} aria-current={on ? "page" : undefined}>
                 <Icon name={it.icon} />
-                {it.label}
+                <span className="sb-hide truncate">{it.label}</span>
               </a>
             ) : (
-              <Link key={it.key} href={it.href} className={cls} onClick={() => setOpen(false)}>
+              <Link key={it.key} href={it.href} className={cls} onClick={() => setOpen(false)} title={it.label} aria-current={on ? "page" : undefined}>
                 <Icon name={it.icon} />
-                {it.label}
+                <span className="sb-hide truncate">{it.label}</span>
               </Link>
             );
           })}
@@ -63,7 +82,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   );
 
   const footer = (
-    <div className="flex items-center gap-3 border-t border-white/10 px-4 py-4">
+    <div className="sb-foot flex items-center gap-3 border-t border-white/10 px-4 py-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-brand-600 ring-2 ring-brand-600">
         {user.name
           .split(" ")
@@ -72,7 +91,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
           .join("")
           .toUpperCase()}
       </div>
-      <div className="min-w-0 flex-1 text-xs leading-tight">
+      <div className="sb-hide min-w-0 flex-1 text-xs leading-tight">
         <div className="truncate text-sm font-semibold text-white">{user.name}</div>
         <div className="text-slate-400">{user.role}</div>
       </div>
@@ -95,14 +114,24 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
       <span className="w-fit rounded-lg bg-white px-2.5 py-1.5">
         <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-7 w-auto" />
       </span>
-      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">PT Takai Seiki Indonesia</span>
+      <span className="sb-hide text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">PT Takai Seiki Indonesia</span>
     </Link>
   );
 
   return (
     <>
       {/* Desktop: menu tetap di kiri */}
-      <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-[#1d2430] lg:flex">
+      <aside className="sb-desk no-print fixed inset-y-0 left-0 z-30 hidden w-[var(--sb-w)] flex-col bg-[#1d2430] transition-[width] duration-200 ease-out lg:flex">
+        <button
+          onClick={toggleMini}
+          aria-label={mini ? "Lebarkan menu" : "Lipat menu"}
+          title={mini ? "Lebarkan menu" : "Lipat menu"}
+          className="absolute -right-3 top-8 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow transition hover:scale-110 hover:text-brand-600"
+        >
+          <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform duration-200 ${mini ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
         {brand}
         {nav}
         {footer}
@@ -120,10 +149,41 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
         </span>
         <span className="font-bold">Produksi &amp; QA</span>
       </header>
+      {/* HP: menu bawah */}
+      <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-slate-200 bg-white/95 px-2 pb-[calc(6px+env(safe-area-inset-bottom))] pt-1.5 backdrop-blur lg:hidden">
+        {[
+          { key: "hari-ini", href: "/hari-ini", label: "Home", icon: "dash" },
+          { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
+          null,
+          { key: "report:ng-type", href: "/reports/ng-type", label: "NG", icon: "quality" },
+        ].map((it, i) =>
+          it ? (
+            <Link key={it.key} href={it.href} className={`flex flex-col items-center gap-0.5 py-1 text-[11px] font-medium transition-colors ${it.key === active ? "text-brand-600" : "text-slate-500"}`}>
+              <Icon name={it.icon} />
+              {it.label}
+            </Link>
+          ) : (
+            <a key={i} href="/" aria-label="Form member" className="-mt-6 flex flex-col items-center gap-0.5 text-[11px] font-medium text-slate-500">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/40 transition active:scale-95">
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+              Input
+            </a>
+          ),
+        )}
+        <button onClick={() => setOpen(true)} className="flex flex-col items-center gap-0.5 py-1 text-[11px] font-medium text-slate-500">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          Lainnya
+        </button>
+      </nav>
       {open && (
         <div className="no-print fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[#1d2430] shadow-xl">
+          <div className="absolute inset-0 bg-slate-900/40 anim-toast" onClick={() => setOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[#1d2430] shadow-xl animate-[slide-in_.25s_ease-out]">
             {brand}
             {nav}
             {footer}
