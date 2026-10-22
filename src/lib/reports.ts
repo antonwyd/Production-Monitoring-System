@@ -12,13 +12,13 @@ export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
   dashboard: "Dashboard",
-  daily: "Report Daily",
-  member: "Report Member",
-  category: "Report Category",
-  machine: "Report Machine",
-  "ng-type": "Report NG per Type",
-  "ng-lot": "Report NG per Lot",
-  monthly: "Laporan Bulanan",
+  daily: "Laporan Harian",
+  member: "Laporan per Member",
+  category: "Laporan per Kategori",
+  machine: "Laporan Mesin PF",
+  "ng-type": "Laporan Jenis NG",
+  "ng-lot": "Laporan NG per Lot",
+  monthly: "Rekap Bulanan",
 };
 
 export type ColFormat = "text" | "int" | "dec1" | "dec2" | "pct" | "grade";
@@ -186,11 +186,11 @@ export function aggCols(a: Agg, st: Settings) {
 }
 
 const AGG_COLUMNS: Column[] = [
-  { key: "qty", label: "Total Qty", format: "int" },
-  { key: "ng", label: "Total NG", format: "int" },
-  { key: "ngRate", label: "NG Rate", format: "pct" },
-  { key: "hours", label: "Rated Hours", format: "dec1" },
-  { key: "stdHours", label: "Std Hours", format: "dec1" },
+  { key: "qty", label: "Hasil (pcs)", format: "int" },
+  { key: "ng", label: "NG (pcs)", format: "int" },
+  { key: "ngRate", label: "NG rate", format: "pct" },
+  { key: "hours", label: "Jam kerja", format: "dec1" },
+  { key: "stdHours", label: "Jam standar", format: "dec1" },
   { key: "ach", label: "Achievement", format: "pct" },
   { key: "grade", label: "Grade", format: "grade" },
 ];
@@ -262,23 +262,23 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: period,
       kpis: [
-        { label: "Total Qty", value: t.qty, format: "int" },
-        { label: "Total NG", value: t.ng, format: "int" },
-        { label: "NG Rate", value: t.ngRate, format: "pct" },
+        { label: "Hasil (pcs)", value: t.qty, format: "int" },
+        { label: "NG (pcs)", value: t.ng, format: "int" },
+        { label: "NG rate", value: t.ngRate, format: "pct" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
         { label: "Jam kerja (rated)", value: t.hours, format: "dec1" },
         { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
         { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
       ],
       charts: [
-        { type: "line", title: "Tren harian: Qty", xKey: "date", series: [{ key: "qty", label: "Qty", format: "int" }], data: trend },
-        { type: "line", title: "Tren harian: Achievement", xKey: "date", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: trend },
-        { type: "bar", title: "Top NG", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: topNg },
-        { type: "bar", title: "Lost Time + Another Job per jenis (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: ltRows },
+        { type: "line", title: "Hasil per hari (pcs)", xKey: "date", series: [{ key: "qty", label: "Hasil", format: "int" }], data: trend },
+        { type: "line", title: "Achievement per hari", xKey: "date", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: trend },
+        { type: "bar", title: "NG terbanyak", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: topNg },
+        { type: "bar", title: "Lost Time & Another Job per jenis (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: ltRows },
       ],
       tables: [
         { title: "Per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: byCat },
-        { title: "Top member (achievement)", columns: [{ key: "member", label: "Member" }, ...AGG_COLUMNS], rows: byMember.slice(0, 10) },
+        { title: "Member dengan achievement tertinggi", columns: [{ key: "member", label: "Member" }, ...AGG_COLUMNS], rows: byMember.slice(0, 10) },
       ],
     };
   }
@@ -314,9 +314,9 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: formatDateId(date),
       kpis: [
-        { label: "Member lapor (disetujui)", value: `${reported} / ${rows.length}` },
+        { label: "Sudah lapor (disetujui)", value: `${reported} / ${rows.length}` },
         { label: "Belum lapor", value: rows.filter((r) => r.status === "Belum lapor").length, format: "int" },
-        { label: "Total Qty", value: t.qty, format: "int" },
+        { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
       ],
       charts: [],
@@ -331,7 +331,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             ...AGG_COLUMNS,
             { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
             { key: "ajMin", label: "Another Job (mnt)", format: "int" },
-            { key: "util", label: "Utilisasi (mnt)", format: "int" },
+            { key: "util", label: "Total menit", format: "int" },
           ],
           rows,
           total: t,
@@ -360,7 +360,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: `${member ? `${member.name} (${member.nik})` : "-"} · ${period}`,
       kpis: [
-        { label: "Total Qty", value: t.qty, format: "int" },
+        { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct" },
         { label: "Grade periode", value: t.grade as string },
         { label: "Hari lapor", value: dayRows.length, format: "int" },
@@ -437,18 +437,18 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       charts: [{ type: "bar", title: "NG per mesin (tertinggi)", xKey: "mcNo", series: [{ key: "ng", label: "NG", format: "int" }], data: rows.slice(0, 15) }],
       tables: [
         {
-          title: "Per MC No (urut NG tertinggi)",
+          title: "Per mesin (urut NG tertinggi)",
           columns: [
             { key: "category", label: "Kategori" },
-            { key: "mcNo", label: "MC No" },
+            { key: "mcNo", label: "Mesin" },
             { key: "line", label: "Line" },
-            { key: "qty", label: "Total Qty", format: "int" },
-            { key: "ng", label: "Total NG", format: "int" },
-            { key: "ngRate", label: "NG Rate", format: "pct" },
-            { key: "mcHours", label: "MC Hours", format: "dec1" },
-            { key: "pcsHr", label: "Actual pcs/hr", format: "dec1" },
-            { key: "stdHours", label: "Std Hours (Std MC)", format: "dec1" },
-            { key: "eff", label: "Efficiency", format: "pct" },
+            { key: "qty", label: "Hasil (pcs)", format: "int" },
+            { key: "ng", label: "NG (pcs)", format: "int" },
+            { key: "ngRate", label: "NG rate", format: "pct" },
+            { key: "mcHours", label: "Jam mesin jalan", format: "dec1" },
+            { key: "pcsHr", label: "Hasil per jam", format: "dec1" },
+            { key: "stdHours", label: "Jam standar MC", format: "dec1" },
+            { key: "eff", label: "Efisiensi", format: "pct" },
           ],
           rows,
         },
@@ -476,7 +476,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     return {
       ...base,
       subtitle: period,
-      kpis: [{ label: "Total NG", value: total, format: "int" }],
+      kpis: [{ label: "NG (pcs)", value: total, format: "int" }],
       charts: [
         { type: "bar", title: "NG per jenis", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: rows.slice(0, 15) },
         { type: "line", title: "Tren NG harian", xKey: "date", series: [{ key: "ng", label: "NG", format: "int" }], data: trend },
@@ -485,10 +485,10 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         {
           title: "NG per jenis",
           columns: [
-            { key: "group", label: "NG Group" },
+            { key: "group", label: "Grup NG" },
             { key: "ng", label: "Jenis NG" },
-            { key: "qty", label: "Qty NG", format: "int" },
-            { key: "share", label: "Share", format: "pct" },
+            { key: "qty", label: "NG (pcs)", format: "int" },
+            { key: "share", label: "Porsi", format: "pct" },
           ],
           rows,
         },
@@ -543,9 +543,9 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "category", label: "Kategori" },
             { key: "part", label: "Part" },
             { key: "firstDate", label: "Tanggal pertama" },
-            { key: "qty", label: "Qty", format: "int" },
-            { key: "ng", label: "NG", format: "int" },
-            { key: "ngRate", label: "NG Rate", format: "pct" },
+            { key: "qty", label: "Hasil (pcs)", format: "int" },
+            { key: "ng", label: "NG (pcs)", format: "int" },
+            { key: "ngRate", label: "NG rate", format: "pct" },
             { key: "topNg", label: "NG terbanyak" },
           ],
           rows,
@@ -573,8 +573,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     ...base,
     subtitle: `Bulan ${month}${catName ? ` · ${catName}` : ""}`,
     kpis: [
-      { label: "Total Qty", value: t.qty, format: "int" },
-      { label: "Total NG", value: t.ng, format: "int" },
+      { label: "Hasil (pcs)", value: t.qty, format: "int" },
+      { label: "NG (pcs)", value: t.ng, format: "int" },
       { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
       { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
       { label: "Another Job (jam)", value: aj / 60, format: "dec1" },

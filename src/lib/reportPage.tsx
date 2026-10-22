@@ -13,7 +13,7 @@ export async function renderReportPage(kind: ReportKind, searchParams: Record<st
   const today = todayJakarta();
   const [report, master] = await Promise.all([buildReport(kind, params, today), loadMaster()]);
   return (
-    <AppShell session={session} active={kind === "dashboard" ? "dashboard" : "reports"}>
+    <AppShell session={session} active="laporan">
       <ReportView
         report={report}
         params={params}
