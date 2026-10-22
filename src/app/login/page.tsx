@@ -29,8 +29,7 @@ export default async function LoginPage() {
       <section className="relative flex shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-gradient-to-b from-white to-[#f4f5f7] lg:min-h-screen lg:w-[56%] lg:border-b-0 lg:border-r">
         <div aria-hidden className="absolute inset-y-0 left-0 z-20 w-1.5 bg-brand-600 lg:w-2" />
         <div className="anim-in relative z-10 px-8 pt-8 lg:px-16 lg:pt-14 xl:px-20">
-          <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-10 w-auto lg:h-14 xl:h-16" />
-          <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 lg:text-xs">PT Takai Seiki Indonesia</div>
+          <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-12 w-auto lg:h-16 xl:h-20" />
           <div className="anim-in mt-6 lg:mt-14" style={{ animationDelay: ".15s" }}>
             <h1 className="text-2xl font-bold leading-tight text-slate-900 lg:text-5xl 2xl:text-6xl">
               Production <span className="text-brand-600">Monitoring</span>
