@@ -326,3 +326,41 @@ describe("Master Data dari web (admin)", () => {
     expect(await qa.apiLogin("300001", "0412")).toMatchObject({ ok: true, role: "leader" });
   });
 });
+
+describe("Sinkron dari Sheet lama", () => {
+  it("menyalin laporan disetujui per member-tanggal, tanpa dobel", async () => {
+    const src = new FakeSheet();
+    const P = "Input - Production", L = "Input - Lost Time";
+    src.sheet(P, 100);
+    src.sheet(L, 100);
+    const serial = (d: number) => 46000 + d; // 46000 = 2025-12-09; cukup untuk membedakan hari
+    const day = (d: number) => {
+      const t = new Date(Date.UTC(1899, 11, 30) + serial(d) * 86400000);
+      return t.toISOString().slice(0, 10);
+    };
+    const row = (r: number, d: number, member: string) => {
+      [serial(d), member, "PF Iron Cage", "6902-J", "D1", 7920, 450, "", "", "0123", "509", "MC 01", "", 5].forEach((v, j) => src.setCell(P, r - 1, 1 + j, v));
+      src.setCell(P, r - 1, 38, 420); // AM
+      src.setCell(P, r - 1, 40, "509"); // AO
+      src.setCell(P, r - 1, 41, 1); // AP
+    };
+    row(7, 1, "Harjuki");
+    row(8, 1, "Suharyanto");
+    row(9, 2, "Harjuki");
+    [serial(1), "Harjuki", "5S", 30, "pagi"].forEach((v, j) => src.setCell(L, 6, 1 + j, v));
+    // Suharyanto sudah input langsung di Vercel untuk hari 1 -> dilewati
+    fs.setCell(L, 6, 1, serial(1));
+    fs.setCell(L, 6, 2, "Suharyanto");
+
+    const r1 = await qa.sinkronDariSheetLama(src, day(1), day(1));
+    expect(r1.members).toEqual([`${day(1)}|Harjuki`]);
+    expect(r1.prod).toBe(1);
+    expect(r1.lt).toBe(1);
+    const again = await qa.sinkronDariSheetLama(src, day(1), day(2));
+    expect(again.members).toEqual([`${day(2)}|Harjuki`]);
+    const [prod] = await fs.get(["'Input - Production'!B7:AP"], "UNFORMATTED_VALUE");
+    expect(prod.filter((r) => r[1]).length).toBe(2);
+    expect(prod[0][5]).toBe(7920);
+    expect(prod[0][37]).toBe(420);
+  });
+});

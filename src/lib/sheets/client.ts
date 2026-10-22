@@ -69,8 +69,8 @@ function sheetId(): string {
   return id;
 }
 
-async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId()}${path}`;
+async function api<T>(path: string, init: { method?: string; body?: unknown; id?: string } = {}): Promise<T> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${init.id ?? sheetId()}${path}`;
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -101,6 +101,20 @@ async function api<T>(path: string, init: { method?: string; body?: unknown } = 
 }
 
 const enc = (r: string) => encodeURIComponent(r);
+
+/** Baca saja dari spreadsheet lain (mis. Sheet lama Apps Script). Sheet itu cukup di-share Viewer ke Service Account. */
+export function readOnlySheet(id: string): Pick<SheetsIO, "get"> {
+  return {
+    async get(ranges, render) {
+      const q = ranges.map((r) => `ranges=${enc(r)}`).join("&");
+      const body = await api<{ valueRanges: { values?: Grid }[] }>(
+        `/values:batchGet?${q}&valueRenderOption=${render}&dateTimeRenderOption=SERIAL_NUMBER`,
+        { id },
+      );
+      return body.valueRanges.map((v) => v.values ?? []);
+    },
+  };
+}
 
 export const googleSheets: SheetsIO = {
   async get(ranges, render) {
