@@ -67,6 +67,8 @@ type Fact = {
   mcHours: number;
   /** Standar MC PF (pcs/jam per MC) dari Master Data BI:BL, 0 bila belum diisi. */
   mcStd: number;
+  /** Catatan member untuk NG "Lain-lain" (Input - Production kolom AW). */
+  ngNote: string;
   ng: number[];
 };
 
@@ -124,6 +126,7 @@ async function loadFacts(master: MasterData, from: string, to: string, categoryI
       stki: n(22) || master.parts.find((p) => p.id === pid)?.stki || 0,
       mcHours: mcNo === "-" ? 0 : r[23] === "" && r[24] === "" ? (n(6) + n(8)) / 60 : (n(23) + n(24)) / 60,
       mcStd: n(25),
+      ngNote: String(r[26] ?? ""),
       ng: Array.from({ length: 10 }, (_, i) => n(12 + i)),
     });
   }
@@ -488,6 +491,20 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "share", label: "Share", format: "pct" },
           ],
           rows,
+        },
+        {
+          title: "Catatan NG Lain-lain",
+          columns: [
+            { key: "date", label: "Tanggal" },
+            { key: "member", label: "Member" },
+            { key: "part", label: "Part" },
+            { key: "lot", label: "Lot" },
+            { key: "qty", label: "NG Lain-lain", format: "int" },
+            { key: "note", label: "Catatan" },
+          ],
+          rows: facts
+            .filter((f) => f.ngNote)
+            .map((f) => ({ date: f.workDate, member: f.memberName, part: f.part, lot: f.lot, qty: f.ng.reduce((a, v, i) => (/^lain/i.test(label(f.ngGroupId, i)) ? a + v : a), 0), note: f.ngNote })),
         },
       ],
     };

@@ -23,7 +23,7 @@ function seed() {
   [["PF Iron Cage", "Bowl PF"], ["Seiretsu Iron Cage", "Seiretsu"], ["", ""], ["Lost Time Type", ""], ["5S", "Another Job"], ["Ganti Pole", "Lost Time"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 15 + j, v)));
   [["Normal working time / day (min)", 480], ["OT limit / member / day (hrs)", 4], ["Achievement target", 1], ["Grade A  (≥)", 1], ["Grade B  (≥)", 0.9], ["Grade C  (≥)", 0.8]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 18 + j, v)));
   [[1, "PF Iron Cage", "MC 01", "EXPO", "6902-J D1", "627-J D1", "Active"], [2, "PF Iron Cage", "MC 02", "EXPO", "627-J D1", "", "Inactive"], [3, "PF Iron Cage", "MC 03", "EXPO", "627-J D1", "", "Active"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 39 + j, v)));
-  [[1, "Iron Cage", "Part Tercampur"], [2, "Iron Cage", "Kizu"], [3, "Iron Cage", "Henkei"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 51 + j, v)));
+  [[1, "Iron Cage", "Part Tercampur"], [2, "Iron Cage", "Kizu"], [3, "Iron Cage", "Lain-Lain"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 51 + j, v)));
   [["PF Iron Cage", "Iron Cage"], ["Seiretsu Iron Cage", "Iron Cage"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 55 + j, v)));
   [["PF Iron Cage", "6902-J", "D1", 1000], ["PF Iron Cage", "627-J", "D1", ""]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 60 + j, v)));
   set("Leader", 1, 0, "Nama Leader");
@@ -66,7 +66,7 @@ describe("Master Data dari sheet", () => {
     expect(pf.parts.map((p) => p.name)).toEqual(["6902-J", "627-J"]);
     expect(pf.machines).toEqual(["MC 01", "MC 03"]); // MC 02 Inactive
     expect(pf.mcInfo!["MC 01"]).toEqual({ line: "EXPO", main: "6902-J D1", alt: "627-J D1" });
-    expect(pf.ng).toEqual(["Part Tercampur", "Kizu", "Henkei"]);
+    expect(pf.ng).toEqual(["Part Tercampur", "Kizu", "Lain-Lain"]);
     const raw = await qa.apiMaster();
     expect(raw.parts.find((p) => p.name === "6902-J")!.stki).toBe(1100);
     expect(raw.settings).toMatchObject({ gradeB: 90, target: 100 });
@@ -199,5 +199,16 @@ describe("v1.7: menit MC per mesin, waktu operator, oiban rentang", () => {
     const byMc = Object.fromEntries(rep.tables[0].rows.map((x) => [x.mcNo, x]));
     expect(byMc["MC 01"]).toMatchObject({ mcHours: 8, stdHours: 7.92, eff: 0.99 });
     expect(byMc["MC 03"]).toMatchObject({ mcHours: 4, pcsHr: 2250, stdHours: null, eff: null }); // Std MC belum diisi
+  });
+});
+
+describe("v1.8: catatan NG Lain-lain", () => {
+  it("ditulis ke kolom AW saat approve dan tampil di report NG per jenis", async () => {
+    const base = payload();
+    const r = await qa.submitReport({ ...base, items: [{ ...base.items[0], ng: ["", "", "4", "", "", "", "", "", "", ""], ngNote: "retak" }] });
+    await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
+    expect(fs.data["Input - Production"][6][48]).toBe("retak");
+    const rep = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
+    expect(rep.tables[1].rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
   });
 });

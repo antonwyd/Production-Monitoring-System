@@ -3,7 +3,7 @@
 // Input - Production, Input - Lost Time. Nama fungsi sengaja sama dengan Code.gs v1.5 karena
 // halaman form member dan leader (public/legacy) memanggilnya lewat /api/rpc/<nama>.
 // v1.7: menit MC per mesin (AM:AN), waktu operator per laporan (op), oiban rentang (AO:AP),
-// Standar MC PF di Master Data BI:BM.
+// Standar MC PF di Master Data BI:BM. v1.8: catatan NG Lain-lain (ngNote) ke AW.
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -20,6 +20,7 @@ const PROD_WIDTH = 22; // B..W
 const LT_WIDTH = 5; // B..F
 const PROD_EXTRA = "AM"; // AM..AP: MC Min Normal, MC Min OT, Oiban List, Jml Oiban
 const PROD_EXTRA_END = "AP";
+const PROD_NOTE = "AW"; // Catatan NG Lain-lain
 const ST_WAIT = "Menunggu",
   ST_OK = "Disetujui",
   ST_NO = "Ditolak";
@@ -410,11 +411,12 @@ function bangunBaris(payload: Payload, m: V1Master) {
       ob = uraiOiban(it.oiban);
     return [mc ? num(it.mcMin) : "", mc ? num(it.mcOtMin) : "", asText(ob.list.join(", ")), ob.list.length || ""];
   });
+  const noteRows: Cell[][] = items.map((it) => [asText(txt(it.ngNote))]);
   const ltRows: Cell[][] = lost.map((l, i) => {
     if (!m.lostTypes.includes(s(l.type))) throw new QaError(`Lost time #${i + 1}: jenis tidak dikenal.`);
     return [dateFormula, asText(payload.member), asText(l.type), num(l.minutes), asText(txt(l.remarks))];
   });
-  return { prodRows, ltRows, extraRows, items };
+  return { prodRows, ltRows, extraRows, noteRows, items };
 }
 
 const colLetter = (n: number) => {
@@ -556,9 +558,11 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
         try {
           const rows = bangunBaris({ date: x.date, member: x.member, items: x.items, lostTimes: x.lostTimes, op: x.op }, m!);
           if (rows.prodRows.length) {
-            const start = await tulis(SHEET_PROD, rows.prodRows, PROD_WIDTH, [`${PROD_EXTRA}:${PROD_EXTRA_END}`]);
+            const start = await tulis(SHEET_PROD, rows.prodRows, PROD_WIDTH, [`${PROD_EXTRA}:${PROD_EXTRA_END}`, `${PROD_NOTE}:${PROD_NOTE}`]);
             const endRow = start + rows.extraRows.length - 1;
-            await io.update([{ range: `${q(SHEET_PROD)}!${PROD_EXTRA}${start}:${PROD_EXTRA_END}${endRow}`, values: rows.extraRows }]);
+            const data = [{ range: `${q(SHEET_PROD)}!${PROD_EXTRA}${start}:${PROD_EXTRA_END}${endRow}`, values: rows.extraRows }];
+            if (rows.noteRows.some((r) => r[0])) data.push({ range: `${q(SHEET_PROD)}!${PROD_NOTE}${start}:${PROD_NOTE}${endRow}`, values: rows.noteRows });
+            await io.update(data);
           }
           if (rows.ltRows.length) await tulis(SHEET_LT, rows.ltRows, LT_WIDTH);
         } catch (e) {
@@ -640,7 +644,7 @@ export async function apiRows(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(to || "")) throw new QaError("Rentang tanggal tidak valid.");
   // B..AN: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori, AM/AN menit MC.
   // B..I: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis.
-  const [[prodG, ltG], m] = await Promise.all([io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AN`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE"), readMaster()]);
+  const [[prodG, ltG], m] = await Promise.all([io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE"), readMaster()]);
   const n = (v: unknown) => Number(v) || 0;
   const opt = (v: unknown) => (v === "" || v === null || v === undefined ? "" : Number(v) || 0);
   const prod: (string | number)[][] = [];
@@ -649,9 +653,9 @@ export async function apiRows(from: string, to: string) {
     if (!d || d < from || d > to || !s(r[3])) continue;
     const ng = Array.from({ length: 10 }, (_, i) => n(r[12 + i]));
     const cat = s(r[34]) || s(r[2]);
-    // 23/24 = menit MC normal/OT ("" untuk baris lama atau part non-mesin), 25 = Standar MC PF (pcs/jam)
+    // 23/24 = menit MC normal/OT ("" untuk baris lama atau part non-mesin), 25 = Standar MC PF (pcs/jam), 26 = catatan NG Lain-lain
     const mcStd = m.stdMc[`${cat}|${s(r[3])}|${s(r[4])}`] || 0;
-    prod.push([d, s(r[33]) || s(r[1]), cat, s(r[3]), s(r[4]), n(r[5]), n(r[6]), n(r[7]), n(r[8]), s(r[9]), s(r[10]), s(r[11]), ...ng, n(r[25]), opt(r[37]), opt(r[38]), mcStd]);
+    prod.push([d, s(r[33]) || s(r[1]), cat, s(r[3]), s(r[4]), n(r[5]), n(r[6]), n(r[7]), n(r[8]), s(r[9]), s(r[10]), s(r[11]), ...ng, n(r[25]), opt(r[37]), opt(r[38]), mcStd, s(r[47])]);
   }
   const lost: (string | number)[][] = [];
   for (const r of ltG) {
