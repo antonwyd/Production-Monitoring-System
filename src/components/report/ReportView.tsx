@@ -7,14 +7,6 @@ import Charts from "./Charts";
 import { Grade } from "@/components/ui";
 import PrintButton from "./PrintButton";
 
-// Nama tab singkat, bahasa lantai produksi.
-const NAV: { k: ReportKind; label: string }[] = [
-  { k: "member", label: "Per Member" },
-  { k: "ng-type", label: "Kualitas (NG)" },
-  { k: "waktu", label: "Waktu & Lost Time" },
-  { k: "machine", label: "Mesin PF" },
-  { k: "disiplin", label: "Disiplin Lapor" },
-];
 const isNum = (f?: string) => !!f && f !== "text" && f !== "grade" && f !== "date";
 
 export default function ReportView({
@@ -43,19 +35,6 @@ export default function ReportView({
         <p className="text-sm text-slate-500">{report.subtitle} · hanya laporan yang sudah disetujui</p>
       </div>
 
-      <nav className="no-print -mx-4 overflow-x-auto px-4">
-        <div className="flex w-max gap-1 rounded-xl border border-slate-200 bg-white p-1">
-          {NAV.map((n) => (
-            <Link
-              key={n.k}
-              href={`/reports/${n.k}`}
-              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm ${n.k === k ? "bg-brand-600 font-semibold text-white shadow-sm" : "font-medium text-slate-600 hover:bg-brand-50 hover:text-brand-600"}`}
-            >
-              {n.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
 
       <form className="no-print card flex flex-wrap items-end gap-3 px-5 py-4" method="get">
         {usesRange && (

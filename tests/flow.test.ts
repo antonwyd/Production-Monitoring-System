@@ -20,7 +20,7 @@ function seed() {
   [["PF Iron Cage", "Bowl PF", "6902-J", "D1", 1100], ["PF Iron Cage", "Bowl PF", "627-J", "D1", 2000], ["Seiretsu Iron Cage", "Seiretsu", "608JCL-1-J", "D1", 6656]].forEach((p, i) =>
     p.forEach((v, j) => set(M, 7 + i, 6 + j, v)),
   );
-  [["PF Iron Cage", "Bowl PF"], ["Seiretsu Iron Cage", "Seiretsu"], ["", ""], ["Lost Time Type", ""], ["5S", "Another Job"], ["Ganti Pole", "Lost Time"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 15 + j, v)));
+  [["PF Iron Cage", "Bowl PF"], ["Seiretsu Iron Cage", "Seiretsu"], ["", ""], ["⏱️ LOST TIME TYPES", ""], ["Lost Time Type", ""], ["5S", "Another Job"], ["Ganti Pole", "Lost Time"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 15 + j, v)));
   [["Normal working time / day (min)", 480], ["OT limit / member / day (hrs)", 4], ["Achievement target", 1], ["Grade A  (≥)", 1], ["Grade B  (≥)", 0.9], ["Grade C  (≥)", 0.8]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 18 + j, v)));
   [[1, "PF Iron Cage", "MC 01", "EXPO", "6902-J D1", "627-J D1", "Active"], [2, "PF Iron Cage", "MC 02", "EXPO", "627-J D1", "", "Inactive"], [3, "PF Iron Cage", "MC 03", "EXPO", "627-J D1", "", "Active"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 39 + j, v)));
   [[1, "Iron Cage", "Part Tercampur"], [2, "Iron Cage", "Kizu"], [3, "Iron Cage", "Lain-Lain"]].forEach((x, i) => x.forEach((v, j) => set(M, 7 + i, 51 + j, v)));
@@ -280,5 +280,49 @@ describe("report baru dan Excel", () => {
       const buf = await reportToXlsx(rep);
       expect(buf.subarray(0, 2).toString()).toBe("PK");
     }
+  });
+});
+
+describe("Master Data dari web (admin)", () => {
+  it("baca, tambah, validasi, dan tolak bila sheet berubah", async () => {
+    const me = await import("@/lib/sheets/masterEdit");
+    const m = await me.getMasterTable("member");
+    expect(m.rows.map((r) => r.name)).toEqual(["Harjuki", "Suharyanto", "Keluar"]);
+    await me.saveMasterTable("member", m.version, [...m.rows, { nik: "0201999", name: "Ahmad Syakir Baehaqie", status: "Active" }]);
+    expect(fs.data["Master Data"][9].slice(1, 4)).toEqual(["0201999", "Ahmad Syakir Baehaqie", "Active"]);
+    expect((await qa.getMasterData()).members).toContain("Ahmad Syakir Baehaqie");
+    // versi lama ditolak
+    await expect(me.saveMasterTable("member", m.version, m.rows)).rejects.toThrow(/baru saja diubah/);
+    // duplikat ditolak
+    const m2 = await me.getMasterTable("member");
+    await expect(me.saveMasterTable("member", m2.version, [...m2.rows, { nik: "1", name: "Harjuki", status: "Active" }])).rejects.toThrow(/sama dengan/);
+    // hapus baris: sisa baris lama dikosongkan
+    await me.saveMasterTable("member", m2.version, m2.rows.slice(0, 2));
+    expect(fs.data["Master Data"][9].slice(1, 4)).toEqual(["", "", ""]);
+
+    const p = await me.getMasterTable("part");
+    expect(p.options.category).toEqual(["PF Iron Cage", "Seiretsu Iron Cage"]);
+    await me.saveMasterTable("part", p.version, [...p.rows, { category: "PF Iron Cage", part: "608-J", type: "D1", stki: "1.250" }]);
+    expect(fs.data["Master Data"][9].slice(5, 11)).toEqual([4, "PF Iron Cage", "Bowl PF", "608-J", "D1", 1250]);
+    await expect(me.saveMasterTable("part", (await me.getMasterTable("part")).version, [{ category: "Tidak Ada", part: "x", stki: "1" }])).rejects.toThrow(/tidak ada di tabel Kategori/);
+
+    const cat = await me.getMasterTable("category");
+    expect(cat.rows.map((r) => r.name)).toEqual(["PF Iron Cage", "Seiretsu Iron Cage"]);
+    await me.saveMasterTable("category", cat.version, cat.rows.slice(1));
+    expect(fs.data["Master Data"][7][15]).toBe("");
+    expect(fs.data["Master Data"][9][15]).toBe("⏱️ LOST TIME TYPES");
+    await me.saveMasterTable("category", (await me.getMasterTable("category")).version, cat.rows);
+    const lost = await me.getMasterTable("lost");
+    expect(lost.rows).toEqual([{ name: "5S", group: "Another Job" }, { name: "Ganti Pole", group: "Lost Time" }]);
+
+    const st = await me.getMasterTable("setting");
+    expect(st.rows.find((r) => r.param.startsWith("Grade B"))!.value).toBe("90");
+    await me.saveMasterTable("setting", st.version, st.rows.map((r) => (r.param.startsWith("Normal") ? { ...r, value: "460" } : r)));
+    expect(fs.data["Master Data"][6][19]).toBe(460);
+    expect(fs.data["Master Data"][10][19]).toBe(0.9);
+
+    const u = await me.getMasterTable("users");
+    await me.saveMasterTable("users", u.version, [...u.rows, { nik: "300001", name: "Dian Kartika", role: "leader", pin: "0412", status: "Aktif" }]);
+    expect(await qa.apiLogin("300001", "0412")).toMatchObject({ ok: true, role: "leader" });
   });
 });

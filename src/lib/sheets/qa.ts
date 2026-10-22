@@ -32,6 +32,9 @@ export function setSheetsIO(x: SheetsIO | null) {
   masterCache = null;
 }
 
+/** Sheet yang sedang dipakai (asli atau palsu di tes). */
+export const sheetsIO = () => io;
+
 const q = (title: string) => `'${title}'`;
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 const cell = (g: Grid, r: number, c: number) => s(g[r]?.[c]);

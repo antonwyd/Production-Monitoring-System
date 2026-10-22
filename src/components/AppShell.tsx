@@ -1,12 +1,5 @@
-import Link from "next/link";
 import type { Session } from "@/lib/auth";
-import LogoutButton from "./LogoutButton";
-
-// Menu sengaja hanya tiga supaya mudah dipakai di lantai produksi.
-const LINKS: { href: string; label: string; key: string }[] = [
-  { href: "/hari-ini", label: "Hari Ini", key: "hari-ini" },
-  { href: "/laporan", label: "Laporan", key: "laporan" },
-];
+import Sidebar, { type NavGroup } from "./Sidebar";
 
 const ROLE_LABEL: Record<Session["role"], string> = {
   operator: "Operator",
@@ -15,40 +8,50 @@ const ROLE_LABEL: Record<Session["role"], string> = {
   admin: "Admin",
 };
 
+/** Menu samping per peran: admin semua, leader & manajemen tanpa Master Data / Sheet. */
+function navFor(role: Session["role"]): NavGroup[] {
+  const groups: NavGroup[] = [
+    {
+      items: [
+        { key: "hari-ini", href: "/hari-ini", label: "Hari Ini", icon: "today" },
+        { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
+      ],
+    },
+    {
+      title: "Report detail",
+      items: [
+        { key: "report:member", href: "/reports/member", label: "Per Member", icon: "user" },
+        { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas (NG)", icon: "quality" },
+        { key: "report:waktu", href: "/reports/waktu", label: "Waktu & Lost Time", icon: "clock" },
+        { key: "report:machine", href: "/reports/machine", label: "Mesin PF", icon: "machine" },
+        { key: "report:disiplin", href: "/reports/disiplin", label: "Disiplin Lapor", icon: "check" },
+      ],
+    },
+  ];
+  if (role === "admin")
+    groups.push({
+      title: "Admin",
+      items: [
+        { key: "master", href: "/master", label: "Master Data", icon: "data" },
+        { key: "akses", href: "/master?t=users", label: "Akun & Hak Akses", icon: "lock" },
+        ...(process.env.SHEET_URL ? [{ key: "sheet", href: process.env.SHEET_URL, label: "Buka Google Sheet", icon: "sheet", external: true }] : []),
+      ],
+    });
+  groups.push({
+    title: "Form",
+    items: [
+      { key: "form", href: "/", label: "Form member", icon: "form", external: true },
+      ...(role === "leader" || role === "admin" ? [{ key: "validasi", href: "/?page=leader", label: "Validasi (halaman lama)", icon: "check", external: true }] : []),
+    ],
+  });
+  return groups;
+}
+
 export default function AppShell({ session, active, children }: { session: Session; active: string; children: React.ReactNode }) {
-  const sheetUrl = process.env.SHEET_URL;
-  const cls = (on: boolean) =>
-    `whitespace-nowrap rounded-lg px-4 py-2.5 text-[15px] ${on ? "bg-brand-50 font-semibold text-brand-600" : "font-medium text-slate-600 hover:bg-slate-100"}`;
   return (
-    <div className="min-h-screen">
-      <header className="no-print sticky top-0 z-30 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2">
-          <Link href="/hari-ini" className="flex items-center gap-3">
-            <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-9 w-auto" />
-            <span className="border-l border-slate-200 pl-3 font-bold text-brand-600">Produksi QA</span>
-          </Link>
-          <nav className="order-last flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto">
-            {LINKS.map((l) => (
-              <Link key={l.key} href={l.href} className={cls(active === l.key)}>
-                {l.label}
-              </Link>
-            ))}
-            {sheetUrl && (
-              <a href={sheetUrl} target="_blank" rel="noreferrer" className={cls(false)}>
-                Sheet
-              </a>
-            )}
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <div className="text-right text-xs leading-tight">
-              <div className="font-semibold">{session.name}</div>
-              <div className="text-slate-500">{ROLE_LABEL[session.role]}</div>
-            </div>
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
-      {children}
+    <div className="min-h-screen lg:pl-64">
+      <Sidebar groups={navFor(session.role)} active={active} user={{ name: session.name, role: ROLE_LABEL[session.role] }} />
+      <div className="mx-auto max-w-6xl">{children}</div>
     </div>
   );
 }
