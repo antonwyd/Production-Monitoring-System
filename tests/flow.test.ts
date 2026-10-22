@@ -166,6 +166,7 @@ describe("v1.7: menit MC per mesin, waktu operator, oiban rentang", () => {
     expect(qa.uraiOiban("001 s/d 003").list).toEqual(["001", "002", "003"]);
     expect(qa.uraiOiban("5sd7.9").list).toEqual(["5", "6", "7", "9"]);
     expect(qa.uraiOiban("A12").list).toEqual(["A12"]);
+    expect(qa.uraiOiban("1-3, 2, 2")).toEqual({ list: ["1", "2", "3", "2", "2"], err: "" }); // oiban double boleh
     expect(qa.uraiOiban("9-3").err).toMatch(/tidak wajar/);
     expect(qa.uraiOiban("").list).toEqual([]);
   });
