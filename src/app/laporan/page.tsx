@@ -90,6 +90,9 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
             <a className="btn-primary h-11" href={`/api/export/laporan.xlsx?${query}`}>
               Download Excel
             </a>
+            <a className="btn-secondary h-11" href={`/api/export/monthly.xlsx?month=${v.to.slice(0, 7)}${categoryId ? `&category=${categoryId}` : ""}`}>
+              Rekap Bulanan (Excel)
+            </a>
             <PrintButton label="Download PDF" />
           </div>
         </form>
@@ -100,10 +103,39 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           ))}
         </section>
 
+        {!categoryId && v.categories.length > 1 && (
+          <section className="card overflow-x-auto px-2 py-3">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr className="text-left">
+                  <th className={TH}>Per kategori</th>
+                  <th className={`${TH} text-right`}>Hasil (pcs)</th>
+                  <th className={`${TH} text-right`}>NG rate</th>
+                  <th className={`${TH} text-right`}>Achievement</th>
+                  <th className={`${TH} text-center`}>Grade</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {v.categories.map((c) => (
+                  <tr key={c.name}>
+                    <td className={`${TD} font-semibold`}>{c.name}</td>
+                    <td className={`${TD} text-right`}>{n0(c.qty)}</td>
+                    <td className={`${TD} text-right`}>{pc(c.ngRate, 1)}</td>
+                    <td className={`${TD} text-right font-semibold`}>{pc(c.ach)}</td>
+                    <td className={`${TD} text-center`}>
+                      <Grade g={c.grade} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
         <section className="card">
           <div className="px-5 pt-4">
             <h2 className="text-xl font-bold">1. Orang</h2>
-            <p className="text-sm text-slate-500">Achievement dan grade per member, urut dari terendah supaya yang perlu dibina kelihatan dulu</p>
+            <p className="text-sm text-slate-500">Urut dari achievement terendah supaya yang perlu dibina kelihatan dulu. Klik nama untuk detail per hari.</p>
           </div>
           <div className="overflow-x-auto px-2 pb-3 pt-2">
             {v.people.length ? (
@@ -122,7 +154,11 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                 <tbody className="tabular-nums">
                   {v.people.map((p) => (
                     <tr key={p.name}>
-                      <td className={`${TD} font-semibold`}>{p.name}</td>
+                      <td className={`${TD} font-semibold`}>
+                        <Link href={`/reports/member?member=${p.id}&from=${v.from}&to=${v.to}`} className="hover:text-brand-600 hover:underline">
+                          {p.name}
+                        </Link>
+                      </td>
                       <td className={`${TD} text-right`}>{p.days}</td>
                       <td className={`${TD} text-right`}>{n0(p.qty)}</td>
                       <td className={`${TD} text-right`}>{pc(p.ngRate, 1)}</td>
@@ -216,9 +252,17 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
         </div>
 
         <p className="no-print text-sm text-slate-500">
-          Perlu tabel lengkap per hari, per kategori, atau per lot?{" "}
-          <Link href={`/reports/daily`} className="text-brand-600 underline">
-            Buka report detail
+          Perlu tabel lengkap?{" "}
+          <Link href={`/reports/ng-type?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
+            Kualitas (NG)
+          </Link>{" "}
+          ·{" "}
+          <Link href={`/reports/machine?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
+            Mesin PF
+          </Link>{" "}
+          ·{" "}
+          <Link href={`/reports/member?from=${v.from}&to=${v.to}`} className="text-brand-600 underline">
+            Per Member
           </Link>
         </p>
       </main>

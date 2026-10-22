@@ -169,7 +169,8 @@ function lostMember(l: LostFact, master: MasterData) {
 
 // ---------- Laporan ----------
 
-export type PersonRow = { name: string; nik: string; days: number; qty: number; ngRate: number | null; lostMin: number; ach: number | null; grade: string };
+export type PersonRow = {
+  id: number; name: string; nik: string; days: number; qty: number; ngRate: number | null; lostMin: number; ach: number | null; grade: string };
 export type MachineRow = { mc: string; category: string; line: string; hours: number; pcsHr: number | null; eff: number | null; qty: number };
 
 export type LaporanView = {
@@ -185,6 +186,7 @@ export type LaporanView = {
   lots: { part: string; lot: string; ng: number; rate: number | null }[];
   notes: { what: string; who: string }[];
   machines: MachineRow[];
+  categories: { name: string; qty: number; ngRate: number | null; ach: number | null; grade: string }[];
   totalNg: number;
 };
 
@@ -242,6 +244,7 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
   const people: PersonRow[] = [...groupBy(facts, (f) => f.memberId).entries()].map(([id, g]) => {
     const c = aggCols(g.agg, st);
     return {
+      id,
       name: g.first.memberName,
       nik: g.first.nik,
       days: new Set(facts.filter((f) => f.memberId === id).map((f) => f.workDate)).size,
@@ -313,6 +316,12 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
     lots,
     notes,
     machines,
+    categories: [...groupBy(facts, (f) => f.categoryId).values()]
+      .map((g) => {
+        const c = aggCols(g.agg, st);
+        return { name: g.first.categoryName, qty: g.agg.qty, ngRate: c.ngRate, ach: c.ach, grade: String(c.grade) };
+      })
+      .sort((a, b) => b.qty - a.qty),
     totalNg: t.ng,
   };
 }

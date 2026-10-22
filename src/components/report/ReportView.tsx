@@ -9,13 +9,9 @@ import PrintButton from "./PrintButton";
 
 // Nama tab singkat, bahasa lantai produksi.
 const NAV: { k: ReportKind; label: string }[] = [
-  { k: "daily", label: "Harian" },
   { k: "member", label: "Per Member" },
-  { k: "category", label: "Per Kategori" },
+  { k: "ng-type", label: "Kualitas (NG)" },
   { k: "machine", label: "Mesin PF" },
-  { k: "ng-type", label: "Jenis NG" },
-  { k: "ng-lot", label: "NG per Lot" },
-  { k: "monthly", label: "Rekap Bulanan" },
 ];
 const isNum = (f?: string) => !!f && f !== "text" && f !== "grade";
 
@@ -109,7 +105,7 @@ export default function ReportView({
             </select>
           </label>
         )}
-        {k === "ng-lot" && (
+        {(k === "ng-lot" || k === "ng-type") && (
           <label>
             <span className="block text-sm text-slate-500">Part</span>
             <select name="part" className="input mt-1 h-11" defaultValue={params.partId ?? ""}>

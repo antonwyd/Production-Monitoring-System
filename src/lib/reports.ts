@@ -16,7 +16,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   member: "Laporan per Member",
   category: "Laporan per Kategori",
   machine: "Laporan Mesin PF",
-  "ng-type": "Laporan Jenis NG",
+  "ng-type": "Laporan Kualitas (NG)",
   "ng-lot": "Laporan NG per Lot",
   monthly: "Rekap Bulanan",
 };
@@ -473,6 +473,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     const rows = [...map.values()].sort((a, b) => b.qty - a.qty).map((e) => ({ ...e, share: total ? e.qty / total : null }));
     const byDay = groupBy(facts, (f) => f.workDate);
     const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: d.slice(5), ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty) }));
+    // Kualitas = jenis NG + NG per lot dalam satu halaman.
+    const lotTable = (await buildReport("ng-lot", p, today)).tables[0];
     return {
       ...base,
       subtitle: period,
@@ -492,6 +494,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           ],
           rows,
         },
+        lotTable,
         {
           title: "Catatan NG Lain-lain",
           columns: [

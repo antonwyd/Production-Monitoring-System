@@ -209,7 +209,8 @@ describe("v1.8: catatan NG Lain-lain", () => {
     await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
     expect(fs.data["Input - Production"][6][48]).toBe("retak");
     const rep = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
-    expect(rep.tables[1].rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
+    expect(rep.tables[2].rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
+    expect(rep.tables[1].title).toMatch(/lot/i);
   });
 });
 
