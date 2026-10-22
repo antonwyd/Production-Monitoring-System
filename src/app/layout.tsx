@@ -15,7 +15,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
+    <html lang="id" suppressHydrationWarning>
+      <head>
+        {/* Menu samping dilipat/tidak dipasang sebelum halaman tampil, supaya tidak bergeser. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.dataset.sb=localStorage.getItem("qa:sidebar")||""}catch(e){}` }} />
+      </head>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

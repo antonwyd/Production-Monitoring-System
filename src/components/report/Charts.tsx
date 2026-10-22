@@ -25,16 +25,16 @@ export default function Charts({ charts }: { charts: Chart[] }) {
                       <CartesianGrid stroke="#eef0f3" vertical={false} />
                       <XAxis dataKey={c.xKey} tick={{ fontSize: 11, fill: "#64748b" }} />
                       <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={tick} width={56} />
-                      <Tooltip formatter={(v) => [formatCell(v as number, s.format), s.label]} />
-                      <Line type="monotone" dataKey={s.key} stroke={COLOR} strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                      <Tooltip contentStyle={{ borderRadius: 10, border: "none", background: "#1d2430", color: "#fff", fontSize: 12 }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} cursor={{ fill: "rgba(155,27,31,0.06)" }} formatter={(v) => [formatCell(v as number, s.format), s.label]} />
+                      <Line type="monotone" dataKey={s.key} stroke={COLOR} strokeWidth={2} dot={{ r: 3 }} isAnimationActive animationDuration={600} />
                     </LineChart>
                   ) : (
                     <BarChart data={c.data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid stroke="#eef0f3" vertical={false} />
                       <XAxis dataKey={c.xKey} tick={{ fontSize: 11, fill: "#64748b" }} interval={0} angle={c.data.length > 6 ? -30 : 0} textAnchor={c.data.length > 6 ? "end" : "middle"} height={c.data.length > 6 ? 60 : 30} />
                       <YAxis tick={{ fontSize: 11, fill: "#64748b" }} tickFormatter={tick} width={56} />
-                      <Tooltip formatter={(v) => [formatCell(v as number, s.format), s.label]} />
-                      <Bar dataKey={s.key} fill={COLOR} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                      <Tooltip contentStyle={{ borderRadius: 10, border: "none", background: "#1d2430", color: "#fff", fontSize: 12 }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} cursor={{ fill: "rgba(155,27,31,0.06)" }} formatter={(v) => [formatCell(v as number, s.format), s.label]} />
+                      <Bar dataKey={s.key} fill={COLOR} radius={[4, 4, 0, 0]} isAnimationActive animationDuration={600} />
                     </BarChart>
                   )}
                 </ResponsiveContainer>
