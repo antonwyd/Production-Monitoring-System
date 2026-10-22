@@ -1,9 +1,9 @@
-// Menyajikan halaman form member & leader v1.5 dari Vercel. Panggilan google.script.run
+// Menyajikan halaman form member & leader dari Vercel. Panggilan google.script.run
 // di halaman itu diganti fetch ke /api/rpc/<fungsi>, yang menjalankan logika yang sama
 // (src/lib/sheets/qa.ts) langsung ke Google Sheet.
 import { PAGE_HTML } from "./legacyPage";
 
-export const APP_VERSION = "v2.2 • Vercel";
+export const APP_VERSION = "v2.3 • Vercel";
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){
@@ -13,23 +13,15 @@ const CALL_WEB = `function call(fn,args,ok,fail){
     .then(function(j){if(j&&j.ok){ok&&ok(j.data);}else{f((j&&j.error)||'Gagal memproses.');}})
     .catch(function(){f('Tidak ada koneksi internet. Coba lagi.');});
   return;`;
-const LEADER_BAR = `+'<span style="font-size:12px;color:var(--muted);margin-left:auto">Masuk sebagai`;
-const LEADER_BAR_WEB = `+'<a class="btn ghost" href="/hari-ini" style="height:42px;display:inline-flex;align-items:center;text-decoration:none">Hari Ini &amp; Laporan</a>'${LEADER_BAR}`;
-
-// Warna marun TAKAI seperti halaman web lain; isi dan alur form tidak berubah.
-const THEME = `<style>:root{--red:#9B1B1F;--red-d:#7F1519;--red-soft:#F8E8E8}</style><meta name="theme-color" content="#9b1b1f">`;
-
-for (const s of [CALL_V1, LEADER_BAR, "%%VERSI%%", "<head>", "</head>"])
+for (const s of [CALL_V1, "%%VERSI%%", "<head>"])
   if (!PAGE_HTML.includes(s)) throw new Error(`legacyPage: penanda "${s}" tidak ditemukan`);
 
 export function renderLegacyPage(boot: { page: string; m?: unknown }) {
   const json = JSON.stringify({ page: boot.page, url: "/", m: boot.m ?? null }).replace(/</g, "\\u003c");
   return PAGE_HTML.replace("%%VERSI%%", APP_VERSION)
     .replace(CALL_V1, CALL_WEB)
-    .replace(LEADER_BAR, LEADER_BAR_WEB)
-    .replace("</head>", `${THEME}</head>`)
     .replace(
       "<head>",
-      `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>Laporan Produksi QA • Takai</title><link rel="icon" href="/icon.svg"><script>window.BOOT=${json};</script>`,
+      `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>Laporan Produksi QA • Takai</title><meta name="theme-color" content="#9b1b1f"><link rel="icon" href="/icon.svg"><script>window.BOOT=${json};</script>`,
     );
 }
