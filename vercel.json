@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/cron/sync-lama", "schedule": "5 17 * * *" }]
+}

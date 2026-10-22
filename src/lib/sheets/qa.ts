@@ -446,6 +446,52 @@ async function tulis(title: string, rows: Cell[][], width: number, extraClear: s
   return start;
 }
 
+// ---------- Sinkron dari Sheet lama (Apps Script) ----------
+
+/**
+ * Salin laporan yang SUDAH DISETUJUI di Sheet lama (Input - Production & Input - Lost Time, struktur sama)
+ * ke Sheet ini untuk tanggal from..to (yyyy-MM-dd). Satu member per tanggal disalin utuh sekali saja:
+ * kalau member itu sudah punya baris di tanggal tsb (dari sinkron sebelumnya atau input langsung di Vercel),
+ * dilewati. Jadi aman dijalankan berulang, dan laporan yang baru disetujui belakangan ikut di malam berikutnya.
+ */
+export async function sinkronDariSheetLama(src: Pick<SheetsIO, "get">, from: string, to: string) {
+  const [sp, sl] = await src.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:F`], "UNFORMATTED_VALUE");
+  return locked(async () => {
+    const [tp, tl] = await io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:C`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:C`], "UNFORMATTED_VALUE");
+    const key = (r: Cell[]) => `${dayOf(r[0])}|${txt(r[1])}`;
+    const sudah = new Set([...tp, ...tl].filter((r) => txt(r[1])).map(key));
+    const ambil = (r: Cell[]) => {
+      const d = dayOf(r[0]);
+      return !!txt(r[1]) && d >= from && d <= to && !sudah.has(key(r));
+    };
+    const tgl = (v: unknown) => {
+      const [y, m, d] = dayOf(v).split("-").map(Number);
+      return `=DATE(${y},${m},${d})`;
+    };
+    const prod = sp.filter(ambil);
+    const lt = sl.filter(ambil);
+    const prodRows: Cell[][] = prod.map((r) => [
+      tgl(r[0]), asText(txt(r[1])), asText(txt(r[2])), asText(txt(r[3])), asText(txt(r[4])),
+      num(r[5]), num(r[6]), num(r[7]), num(r[8]), asText(txt(r[9])), asText(txt(r[10])), asText(txt(r[11])),
+      ...Array.from({ length: 10 }, (_, k) => num(r[12 + k])),
+    ]);
+    // AM..AP = indeks 37..40 dari kolom B, AW = 47.
+    const extraRows: Cell[][] = prod.map((r) => [num(r[37]), num(r[38]), asText(txt(r[39])), num(r[40])]);
+    const noteRows: Cell[][] = prod.map((r) => [asText(txt(r[47]))]);
+    const ltRows: Cell[][] = lt.map((r) => [tgl(r[0]), asText(txt(r[1])), asText(txt(r[2])), num(r[3]), asText(txt(r[4]))]);
+    if (prodRows.length) {
+      const start = await tulis(SHEET_PROD, prodRows, PROD_WIDTH, [`${PROD_EXTRA}:${PROD_EXTRA_END}`, `${PROD_NOTE}:${PROD_NOTE}`]);
+      const endRow = start + prodRows.length - 1;
+      const data = [{ range: `${q(SHEET_PROD)}!${PROD_EXTRA}${start}:${PROD_EXTRA_END}${endRow}`, values: extraRows }];
+      if (noteRows.some((r) => r[0])) data.push({ range: `${q(SHEET_PROD)}!${PROD_NOTE}${start}:${PROD_NOTE}${endRow}`, values: noteRows });
+      await io.update(data);
+    }
+    if (ltRows.length) await tulis(SHEET_LT, ltRows, LT_WIDTH);
+    const members = [...new Set([...prod, ...lt].map(key))].sort();
+    return { from, to, prod: prodRows.length, lt: ltRows.length, members };
+  });
+}
+
 // ---------- Fungsi yang dipanggil halaman form member ----------
 
 export async function cekLaporan(dateStr: string, member: string) {
