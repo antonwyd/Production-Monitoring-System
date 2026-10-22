@@ -3,7 +3,7 @@
 // (src/lib/sheets/qa.ts) langsung ke Google Sheet.
 import { PAGE_HTML } from "./legacyPage";
 
-export const APP_VERSION = "v3.1 • Vercel";
+export const APP_VERSION = "v3.2 • Vercel";
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){
@@ -16,8 +16,10 @@ const CALL_WEB = `function call(fn,args,ok,fail){
 for (const s of [CALL_V1, "%%VERSI%%", "<head>"])
   if (!PAGE_HTML.includes(s)) throw new Error(`legacyPage: penanda "${s}" tidak ditemukan`);
 
-export function renderLegacyPage(boot: { page: string; m?: unknown }) {
-  const json = JSON.stringify({ page: boot.page, url: "/", m: boot.m ?? null }).replace(/</g, "\\u003c");
+export type LegacyUser = { name: string; nik: string; lock: boolean };
+
+export function renderLegacyPage(boot: { page: string; m?: unknown; user?: LegacyUser | null }) {
+  const json = JSON.stringify({ page: boot.page, url: "/", m: boot.m ?? null, user: boot.user ?? null }).replace(/</g, "\\u003c");
   return PAGE_HTML.replace("%%VERSI%%", APP_VERSION)
     .replace(CALL_V1, CALL_WEB)
     .replace(

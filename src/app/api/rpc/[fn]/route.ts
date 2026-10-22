@@ -1,3 +1,4 @@
+import { getSession } from "@/lib/auth";
 import { SheetsError } from "@/lib/sheets/client";
 import { todayJakarta } from "@/lib/dates";
 import { leaderLogin, QaError, RPC } from "@/lib/sheets/qa";
@@ -12,6 +13,13 @@ const EXTRA: Record<string, (...a: never[]) => Promise<unknown>> = {
   },
 };
 
+/** Fungsi form member: wajib login, dan operator hanya boleh atas namanya sendiri. Nilai = nama member di argumen. */
+const MEMBER_FNS: Record<string, (args: unknown[]) => unknown> = {
+  submitReport: (a) => (a[0] as { member?: unknown } | undefined)?.member,
+  riwayatMember: (a) => a[0],
+  cekLaporan: (a) => a[1],
+};
+
 /** Pengganti google.script.run untuk halaman form member & leader. Body: array argumen. */
 export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> }) {
   const { fn } = await ctx.params;
@@ -23,8 +31,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
   } catch {
     args = [];
   }
+  const list = Array.isArray(args) ? args : [];
+  if (Object.hasOwn(MEMBER_FNS, fn)) {
+    const s = await getSession();
+    if (!s) return Response.json({ ok: false, error: "Sesi login habis. Muat ulang halaman lalu masuk lagi dengan NIK." }, { status: 401 });
+    if (s.role === "operator" && String(MEMBER_FNS[fn](list) ?? "") !== s.name)
+      return Response.json({ ok: false, error: `Anda masuk sebagai ${s.name}, hanya bisa mengisi laporan atas nama sendiri.` }, { status: 403 });
+  }
   try {
-    const data = await (f as (...a: unknown[]) => unknown)(...(Array.isArray(args) ? args : []));
+    const data = await (f as (...a: unknown[]) => unknown)(...list);
     return Response.json({ ok: true, data: data ?? null });
   } catch (e) {
     if (e instanceof QaError || e instanceof SheetsError) return Response.json({ ok: false, error: e.message });

@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 
 const LAST_NIK = "qa:lastNik";
 
-export default function LoginForm() {
+/** next="/": login dari form member, kembali ke form setelah masuk. */
+export default function LoginForm({ next, cta = "Masuk" }: { next?: string; cta?: string } = {}) {
   const [nik, setNik] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -25,7 +26,7 @@ export default function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nik, pin }),
+        body: JSON.stringify({ nik, pin, next }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Login gagal.");
@@ -84,7 +85,7 @@ export default function LoginForm() {
       {error && <p role="alert" className="anim-in rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       <button className="btn-primary w-full py-3 text-lg xl:py-4 xl:text-xl" disabled={busy}>
         {busy && <span className="spinner" aria-hidden />}
-        {busy ? "Memeriksa…" : "Masuk"}
+        {busy ? "Memeriksa…" : cta}
         {!busy && (
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14M13 6l6 6-6 6" />

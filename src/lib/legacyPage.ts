@@ -200,6 +200,11 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .idc input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.8}
 .idc.err{border-color:#FFD7D9;background:rgba(255,255,255,.26)}
 .idc .ph{opacity:.75;font-weight:600}
+.idc.me{cursor:default;display:flex;align-items:center;gap:10px}.idc.me:active{transform:none}
+.idc.me .av{flex:none;width:32px;height:32px;border-radius:50%;background:#fff;color:var(--red);display:grid;place-items:center;font-weight:800;font-size:13px}
+.idc.me .nm{min-width:0;flex:1}.idc.me .nm b{height:auto}
+.who{display:flex;align-items:center;gap:8px;margin:0 0 10px;color:rgba(255,255,255,.85);font-size:12.5px;font-weight:600}.who b{color:#fff}
+.who button,.idc.me button{margin-left:auto;flex:none;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
 .band .notice{background:#fff}.band .subs .subrow{background:#fff;color:var(--ink)}
 .band .hist-t{color:#fff}.band .hist-t .cnt{color:rgba(255,255,255,.8)}.band #hist{margin-top:10px}
 .band .empty{color:rgba(255,255,255,.85)}
@@ -402,6 +407,9 @@ var M = null;                 // master data
 var S = null;                 // state laporan
 var uid = 0;
 var DRAFT_KEY = 'qa-draft-v1', MEMBER_KEY = 'qa-member-v1';
+// Login NIK (Vercel): operator terkunci ke namanya sendiri; leader/admin tetap boleh memilih member.
+var ME=(window.BOOT&&BOOT.user)||null,LOCK=!!(ME&&ME.lock);
+function keluar(){if(!confirm('Keluar dari akun '+ME.name+'?'))return;fetch('/api/auth/logout',{method:'POST'}).then(function(){location.href='/masuk';},function(){location.href='/masuk';});}
 var IC = {
   chev:'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   dn:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
@@ -478,7 +486,7 @@ function oibanInfo(text){
   if(o.list.length<2)return '';
   return o.list.length+' oiban: '+esc(o.list.length>12?o.list.slice(0,6).join(', ')+' … '+o.list.slice(-3).join(', '):o.list.join(', '));
 }
-function savedMember(){try{var m=localStorage.getItem(MEMBER_KEY)||'';return M.members.indexOf(m)>=0?m:'';}catch(e){return '';}}
+function savedMember(){if(LOCK)return ME.name;try{var m=localStorage.getItem(MEMBER_KEY)||'';return M.members.indexOf(m)>=0?m:'';}catch(e){return '';}}
 function saveMember(m){try{localStorage.setItem(MEMBER_KEY,m);}catch(e){}
 }
 function saveDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify(S));}catch(e){}}
@@ -488,9 +496,12 @@ function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch(e){}}
 /* ---------- render ---------- */
 function render(){
   var h='';
-  h+='<div class="band"><div class="idrow">';
+  h+='<div class="band">';
+  if(ME&&!LOCK)h+='<div class="who">Masuk sebagai <b>'+esc(ME.name)+'</b><button type="button" onclick="keluar()">Keluar</button></div>';
+  h+='<div class="idrow">';
   h+='<label class="idc" data-k="date"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onchange="S.date=this.value;this.parentNode.classList.remove(\'err\');changed(true)"></label>';
-  h+='<button type="button" class="idc" data-k="member" onclick="pickMember()"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></button>';
+  if(LOCK)h+='<div class="idc me" data-k="member"><span class="av">'+esc(inisial(ME.name))+'</span><div class="nm"><small>NIK '+esc(ME.nik)+'</small><b>'+esc(ME.name)+'</b></div><button type="button" onclick="keluar()">Keluar</button></div>';
+  else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></button>';
   h+='</div><div id="existing"></div><div id="hist" class="subs"></div><div class="meter" id="meter"></div></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
@@ -826,7 +837,7 @@ $('pickQ').addEventListener('keydown',function(e){
   else if(e.key==='Escape')closePick();
 });
 function opts(arr){return arr.map(function(v){return {value:v,label:v};});}
-function pickMember(){openPick('Nama member',opts(M.members),S.member,function(v){S.member=v;saveMember(v);if(!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost();changed(true);render();});}
+function pickMember(){if(LOCK)return;openPick('Nama member',opts(M.members),S.member,function(v){S.member=v;saveMember(v);if(!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost();changed(true);render();});}
 function pickCat(ix){
   openPick('Kategori',M.categories.map(function(c){return {value:c.name,label:c.name,sub:c.process};}),S.items[ix].category,function(v){
     var it=S.items[ix];if(it.category!==v){it.category=v;it.part='';it.type='';it.mc='';}changed();render();});
@@ -980,6 +991,8 @@ function startMember(){
     M=m;
     var d=loadDraft();
     S=d||freshState(false);
+    if(LOCK&&S.member!==ME.name)S=freshState(false); // draf milik member lain di HP yang sama tidak dipakai
+    if(LOCK){var ob=document.querySelector('#done .btn.ghost');if(ob)ob.style.display='none';}
     if(d&&(d.items.some(function(i){return i.part;})||d.lost.length))setTimeout(function(){toast('Isian terakhir yang belum terkirim dipulihkan');},300);
     $('bar').style.display='block';render();
   },function(msg){$('app').innerHTML='<div class="loading">Gagal memuat data: '+esc(msg)+'</div>';});
@@ -994,6 +1007,7 @@ function route(page,base){
     startLeader();
   } else {
     ml.textContent='Leader';ml.href=BASE_URL+'?page=leader';
+    if(LOCK)ml.style.display='none';
     startMember();
   }
 }
