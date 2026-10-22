@@ -296,6 +296,17 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px}
 .lrow{display:flex;gap:10px;margin:14px 0 12px}
 .lrow .btn{flex:1;justify-content:center;height:52px}
+.lg2{max-width:820px;margin:28px auto 0;display:flex;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(16,24,40,.12)}
+.lg2-l{position:relative;overflow:hidden;width:44%;background:linear-gradient(135deg,var(--red),#4A0B0D);color:#fff;padding:36px 30px;display:flex;flex-direction:column;justify-content:space-between;gap:24px;min-height:380px}
+.lg2-l h2{margin:0;font-size:24px;line-height:1.2}.lg2-l p{margin:8px 0 0;font-size:13px;opacity:.85;max-width:240px}
+.lg2-l .k{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;opacity:.7}
+.lg2-l svg{position:absolute;right:-60px;bottom:-60px;width:250px;height:250px;opacity:.9}
+.lg2-r{flex:1;padding:40px 36px}
+.lg2-r h3{margin:0;font-size:22px}.lg2-r .s{margin:4px 0 22px;color:var(--muted);font-size:13px}
+.lg2-r .pinw{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:12px;padding-right:10px;background:#fff}
+.lg2-r .pinw .in{border:0;box-shadow:none}.lg2-r .pinw button{border:0;background:none;font-weight:700;font-size:12px;color:var(--ink2);cursor:pointer}
+.lg2-r .ft{margin-top:26px;text-align:center;font-size:11px;color:var(--muted)}
+@media(max-width:640px){.lg2{flex-direction:column;margin:0 -16px;border-radius:0;box-shadow:none}.lg2-l{width:auto;min-height:0;padding:24px 20px}.lg2-l svg{width:150px;height:150px;right:-40px;top:-40px;bottom:auto;opacity:.3}.lg2-r{padding:26px 20px}}
 #revOv .sheet-f{display:grid;grid-template-columns:1fr 2fr}#revOv .sheet-f .btn{justify-content:center}
 </style>
 </head>
@@ -984,12 +995,16 @@ function startLeader(){
 function renderLogin(err){
   var saved='';try{saved=localStorage.getItem(LKEY)||'';}catch(e){}
   if(!L.name&&M.leaders.indexOf(saved)>=0)L.name=saved;
-  var h='<div class="card login"><h2>Masuk sebagai leader</h2><p>Pilih nama dan masukkan PIN dari tab Leader di spreadsheet.</p>';
-  if(!M.leaders.length)h+='<div class="notice">'+IC.warn+'<div>Belum ada leader. Isi nama dan PIN di tab <b>Leader</b> pada spreadsheet.</div></div>';
+  var balls='';for(var i=0;i<12;i++){var a=i/12*Math.PI*2;balls+='<circle cx="'+(100+Math.cos(a)*62).toFixed(1)+'" cy="'+(100+Math.sin(a)*62).toFixed(1)+'" r="13" fill="#E2E8F0" stroke="#64748B" stroke-opacity=".5"/>';}
+  var h='<div class="lg2"><div class="lg2-l"><div class="k">PT Takai Seiki Indonesia</div><div><h2>Validasi Laporan Produksi</h2><p>Periksa dan setujui laporan harian member sebelum masuk ke Dashboard.</p></div>'
+    +'<svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="96" fill="#CBD5E1"/><circle cx="100" cy="100" r="78" fill="#3F0A0C"/>'+balls+'<circle cx="100" cy="100" r="46" fill="#CBD5E1"/><circle cx="100" cy="100" r="30" fill="#3F0A0C"/></svg></div>'
+    +'<div class="lg2-r"><h3>Selamat Datang 👋</h3><p class="s">Masuk sebagai leader untuk memvalidasi laporan</p>';
+  if(!M.leaders.length)h+='<div class="notice">'+IC.warn+'<div>Belum ada leader. Isi nama dan PIN di tab <b>Leader</b> (menu Master Data).</div></div>';
   h+='<div class="grid"><div class="f" data-k="lname"><span class="lb">Nama leader</span>'+pickBtn(L.name,'Pilih nama','pickLeader()')+'</div>'
-    +'<label class="f"><span class="lb">PIN</span><input class="in num" id="lpin" type="password" inputmode="numeric" autocomplete="off" onkeydown="if(event.key===\'Enter\')doLogin()"></label>'
+    +'<label class="f"><span class="lb">PIN</span><span class="pinw"><input class="in num" id="lpin" type="password" inputmode="numeric" autocomplete="off" onkeydown="if(event.key===\'Enter\')doLogin()"><button type="button" onclick="var p=$(\'lpin\');p.type=p.type===\'password\'?\'text\':\'password\';this.textContent=p.type===\'password\'?\'Lihat\':\'Sembunyikan\'">Lihat</button></span></label>'
     +(err?'<div class="notice" style="margin-top:0">'+IC.warn+'<div>'+esc(err)+'</div></div>':'')
-    +'<button class="btn" id="btnLogin" style="width:100%;justify-content:center" onclick="doLogin()">Masuk</button></div></div>';
+    +'<button class="btn" id="btnLogin" style="width:100%;justify-content:center" onclick="doLogin()">Masuk <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>'
+    +'<div class="ft">© '+new Date().getFullYear()+' PT Takai Seiki Indonesia · Production Monitoring System</div></div></div>';
   $('app').innerHTML=h;
 }
 function pickLeader(){openPick('Nama leader',opts(M.leaders),L.name,function(v){L.name=v;renderLogin();});}

@@ -85,8 +85,12 @@ export type TodayView = {
   queue: QueueCard[];
   rejected: { member: string; note: string }[];
   missing: string[];
-  topNg: { name: string; qty: number; bar: number }[];
+  topNg: { name: string; qty: number; bar: number; share: number }[];
   expected: number;
+  /** Ringkas untuk kartu dashboard. */
+  stats: { qty: number; ng: number; rate: number | null; ach: number | null; grade: string; target: number; reported: number; waiting: number; qtyTrend: Trend; rateTrend: Trend };
+  /** 7 hari sampai tanggal itu: hasil, NG, NG rate per hari. */
+  trend: { date: string; label: string; qty: number; ng: number; rate: number | null }[];
   kpis: Kpi[];
   detail: Row[];
   lostDetail: Row[];
@@ -164,6 +168,23 @@ export async function buildToday(date: string): Promise<TodayView> {
     missing,
     topNg: topNg(today, master, 5),
     expected: expected.length,
+    stats: {
+      qty: t.qty,
+      ng: t.ng,
+      rate: t.rate,
+      ach: t.ach,
+      grade: String(t.grade),
+      target: st.target,
+      reported,
+      waiting: queue.length,
+      qtyTrend: vs ? trendPct(t.qty, p.qty, vs) : null,
+      rateTrend: vs ? trendPoint(t.rate, p.rate, vs, false, 2) : null,
+    },
+    trend: Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(date, i - 6);
+      const x = totals(facts.filter((f) => f.workDate === d), st);
+      return { date: d, label: formatDateId(d).split(" ").slice(0, 2).join(" "), qty: x.qty, ng: x.ng, rate: x.rate };
+    }),
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int" },
       { label: "NG (pcs)", value: t.ng, format: "int" },
