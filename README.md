@@ -37,7 +37,7 @@ Rumus report: Total Qty = qty normal + qty OT; Rated Hours = (menit normal + men
 ## Environment variable (Vercel → Settings → Environment Variables, atau `.env.local`)
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` = isi file JSON key dari langkah 4 (tempel apa adanya)
-- `SHEET_ID` = ID Google Sheet (bagian URL di antara `/d/` dan `/edit`)
+- `SHEET_ID` = ID Google Sheet (bagian URL di antara `/d/` dan `/edit`). Web app memakai Sheet terpisah dari trial: "Web App - Laporan Produksi QA (Vercel)".
 - `SESSION_SECRET` = string acak panjang
 - `SHEET_URL` (opsional) = link Google Sheet untuk tombol di halaman Admin
 
