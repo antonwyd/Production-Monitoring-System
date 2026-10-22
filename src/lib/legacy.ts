@@ -3,7 +3,7 @@
 // (src/lib/sheets/qa.ts) langsung ke Google Sheet.
 import { PAGE_HTML } from "./legacyPage";
 
-export const APP_VERSION = "v2.9 • Vercel";
+export const APP_VERSION = "v3.0 • Vercel";
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){
@@ -22,6 +22,6 @@ export function renderLegacyPage(boot: { page: string; m?: unknown }) {
     .replace(CALL_V1, CALL_WEB)
     .replace(
       "<head>",
-      `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>Laporan Produksi QA • Takai</title><meta name="theme-color" content="#9b1b1f"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="apple-touch-icon" href="/icon-192.png"><script>window.BOOT=${json};</script>`,
+      `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><title>Laporan Produksi QA • Takai</title><meta name="theme-color" content="#9b1b1f"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png?v=3"><link rel="apple-touch-icon" href="/icon-192.png?v=3"><link rel="manifest" href="/manifest.webmanifest"><script>window.BOOT=${json};</script>`,
     );
 }
