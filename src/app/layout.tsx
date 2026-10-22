@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Laporan Produksi QA",
   description: "Input laporan produksi QA oleh operator, validasi leader, dan report otomatis.",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest-report.webmanifest",
 };
 
 export const viewport: Viewport = {
