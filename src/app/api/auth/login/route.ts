@@ -25,7 +25,10 @@ export async function POST(req: Request) {
     // Akun terhubung ke member bila namanya sama dengan nama di Master Data.
     const master = await loadMaster();
     const member = master.members.find((m) => m.nik === u.nik) ?? master.members.find((m) => m.name === u.name);
-    await createSession({ userId: userId(nik), name: u.name ?? nik, role, area: "", memberId: member ? memberId(member.name) : null });
-    return Response.json({ ok: true, redirect: HOME_BY_ROLE[role] });
+    // Operator mengisi form atas namanya sendiri, jadi namanya harus ada di daftar member Master Data.
+    if (role === "operator" && !member) throw new HttpError(403, `Nama "${u.name}" belum ada di daftar member Master Data. Hubungi admin.`);
+    await createSession({ userId: userId(nik), name: u.name ?? nik, role, area: "", memberId: member ? memberId(member.name) : null, nik });
+    // Login dari halaman form member (/masuk) kembali ke form, apa pun perannya.
+    return Response.json({ ok: true, redirect: body.next === "/" ? "/" : HOME_BY_ROLE[role] });
   });
 }

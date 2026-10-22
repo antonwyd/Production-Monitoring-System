@@ -10,6 +10,7 @@ export type Session = {
   role: Role;
   area: string;
   memberId: number | null;
+  nik?: string;
 };
 
 const COOKIE = "qa_session";
@@ -54,6 +55,7 @@ export async function getSession(): Promise<Session | null> {
       role: payload.role as Role,
       area: (payload.area as string) ?? "",
       memberId: (payload.memberId as number | null) ?? null,
+      nik: (payload.nik as string | undefined) ?? "",
     };
   } catch {
     return null;
