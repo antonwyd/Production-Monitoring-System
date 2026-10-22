@@ -14,7 +14,7 @@ const CALL_WEB = `function call(fn,args,ok,fail){
     .catch(function(){f('Tidak ada koneksi internet. Coba lagi.');});
   return;`;
 const LEADER_BAR = `+'<span style="font-size:12px;color:var(--muted);margin-left:auto">Masuk sebagai`;
-const LEADER_BAR_WEB = `+'<a class="btn ghost" href="/dashboard" style="height:42px;display:inline-flex;align-items:center;text-decoration:none">Dashboard &amp; Report</a>'${LEADER_BAR}`;
+const LEADER_BAR_WEB = `+'<a class="btn ghost" href="/hari-ini" style="height:42px;display:inline-flex;align-items:center;text-decoration:none">Hari Ini &amp; Laporan</a>'${LEADER_BAR}`;
 
 for (const s of [CALL_V1, LEADER_BAR, "%%VERSI%%", "<head>"])
   if (!PAGE_HTML.includes(s)) throw new Error(`legacyPage: penanda "${s}" tidak ditemukan`);

@@ -212,3 +212,31 @@ describe("v1.8: catatan NG Lain-lain", () => {
     expect(rep.tables[1].rows).toEqual([expect.objectContaining({ member: "Harjuki", qty: 4, note: "retak" })]);
   });
 });
+
+describe("tampilan baru: Hari Ini dan Laporan", () => {
+  it("antrian, belum kirim, angka disetujui, dan laporan bulanan", async () => {
+    const { buildToday, buildLaporan, laporanToReport } = await import("@/lib/views");
+    const r1 = await qa.submitReport(payload());
+    const r2 = await qa.submitReport({ ...payload(), member: "Suharyanto", lostTimes: [] });
+
+    const before = await buildToday(DATE);
+    expect(before.queue.map((c) => c.member).sort()).toEqual(["Harjuki", "Suharyanto"]);
+    // Harjuki 450 + 30 = 480 lengkap, Suharyanto 450 menit saja kurang dari 480.
+    expect(before.queue.find((c) => c.member === "Harjuki")!.warnings).toEqual([]);
+    expect(before.queue.find((c) => c.member === "Suharyanto")!.warnings.length).toBeGreaterThan(0);
+
+    await qa.putuskanTanpaPin("Dian Kartika", [r1.id], "ok", "");
+    await qa.putuskanTanpaPin("Dian Kartika", [r2.id], "no", "menit kurang");
+    clearReportCache();
+    const after = await buildToday(DATE);
+    expect(after.queue).toEqual([]);
+    expect(after.rejected).toEqual([{ member: "Suharyanto", note: "menit kurang" }]);
+    expect(after.topNg[0]).toMatchObject({ name: "Kizu", qty: 5 });
+
+    const lap = await buildLaporan({ from: "2026-10-01", to: DATE }, DATE);
+    expect(lap.people.map((p) => p.name)).toEqual(["Harjuki"]);
+    expect(lap.totalNg).toBe(8);
+    expect(lap.month.problems.length).toBeGreaterThan(0);
+    expect(laporanToReport(lap).tables.length).toBeGreaterThan(0);
+  });
+});

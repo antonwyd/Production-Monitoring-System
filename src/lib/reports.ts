@@ -45,7 +45,7 @@ export type ReportParams = {
   partId?: number;
 };
 
-type Fact = {
+export type Fact = {
   workDate: string;
   memberId: number;
   memberName: string;
@@ -72,7 +72,7 @@ type Fact = {
   ng: number[];
 };
 
-type LostFact = { workDate: string; memberId: number; name: string; group: string; minutes: number };
+export type LostFact = { workDate: string; memberId: number; name: string; group: string; minutes: number };
 
 const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
 const ROWS_TTL = 60_000;
@@ -93,7 +93,7 @@ export function clearReportCache() {
   rowsCache.clear();
 }
 
-async function loadFacts(master: MasterData, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {
+export async function loadFacts(master: MasterData, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {
   const raw = await fetchRows(from, to);
   const nikOf = new Map(master.members.map((m) => [m.name, m.nik]));
   const catOf = new Map(master.categories.map((c) => [c.name, c]));
@@ -146,10 +146,10 @@ async function loadFacts(master: MasterData, from: string, to: string, categoryI
   return { facts, lost };
 }
 
-type Agg = { qty: number; ng: number; rated: number; std: number; minNormal: number; minOt: number; count: number };
-const emptyAgg = (): Agg => ({ qty: 0, ng: 0, rated: 0, std: 0, minNormal: 0, minOt: 0, count: 0 });
+export type Agg = { qty: number; ng: number; rated: number; std: number; minNormal: number; minOt: number; count: number };
+export const emptyAgg = (): Agg => ({ qty: 0, ng: 0, rated: 0, std: 0, minNormal: 0, minOt: 0, count: 0 });
 
-function add(a: Agg, f: Fact) {
+export function add(a: Agg, f: Fact) {
   a.qty += f.qty;
   a.ng += f.ng.reduce((x, y) => x + y, 0);
   const rated = (f.minNormal + f.minOt) / 60;
@@ -161,7 +161,7 @@ function add(a: Agg, f: Fact) {
   a.count++;
 }
 
-function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact) => K) {
+export function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact) => K) {
   const m = new Map<K, { first: Fact; agg: Agg }>();
   for (const f of facts) {
     const k = key(f);
@@ -172,7 +172,7 @@ function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact) => K) 
   return m;
 }
 
-function aggCols(a: Agg, st: Settings) {
+export function aggCols(a: Agg, st: Settings) {
   const ach = achievement(a.std, a.rated);
   return {
     qty: a.qty,
@@ -201,21 +201,21 @@ function totalRow(facts: Fact[], st: Settings, label: Row): Row {
   return { ...label, ...aggCols(a, st) };
 }
 
-function lostSplit(lost: LostFact[]) {
+export function lostSplit(lost: LostFact[]) {
   let lt = 0,
     aj = 0;
   for (const l of lost) (l.group === "ANOTHER_JOB" ? (aj += l.minutes) : (lt += l.minutes));
   return { lt, aj };
 }
 
-function ngLabeler(ngGroups: { id: number; codes: string[]; name: string }[]) {
+export function ngLabeler(ngGroups: { id: number; codes: string[]; name: string }[]) {
   return (groupId: number | null, i: number) => {
     const g = ngGroups.find((x) => x.id === groupId);
     return g ? g.codes[i] : `NG${i + 1}`;
   };
 }
 
-function dateRange(from: string, to: string) {
+export function dateRange(from: string, to: string) {
   const out: string[] = [];
   for (let d = from; d <= to && out.length < 400; d = addDays(d, 1)) out.push(d);
   return out;

@@ -62,9 +62,9 @@ export async function getSession(): Promise<Session | null> {
 
 export const HOME_BY_ROLE: Record<Role, string> = {
   operator: "/",
-  leader: "/dashboard",
-  manager: "/dashboard",
-  admin: "/dashboard",
+  leader: "/hari-ini",
+  manager: "/laporan",
+  admin: "/hari-ini",
 };
 
 /** Untuk halaman: arahkan ke login bila belum login atau perannya tidak cocok. */

@@ -1,19 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-600: #1d4ed8;
-  --color-brand-700: #1e40af;
-  --color-brand-900: #172554;
+  /* Merah marun, turunan merah logo TAKAI */
+  --color-brand-50: #f8e8e8;
+  --color-brand-100: #f1d0d1;
+  --color-brand-600: #9b1b1f;
+  --color-brand-700: #7f1519;
+  --color-brand-900: #4a0b0d;
 }
 
 html {
   -webkit-tap-highlight-color: transparent;
 }
 body {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: #f4f6f8;
+  color: #172033;
 }
 
 @utility input {
