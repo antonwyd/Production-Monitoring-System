@@ -861,15 +861,15 @@ function itemHtml(it,ix){
     h+='</div></div>';
   }
   h+='</div>';
-  if(c&&c.machines.length)h+='<div class="f" data-k="mc" style="margin-top:12px"><span class="lb">MC No <span class="req">*</span>'+(it.part?' <small style="font-weight:500;color:var(--muted)">mesin untuk part ini di depan</small>':'')+'</span>'+mcChips(ix)+'</div>';
+  if(c&&c.machines.length)h+='<div class="f" data-k="mc" style="margin-top:12px"><span class="lb">MC No <span class="req">*</span>'+(it.part?' <small style="font-weight:500;color:var(--muted)">mesin yang biasa jalan part ini ditaruh paling depan</small>':'')+'</span>'+mcChips(ix)+'</div>';
   h+='<div class="sub">Hasil kerja</div><div class="grid g2 pairs">';
   var mc=isMc(it);
   h+=pairHtml(ix,IC.gear+'Normal','normalQty',mc?'mcMin':'normalMin',it,mc);
   h+=pairHtml(ix,IC.clk+'Lembur (OT)','otQty',mc?'mcOtMin':'otMin',it,mc);
   h+='</div>';
   h+='<div class="grid g2" style="margin-top:12px">'
-    +'<label class="f"><span class="lb">Lot</span><input class="in" placeholder="Contoh: A1234" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
-    +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
+    +'<label class="f"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Contoh: 312608097" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
+    +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" inputmode="numeric" autocomplete="off" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
   var ngN=c?c.ng:[];
   h+='<button type="button" class="ng-t" onclick="S.items['+ix+'].ngOpen=!S.items['+ix+'].ngOpen;changed();render()"><span>Jumlah NG'+(c&&c.ngGroup?' <span style="color:var(--muted);font-weight:500">• '+esc(c.ngGroup)+'</span>':'')+'</span><span class="tot'+(ngTot?' has':'')+'" id="ngt'+it.id+'">'+(ngTot?fmt(ngTot)+' pcs':'Tidak ada')+'</span></button>';
   if(it.ngOpen){
@@ -940,13 +940,13 @@ function setCat(ix,ci){
 // MC No: mesin yang biasa menjalankan part ini tampil sebagai tombol, mesin lain lewat daftar.
 function mcChips(ix){
   var it=S.items[ix],c=cat(it.category),info=c.mcInfo||{},key=it.part?normPT(it.part+(it.type&&it.type!=='-'?it.type:'')):'',list=[];
-  if(key)c.machines.forEach(function(m){var f=info[m]||{};if(mcRuns(f.main,key))list.push([m,'utama','']);});
-  if(key)c.machines.forEach(function(m){var f=info[m]||{};if(!mcRuns(f.main,key)&&mcRuns(f.alt,key))list.push([m,'ganti type','alt']);});
+  if(key)c.machines.forEach(function(m){var f=info[m]||{};if(mcRuns(f.main,key))list.push([m,'mesin utama','']);});
+  if(key)c.machines.forEach(function(m){var f=info[m]||{};if(!mcRuns(f.main,key)&&mcRuns(f.alt,key))list.push([m,'bisa ganti type','alt']);});
   list=list.slice(0,7);
   if(it.mc&&it.mc!=='-'&&!list.some(function(x){return x[0]===it.mc;}))list.unshift([it.mc,'','']);
   var h='<div class="mcg">';
   list.forEach(function(x){h+='<button type="button" class="'+(it.mc===x[0]?'on':'')+'" onclick="setF('+ix+',\'mc\',\''+esc(x[0])+'\',true)">'+esc(x[0])+(x[1]?'<small class="'+x[2]+'">'+x[1]+'</small>':'')+'</button>';});
-  h+='<button type="button" class="'+(it.mc==='-'?'on':'')+'" onclick="setF('+ix+',\'mc\',\'-\',true)">-<small>tanpa MC</small></button>';
+  h+='<button type="button" class="'+(it.mc==='-'?'on':'')+'" onclick="setF('+ix+',\'mc\',\'-\',true)">-<small>bukan di mesin</small></button>';
   h+='<button type="button" class="more" onclick="pickMc('+ix+')">'+(list.length?'Mesin lain…':'Pilih MC…')+'</button>';
   return h+'</div>';
 }
