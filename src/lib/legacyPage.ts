@@ -336,14 +336,151 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .ngr{transition:border-color .15s ease,background-color .15s ease}
 .btn .spin{animation-duration:.7s}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* ---- Tampilan v4 (form member, mengikuti mockup): header merah, panel putih, layar terpisah untuk edit part & lost time.
+   Field, label, hitungan, dan alur kirim tetap sama ---- */
+:root{--r:14px;--rs:12px;--line:#E4E6EB;--bg:#F4F5F7;--shadow:0 1px 2px rgba(16,24,40,.05),0 2px 8px rgba(16,24,40,.04);--blue:#2563EB;--blue-soft:#EEF4FF;--pink:#FDF0F0}
+.wrap{padding:0 16px 150px}
+.hero{background:var(--red)}
+.hero-in{padding:14px 16px 10px;align-items:center}
+.hero .logo{border-radius:10px;padding:6px 8px}
+.hero img{height:30px}
+.hero h1{font-size:18px}
+.hero-r{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.hero-in .mode{margin-left:0;padding:5px 10px;font-size:12px;border-radius:9px}
+.hlo{display:none;background:none;border:0;color:#fff;padding:2px;cursor:pointer;opacity:.9}
+.hlo.on{display:block}
+@media(max-width:480px){.hero img{height:26px}.hero h1{font-size:16px}.hero-in{padding:12px 16px 8px}}
+/* kartu Tanggal & Nama member di pita merah */
+.band{padding:6px 16px 30px}
+.idrow{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px}
+.idc{display:flex;align-items:center;gap:10px;border-radius:var(--r);padding:10px 12px;min-height:62px;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22)}
+.idc>svg{flex:none;opacity:.95}
+.idc .tx{min-width:0;flex:1}
+.idc small{font-size:11.5px;opacity:.85}
+.idc input,.idc b{font-size:15.5px}
+.idc input{min-width:0}
+div.idc{cursor:default}div.idc:active{transform:none}
+/* panel putih bergaris lengkung di atas pita merah */
+.pane{position:relative;margin:-18px -16px 0;padding:14px 16px 0;background:var(--bg);border-radius:22px 22px 0 0}
+.pane>.notice:first-child,.pane>#existing:first-child .notice{margin-top:0}
+#existing .notice{background:var(--warn-soft);border:1px solid #F7DDBA;margin-top:0;margin-bottom:12px}
+#existing .notice.ok{background:var(--ok-soft);border-color:#C9EBDB}
+#existing:empty{display:none}
+.subs{margin-top:0}
+#hist{margin-bottom:12px}
+.subrow{background:#fff;border-color:var(--line)}
+/* meter 480 menit */
+.meter{margin-top:0;border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow)}
+.mt-top2{display:flex;align-items:flex-start;gap:12px}
+.mt-ic{flex:none;width:40px;height:40px;border-radius:11px;background:#FFF4E5;color:#E58A1F;display:grid;place-items:center}
+.mt-ic.ok{background:var(--ok-soft);color:var(--ok)}
+.mt-l{flex:1;min-width:0}
+.mt-l span{display:block;font-size:14px;font-weight:700}
+.mt-l b{font-size:24px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.mt-l b em{font-style:normal;font-size:16px;font-weight:700;color:var(--ink)}
+.mt-r{text-align:right;flex:none}
+.mt-r small{display:block;font-size:12px;color:var(--muted)}.mt-r small b{color:var(--ink)}
+.mt-r .st{display:block;margin-top:8px;font-size:14px;font-weight:800}
+.mt-bar{height:10px;margin:12px 0 10px}
+.mt-bar .l{background:#F2A7AA}
+.mt-leg{gap:6px 14px;font-size:12px;color:var(--ink2)}
+.mt-leg span::before{border-radius:3px}
+.mt-leg span.s::before{background:#D5D9E0}
+.mt-leg b{font-weight:700}
+/* judul bagian */
+.sec-h{margin:22px 2px 10px}
+.sec-h h2{font-size:13px;letter-spacing:.06em;color:var(--ink);font-weight:800}
+.sec-h .cnt{font-size:12.5px}
+.card{border-radius:var(--r);box-shadow:var(--shadow)}
+/* daftar part */
+.pcard{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+.pcard.invalid{border-color:var(--red)}
+.pc-h{display:flex;align-items:center;gap:12px;padding:12px 12px 10px 14px;cursor:pointer;min-height:64px}
+.pc-h .badge{width:38px;height:38px;border-radius:10px;font-size:15px}
+.pc-h .ttl{flex:1;min-width:0}
+.pc-h .ttl b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-h .ttl small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.pc-h>svg{flex:none;color:var(--muted)}
+.pc-a{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 12px 12px}
+.pc-a button{height:42px;border-radius:11px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13.5px;color:var(--ink2);display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer}
+.pc-a button.dl{color:var(--ink2)}.pc-a button.dl svg{color:var(--red)}
+.add{height:54px;border-radius:var(--r);background:#fff;border:1.5px dashed #C3C8D1;color:var(--ink);font-size:15.5px}
+.add:hover{border-color:var(--red)}
+/* daftar lost time */
+.ltl{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line2);cursor:pointer}
+.ltl:last-of-type{border-bottom:0}
+.ltl .tx{flex:1;min-width:0}.ltl .tx b{display:block;font-size:15px}.ltl .tx small{display:block;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ltl .mn{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ltl .mn.no{color:var(--warn)}
+.ltl>svg{flex:none;color:var(--muted)}
+.ltcard{padding:6px 14px 14px}
+.ltcard .add{margin-top:6px;height:50px}
+/* layar penuh edit part / lost time */
+.scr{position:fixed;inset:0;z-index:30;background:#fff;display:none;flex-direction:column}
+.scr.open{display:flex}
+.scr-h{background:var(--red);color:#fff;display:flex;align-items:center;gap:8px;padding:10px 8px calc(10px);padding-top:calc(10px + env(safe-area-inset-top));flex:none}
+.scr-h h2{flex:1;margin:0;font-size:19px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr-h button{width:44px;height:44px;border:0;background:none;color:#fff;display:grid;place-items:center;cursor:pointer;border-radius:12px}
+.scr-h button:active{background:rgba(255,255,255,.15)}
+.scr-b{flex:1;overflow:auto;padding:14px 16px 24px;max-width:760px;width:100%;margin:0 auto;-webkit-overflow-scrolling:touch}
+.scr-f{flex:none;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:#fff}
+.scr-f .btn{width:100%;justify-content:center;max-width:728px;margin:0 auto;display:flex}
+.scr .lb{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:8px}
+.scr .lb small{font-weight:500;color:var(--muted)}
+.ltb>.f+.f,.scr .gap{margin-top:16px}
+.pair .grid.g2{align-items:end}
+.idc input::-webkit-calendar-picker-indicator{display:none}
+.idrow{grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:8px}.idc{padding:10px;gap:8px}.idc>svg{width:22px;height:22px}.idc input{font-size:14.5px;letter-spacing:-.01em}
+#existing{margin-bottom:12px}#existing .notice{margin-bottom:10px}
+/* kategori: 2 kolom, centang di yang dipilih */
+.cchips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cchips button{min-height:46px;border-radius:12px;padding:6px 12px;font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;text-align:left;line-height:1.2}
+.cchips button.on{background:var(--pink);border-color:var(--red);color:var(--red-d);box-shadow:none}
+.cchips button .ck{flex:none;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center}
+.in,.pick{height:50px;border-radius:var(--rs);font-size:15.5px}
+.pick:disabled{background:#F1F3F6}
+.in:focus,.pick:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(155,27,31,.12)}
+.seg button{height:44px;border-radius:11px}
+.mcg button{min-height:52px}
+.sub{margin:20px 0 10px;font-size:14px;color:var(--ink);font-weight:800}
+.sub::after{display:none}
+.pairs{grid-template-columns:1fr 1fr;gap:10px}
+.pair{border:1px solid #F5D3D4;background:var(--pink);border-radius:var(--rs);padding:12px 10px}
+.pair .ph{font-size:15px;font-weight:800;color:var(--red-d);justify-content:flex-start;gap:7px;align-items:center;margin-bottom:10px}
+.pair.ot{background:var(--blue-soft);border-color:#D6E3FD}.pair.ot .ph{color:var(--blue)}
+.pair .grid.g2{gap:6px}
+.pair .lb{font-size:12.5px;font-weight:500;color:var(--ink2);margin-bottom:5px;font-weight:600}
+.pair .in{height:46px;padding:0 10px;background:#fff}
+.ng-t{min-height:54px;border-radius:var(--rs);border:1px solid var(--line);background:#fff;font-size:15px;font-weight:700;margin-top:16px}
+.ngr{border-radius:var(--rs);min-height:54px}
+.stp button{width:42px;height:42px;border-radius:11px}
+.stp input{height:42px;width:60px;font-size:16px}
+/* lost time editor */
+.dur{display:grid;grid-template-columns:52px minmax(0,1fr) 64px 52px;gap:8px;align-items:center}
+.dur button{height:52px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-size:24px;font-weight:500;color:var(--ink2);cursor:pointer}
+.dur button.pl{color:var(--red)}
+.dur input{height:52px;border:1.5px solid var(--line);border-radius:12px;text-align:center;font-size:20px;font-weight:700;outline:none;width:100%;font-variant-numeric:tabular-nums}
+.dur input:focus{border-color:var(--red)}
+.dur span{height:52px;border-radius:12px;background:var(--line2);display:grid;place-items:center;font-weight:600;color:var(--ink2)}
+.scr textarea.in{min-height:90px}
+.qchips{margin-top:0}
+.qchips button{min-height:44px;border-radius:99px;padding:0 16px;font-size:14px;color:var(--ink);font-weight:500}
+.qchips button.on{background:var(--pink);border-color:var(--red);color:var(--red-d);font-weight:700}
+.scr .notice{margin:0 0 16px;border:1px solid #F7DDBA}
+.scr .notice.ok{border-color:#C9EBDB}
+/* bar bawah */
+.bar{box-shadow:0 -6px 20px rgba(16,24,40,.06)}
+.bar-in{padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.btn{height:52px;border-radius:14px;font-size:15.5px}
+@media(max-width:380px){.btn{padding:0 14px;font-size:14.5px}.bar-sum b{font-size:13px}.mt-l b{font-size:21px}.pc-a button{font-size:12.5px;gap:5px}.pair{padding:10px 8px}.pair .in{padding:0 8px}}
+@media(min-width:640px){.cchips{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 <header class="hero">
   <div class="hero-in">
-    <div class="logo"><img src="data:image/png;base64,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" alt="Takai"></div>
+    <div class="logo"><img src="/logo-tki.png" alt="Takai"></div>
     <div class="t"><h1 id="hTitle">Laporan Produksi QA</h1><p id="hSub">Quality Assurance • Input harian</p><small class="ver">%%VERSI%%</small></div>
-    <a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a>
+    <div class="hero-r"><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
   </div>
   <div class="accent"></div>
 </header>
@@ -367,6 +504,12 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
   </div>
 </div>
+
+<section class="scr" id="scr" role="dialog" aria-modal="true">
+  <div class="scr-h"><button type="button" aria-label="Kembali" onclick="scrBack()"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg></button><h2 id="scrT"></h2><button type="button" id="scrDel" aria-label="Hapus" onclick="scrDel()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></div>
+  <div class="scr-b" id="scrB"></div>
+  <div class="scr-f"><button type="button" class="btn" id="scrOk" onclick="scrSave()"></button></div>
+</section>
 
 <div class="ov" id="pickOv" onclick="if(event.target===this)closePick()">
   <div class="sheet">
@@ -411,6 +554,15 @@ var DRAFT_KEY = 'qa-draft-v1', MEMBER_KEY = 'qa-member-v1';
 var ME=(window.BOOT&&BOOT.user)||null,LOCK=!!(ME&&ME.lock);
 function keluar(){if(!confirm('Keluar dari akun '+ME.name+'?'))return;fetch('/api/auth/logout',{method:'POST'}).then(function(){location.href='/masuk';},function(){location.href='/masuk';});}
 var IC = {
+  cal:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg>',
+  user:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  clock:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  clk:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  gear:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  edit:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  right:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  ck:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+
   chev:'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   dn:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   copy:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
@@ -494,19 +646,18 @@ function loadDraft(){try{var d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null
 function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch(e){}}
 
 /* ---------- render ---------- */
+var EDP=null,EDL=null; // part / lost time yang sedang dibuka di layar edit
 function render(){
   var h='';
-  h+='<div class="band">';
-  if(ME&&!LOCK)h+='<div class="who">Masuk sebagai <b>'+esc(ME.name)+'</b><button type="button" onclick="keluar()">Keluar</button></div>';
-  h+='<div class="idrow">';
-  h+='<label class="idc" data-k="date"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onchange="S.date=this.value;this.parentNode.classList.remove(\'err\');changed(true)"></label>';
-  if(LOCK)h+='<div class="idc me" data-k="member"><span class="av">'+esc(inisial(ME.name))+'</span><div class="nm"><small>NIK '+esc(ME.nik)+'</small><b>'+esc(ME.name)+'</b></div><button type="button" onclick="keluar()">Keluar</button></div>';
-  else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></button>';
-  h+='</div><div id="existing"></div><div id="hist" class="subs"></div><div class="meter" id="meter"></div></div>';
+  h+='<div class="band"><div class="idrow">';
+  h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="S.date=this.value;this.closest(\'.idc\').classList.remove(\'err\');changed(true)"></div></label>';
+  if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
+  else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
+  h+='</div></div><div class="pane"><div id="existing"></div><div class="meter" id="meter"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
-  S.items.forEach(function(it,ix){h+=itemHtml(it,ix);});
+  S.items.forEach(function(it,ix){h+=partCard(it,ix);});
   h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button>';
   if(mcItems().length){
     autoOp();
@@ -518,27 +669,98 @@ function render(){
       +'</div></div>';
   }
 
-  h+='<div class="sec-h" id="ltSec"><h2>Lost time / Another job</h2><span class="cnt">'+(S.lost.length?S.lost.length+' catatan':'wajib bila waktu kerja kurang dari '+M.normalMin+' menit')+'</span></div>';
-  h+='<div class="card"><div id="ltGap"></div>';
-  if(!S.lost.length)h+='<div class="empty">Belum ada lost time.</div>';
-  if(S.lost.some(function(l){return l.auto;}))h+='<p class="hint" style="margin:0 0 4px">5S, Briefing Pagi, dan Input Laporan sudah terisi otomatis. Ubah menitnya bila berbeda.</p>';
+  h+='<div class="sec-h" id="ltSec"><h2>Lost time / Another job</h2><span class="cnt">'+(S.lost.length?S.lost.length+' catatan':'0 catatan')+'</span></div>';
+  h+='<div class="card ltcard">'+(EDL==null?'<div id="ltGap" style="padding-top:8px"></div>':'');
+  if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.</div>';
+  if(S.lost.some(function(l){return l.auto;}))h+='<p class="hint" style="margin:8px 0 0">5S, Briefing Pagi, dan Input Laporan sudah terisi otomatis. Ubah menitnya bila berbeda.</p>';
   S.lost.forEach(function(l,ix){
     var grp=(M.lostGroups||{})[l.type]||'';
-    h+='<div class="lt-row" id="lt'+l.id+'"><div class="lt-top">'
-      +'<div class="f" data-k="type">'+pickBtn(l.type,'Pilih jenis','pickLt('+ix+')')+(grp?'<span class="tag'+(/^lost/i.test(grp)?' lt':'')+'">'+esc(grp)+'</span>':'')+'</div>'
-      +'</div><div class="lt-bot"><div class="stp" data-k="minutes"><button type="button" aria-label="Kurangi 5 menit" onclick="stepLt('+ix+',-5)">&minus;</button><input id="lti'+l.id+'" inputmode="decimal" placeholder="mnt" value="'+esc(l.minutes)+'" oninput="S.lost['+ix+'].minutes=this.value;S.lost['+ix+'].auto=false;changed()"><button type="button" class="pl" aria-label="Tambah 5 menit" onclick="stepLt('+ix+',5)">+</button></div>'
-      +'<input class="in" placeholder="Keterangan (opsional)" value="'+esc(l.remarks)+'" oninput="S.lost['+ix+'].remarks=this.value;changed()">'
-      +'<button class="icon-btn" title="Hapus" onclick="S.lost.splice('+ix+',1);changed();render()">'+IC.del+'</button></div>'
-      +'</div>';
+    h+='<div class="ltl" id="lt'+l.id+'" onclick="openLtEd('+ix+')"><div class="tx"><b>'+esc(l.type||'Pilih jenis')+'</b><small>'+esc([grp,l.remarks].filter(Boolean).join(' • ')||'Ketuk untuk mengubah')+'</small></div>'
+      +'<span class="mn'+(n(l.minutes)?'':' no')+'">'+(n(l.minutes)?fmt(n(l.minutes))+' mnt':'– mnt')+'</span>'+IC.right+'</div>';
   });
-  h+='<button class="add" style="height:48px;margin-top:'+(S.lost.length?'14':'0')+'px" onclick="S.lost.push(newLt());changed();render()">'+IC.plus+' Tambah lost time</button>';
-  var qk=quickLt();
-  if(qk.length)h+='<div class="qchips"><span class="qh">Sering dipakai</span>'+qk.map(function(i){return '<button type="button" onclick="addLt('+i+')">+ '+esc(M.lostTypes[i])+'</button>';}).join('')+'</div>';
-  h+='</div>';
+  h+='<button class="add" onclick="S.lost.push(newLt());changed();openLtEd(S.lost.length-1)">'+IC.plus+' Tambah lost time</button>';
+  h+='</div></div>';
   $('app').innerHTML=h;
+  renderScr();
   updateBar();
   checkExisting();
   loadHist();
+}
+function partCard(it,ix){
+  return '<div class="pcard" id="li'+it.id+'"><div class="pc-h" onclick="openPart('+ix+')"><div class="badge">'+(ix+1)+'</div>'
+    +'<div class="ttl"><b>'+esc(it.part||'Part baru')+(it.type&&it.type!=='-'?' <span style="color:var(--muted);font-weight:600">'+esc(it.type)+'</span>':'')+'</b><small>'+esc(itemSummary(it))+'</small></div>'+IC.right+'</div>'
+    +'<div class="pc-a"><button type="button" onclick="dupItem('+ix+')">'+IC.copy+' Salin</button><button type="button" onclick="openPart('+ix+')">'+IC.edit+' Edit</button><button type="button" class="dl" onclick="delItem('+ix+')">'+IC.del+' Hapus</button></div></div>';
+}
+/* ---------- layar edit part / lost time ---------- */
+function openPart(ix){EDP=ix;EDL=null;render();$('scrB').scrollTop=0;}
+function openLtEd(ix){EDL=ix;EDP=null;render();$('scrB').scrollTop=0;}
+function renderScr(){
+  var s=$('scr'),b=$('scrB');
+  if(EDP!=null&&!S.items[EDP])EDP=null;
+  if(EDL!=null&&!S.lost[EDL])EDL=null;
+  if(EDP==null&&EDL==null){if(s.classList.contains('open')){s.classList.remove('open');document.body.style.overflow='';}return;}
+  var st=s.classList.contains('open')?b.scrollTop:0;
+  s.classList.add('open');document.body.style.overflow='hidden';
+  if(EDP!=null){$('scrT').textContent='Tambah / Edit Part';$('scrOk').textContent='Simpan part';b.innerHTML=itemHtml(S.items[EDP],EDP);}
+  else{$('scrT').textContent='Tambah Lost Time';$('scrOk').textContent='Simpan lost time';b.innerHTML=ltBody(EDL);}
+  b.scrollTop=st;
+}
+function ltBody(ix){
+  var l=S.lost[ix],grp=(M.lostGroups||{})[l.type]||'',h='<div class="ltb"><div id="ltGap"></div>';
+  h+='<div class="f" data-k="type"><span class="lb">Kategori Lost Time <span class="req">*</span></span>'+pickBtn(l.type,'Pilih jenis','pickLt('+ix+')')+(grp?'<span class="tag'+(/^lost/i.test(grp)?' lt':'')+'">'+esc(grp)+'</span>':'')+'</div>';
+  h+='<div class="f" data-k="minutes"><span class="lb">Durasi <span class="req">*</span></span><div class="dur"><button type="button" aria-label="Kurangi 5 menit" onclick="stepLt('+ix+',-5)">&minus;</button>'
+    +'<input id="lti'+l.id+'" inputmode="decimal" placeholder="0" value="'+esc(l.minutes)+'" oninput="S.lost['+ix+'].minutes=this.value;S.lost['+ix+'].auto=false;this.closest(\'.f\').classList.remove(\'err\');changed()"><span>mnt</span>'
+    +'<button type="button" class="pl" aria-label="Tambah 5 menit" onclick="stepLt('+ix+',5)">+</button></div></div>';
+  h+='<label class="f"><span class="lb">Keterangan <small>(opsional)</small></span><textarea class="in" placeholder="Tuliskan keterangan…" oninput="S.lost['+ix+'].remarks=this.value;changed()">'+esc(l.remarks)+'</textarea></label>';
+  var qk=quickLt(),cur=M.lostTypes.indexOf(l.type);
+  if(cur>=0)qk=[cur].concat(qk.filter(function(i){return i!==cur;}));
+  if(qk.length)h+='<div class="f gap"><span class="lb">Sering dipakai</span><div class="qchips">'+qk.map(function(i){return '<button type="button" class="'+(i===cur?'on':'')+'" onclick="setLtType('+ix+','+i+')">'+(i===cur?'':'+ ')+esc(M.lostTypes[i])+'</button>';}).join('')+'</div></div>';
+  return h+'</div>';
+}
+function setLtType(ix,i){var l=S.lost[ix];l.type=M.lostTypes[i];l.auto=false;changed();render();}
+function scrClose(){EDP=null;EDL=null;changed();render();}
+function scrBack(){
+  if(EDL!=null){var l=S.lost[EDL];if(l&&!l.type&&!n(l.minutes)&&!String(l.remarks||'').trim())S.lost.splice(EDL,1);}
+  scrClose();
+}
+function scrMark(key,msg){
+  var el=$('scrB').querySelector('[data-k="'+key+'"]');
+  if(el){el.classList.add('err');el.scrollIntoView({behavior:'smooth',block:'center'});}
+  toast(msg);
+}
+// Cek satu part saat Simpan part (aturan sama dengan validasi saat kirim).
+function itemErr(it){
+  var c=cat(it.category),p=partOf(c,it.part);
+  if(!it.category)return ['category','Kategori belum dipilih'];
+  if(!it.part)return ['part','Part belum dipilih'];
+  if(p&&p.types.length&&!it.type)return ['type','Type belum dipilih'];
+  if(c&&c.machines.length&&!it.mc)return ['mc','MC No belum dipilih (pilih - bila tidak pakai mesin)'];
+  if(!n(it.normalQty)&&!n(it.otQty))return ['normalQty','Qty normal atau OT belum diisi'];
+  if(isMc(it)){
+    if(n(it.normalQty)&&!n(it.mcMin))return ['mcMin','Menit MC jalan (normal) belum diisi'];
+    if(n(it.otQty)&&!n(it.mcOtMin))return ['mcOtMin','Menit MC jalan (OT) belum diisi'];
+  } else {
+    if(n(it.normalQty)&&!n(it.normalMin))return ['normalMin','Menit normal belum diisi'];
+    if(n(it.otQty)&&!n(it.otMin))return ['otMin','Menit OT belum diisi'];
+  }
+  var ob=uraiOiban(it.oiban);if(ob.err)return ['oiban',ob.err];
+  var li=lainIdx(c);if(li>=0&&n(it.ng[li])&&!String(it.ngNote||'').trim()){it.ngOpen=true;return ['ngNote','NG Lain-lain diisi, tulis catatan jenis NG-nya'];}
+  return null;
+}
+function scrSave(){
+  if(EDP!=null){
+    var e=itemErr(S.items[EDP]);
+    if(e){render();scrMark(e[0],e[1]);return;}
+  } else if(EDL!=null){
+    var l=S.lost[EDL];
+    if(!l.type){scrMark('type','Pilih kategori lost time');return;}
+    if(!n(l.minutes)){scrMark('minutes','Isi durasi (menit)');return;}
+  }
+  scrClose();
+}
+function scrDel(){
+  if(EDP!=null){if(delItem(EDP))scrClose();return;}
+  if(EDL!=null){if(!confirm('Hapus lost time ini?'))return;S.lost.splice(EDL,1);scrClose();}
 }
 function pickBtn(val,ph,onclick,disabled){
   return '<button type="button" class="pick" '+(disabled?'disabled ':'')+'onclick="'+onclick+'"><span'+(val?'':' class="ph"')+'>'+esc(val||ph)+'</span>'+IC.dn+'</button>';
@@ -554,16 +776,10 @@ function itemSummary(it){
 function itemHtml(it,ix){
   var c=cat(it.category), p=partOf(c,it.part), types=p?p.types:[];
   var ngTot=it.ng.reduce(function(a,b){return a+n(b);},0);
-  var h='<div class="card item'+(it.open?'':' closed')+'" id="it'+it.id+'">';
-  h+='<div class="item-h" onclick="toggleItem('+ix+')"><div class="badge">'+(ix+1)+'</div>'
-    +'<div class="ttl"><b>'+esc(it.part||'Part baru')+(it.type&&it.type!=='-'?' <span style="color:var(--muted);font-weight:600">'+esc(it.type)+'</span>':'')+'</b><small>'+esc(itemSummary(it))+'</small></div>'
-    +'<button class="icon-btn" title="Duplikat (kategori sama)" onclick="event.stopPropagation();dupItem('+ix+')">'+IC.copy+'</button>'
-    +(S.items.length>1?'<button class="icon-btn" title="Hapus" onclick="event.stopPropagation();delItem('+ix+')">'+IC.del+'</button>':'')
-    +'<span class="icon-btn">'+IC.chev+'</span></div>';
-  h+='<div class="item-b">';
-  h+='<div class="f" data-k="category" style="margin-top:12px"><span class="lb">Kategori <span class="req">*</span></span>';
+  var h='<div class="itb" id="it'+it.id+'"><div>';
+  h+='<div class="f" data-k="category"><span class="lb">Kategori <span class="req">*</span></span>';
   if(M.categories.length<=12){
-    h+='<div class="cchips">'+M.categories.map(function(x,ci){return '<button type="button" class="'+(x.name===it.category?'on':'')+'" onclick="setCat('+ix+','+ci+')">'+esc(x.name)+'</button>';}).join('')+'</div>';
+    h+='<div class="cchips">'+M.categories.map(function(x,ci){var on=x.name===it.category;return '<button type="button" class="'+(on?'on':'')+'" onclick="setCat('+ix+','+ci+')">'+(on?'<span class="ck">'+IC.ck+'</span>':'')+esc(x.name)+'</button>';}).join('')+'</div>';
   } else h+=pickBtn(it.category,'Pilih kategori','pickCat('+ix+')');
   h+='</div>';
   h+='<div class="grid'+(p&&types.length?' g2':'')+'" style="margin-top:12px">';
@@ -577,12 +793,12 @@ function itemHtml(it,ix){
   if(c&&c.machines.length)h+='<div class="f" data-k="mc" style="margin-top:12px"><span class="lb">MC No <span class="req">*</span>'+(it.part?' <small style="font-weight:500;color:var(--muted)">mesin untuk part ini di depan</small>':'')+'</span>'+mcChips(ix)+'</div>';
   h+='<div class="sub">Hasil kerja</div><div class="grid g2 pairs">';
   var mc=isMc(it);
-  h+=pairHtml(ix,'Normal','normalQty',mc?'mcMin':'normalMin',it,mc);
-  h+=pairHtml(ix,'Lembur (OT)','otQty',mc?'mcOtMin':'otMin',it,mc);
+  h+=pairHtml(ix,IC.gear+'Normal','normalQty',mc?'mcMin':'normalMin',it,mc);
+  h+=pairHtml(ix,IC.clk+'Lembur (OT)','otQty',mc?'mcOtMin':'otMin',it,mc);
   h+='</div>';
   h+='<div class="grid g2" style="margin-top:12px">'
-    +'<label class="f"><span class="lb">Lot</span><input class="in" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
-    +'<label class="f" data-k="oiban"><span class="lb">Oiban <small style="font-weight:500;color:var(--muted)">contoh 1-6, 8</small></span><input class="in" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
+    +'<label class="f"><span class="lb">Lot</span><input class="in" placeholder="Contoh: A1234" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
+    +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
   var ngN=c?c.ng:[];
   h+='<button type="button" class="ng-t" onclick="S.items['+ix+'].ngOpen=!S.items['+ix+'].ngOpen;changed();render()"><span>Jumlah NG'+(c&&c.ngGroup?' <span style="color:var(--muted);font-weight:500">• '+esc(c.ngGroup)+'</span>':'')+'</span><span class="tot'+(ngTot?' has':'')+'" id="ngt'+it.id+'">'+(ngTot?fmt(ngTot)+' pcs':'Tidak ada')+'</span></button>';
   if(it.ngOpen){
@@ -603,7 +819,7 @@ function itemHtml(it,ix){
   return h;
 }
 function pairHtml(ix,title,q,m,it,mc){
-  return '<div class="pair"><div class="ph">'+title+'</div><div class="grid g2">'
+  return '<div class="pair'+(q==='otQty'?' ot':'')+'"><div class="ph">'+title+'</div><div class="grid g2">'
     +'<label class="f" data-k="'+q+'"><span class="lb">Hasil (pcs)</span><input class="in num" inputmode="numeric" value="'+esc(it[q])+'" oninput="setF('+ix+',\''+q+'\',this.value)"></label>'
     +'<label class="f" data-k="'+m+'"><span class="lb">'+(mc?'Menit MC jalan':'Menit kerja')+'</span><input class="in num" inputmode="decimal" value="'+esc(it[m])+'" oninput="setF('+ix+',\''+m+'\',this.value)"></label>'
     +'</div></div>';
@@ -618,7 +834,8 @@ function setF(ix,k,v,rerender){
   S.items[ix][k]=v;changed();
   if(rerender){render();return;}
   var it=S.items[ix],el=$('it'+it.id);
-  if(el){el.querySelector('.ttl small').textContent=itemSummary(it);var f=el.querySelector('[data-k="'+k+'"]');if(f)f.classList.remove('err');}
+  var sm=$('li'+it.id);sm=sm&&sm.querySelector('.ttl small');if(sm)sm.textContent=itemSummary(it);
+  if(el){var f=el.querySelector('[data-k="'+k+'"]');if(f)f.classList.remove('err');}
 }
 function setNg(ix,k,v){
   var it=S.items[ix];it.ng[k]=v;changed();
@@ -665,19 +882,16 @@ function mcChips(ix){
 function toggleItem(ix){S.items[ix].open=!S.items[ix].open;changed();render();}
 function addItem(){
   var last=S.items[S.items.length-1];
-  S.items.forEach(function(i){i.open=false;});
-  S.items.push(newItem(last?last.category:''));changed();render();
-  setTimeout(function(){var el=$('it'+S.items[S.items.length-1].id);el&&el.scrollIntoView({behavior:'smooth',block:'start'});},30);
+  S.items.push(newItem(last?last.category:''));changed();openPart(S.items.length-1);
 }
 function dupItem(ix){
   var src=S.items[ix],it=newItem(src.category);it.mc=src.mc;
-  S.items.forEach(function(i){i.open=false;});
-  S.items.splice(ix+1,0,it);changed();render();toast('Part baru dengan kategori '+(src.category||'sama')+' ditambahkan');
-  setTimeout(function(){var el=$('it'+it.id);el&&el.scrollIntoView({behavior:'smooth',block:'start'});},30);
+  S.items.splice(ix+1,0,it);changed();openPart(ix+1);toast('Part baru dengan kategori '+(src.category||'sama')+' ditambahkan');
 }
 function delItem(ix){
-  if(!confirm('Hapus part #'+(ix+1)+'?'))return;
-  S.items.splice(ix,1);changed();render();
+  if(!confirm(S.items.length>1?'Hapus part #'+(ix+1)+'?':'Kosongkan part #1?'))return false;
+  if(S.items.length>1)S.items.splice(ix,1);else S.items=[newItem('')];
+  changed();render();return true;
 }
 function updateBar(){
   var q=0,ng=0,m=0,o=0,lt=0,bs=$('btnSend');if(bs&&bs.firstChild)bs.firstChild.textContent=S.editId?'Simpan perubahan ':'Periksa & kirim ';
@@ -700,17 +914,17 @@ function updateBar(){
 function drawMeter(m,lt,o,hasWork){
   var el=$('meter');if(!el)return;
   var N=M.normalMin,tot=m+lt,rest=N-tot,sc=Math.max(N,tot)||1;
-  var st=!hasWork?'<span class="st" style="color:var(--muted)">belum diisi</span>':rest===0?'<span class="st okc">pas</span>':'<span class="st wc">'+(rest>0?'kurang '+fmt(rest):'lebih '+fmt(-rest))+'</span>';
-  el.innerHTML='<div class="mt-top"><span style="font-weight:600">Waktu kerja hari ini</span><span><b class="v'+(hasWork&&rest!==0?' wc':hasWork?' okc':'')+'">'+fmt(tot)+'</b> / '+N+' menit · '+st+'</span></div>'
+  var st=!hasWork?'<span class="st" style="color:var(--muted)">Belum diisi</span>':rest===0?'<span class="st okc">Lengkap</span>':'<span class="st wc">'+(rest>0?'Kurang '+fmt(rest):'Lebih '+fmt(-rest))+' menit</span>';
+  el.innerHTML='<div class="mt-top2"><span class="mt-ic'+(hasWork&&rest===0?' ok':'')+'">'+IC.clock+'</span><div class="mt-l"><span>Waktu kerja hari ini</span><b class="'+(hasWork&&rest!==0?'wc':hasWork?'okc':'')+'">'+fmt(tot)+'</b><b><em> / '+N+' menit</em></b></div>'
+    +'<div class="mt-r"><small>Target <b>'+N+'</b> menit</small>'+st+'</div></div>'
     +'<div class="mt-bar"><i class="p" style="width:'+(m/sc*100)+'%"></i><i class="l" style="width:'+(lt/sc*100)+'%"></i></div>'
-    +'<div class="mt-leg"><span>Produksi '+fmt(m)+'</span><span class="l">Lost time '+fmt(lt)+'</span>'+(o?'<span style="color:var(--ink2)">Lembur '+fmt(o)+' menit</span>':'')+'</div>';
+    +'<div class="mt-leg"><span>Produksi <b>'+fmt(m)+'</b> menit</span><span class="l">Lost time <b>'+fmt(lt)+'</b> menit</span><span class="s">'+(rest<0?'Lebih':'Sisa')+' <b>'+fmt(Math.abs(rest))+'</b> menit</span>'+(o?'<span style="color:var(--ink2)">Lembur '+fmt(o)+' menit</span>':'')+'</div>';
 }
 function gapMinutes(){var m=workMin(),lt=0;S.lost.forEach(function(l){lt+=n(l.minutes);});return M.normalMin-m-lt;}
 function fillGap(rest){
-  var empty=S.lost.filter(function(l){return !n(l.minutes);})[0];
-  if(empty)empty.minutes=String(rest);else{var l=newLt();l.minutes=String(rest);S.lost.push(l);}
-  changed();render();
-  setTimeout(function(){var el=$('ltSec');el&&el.scrollIntoView({behavior:'smooth',block:'start'});},30);
+  var ix=-1;S.lost.forEach(function(l,i){if(ix<0&&!n(l.minutes))ix=i;});
+  if(ix>=0)S.lost[ix].minutes=String(rest);else{var l=newLt();l.minutes=String(rest);S.lost.push(l);ix=S.lost.length-1;}
+  changed();openLtEd(ix);
   toast('Pilih jenis lost time untuk '+fmt(rest)+' menit');
 }
 var existTimer=null,existCache={};
@@ -909,7 +1123,9 @@ function validate(){
     if(mcF.some(function(i){return n(i.normalQty);})&&!n(S.op.min))mark(null,'opMin','Waktu kerja operator di mesin (normal) belum diisi');
     if(mcF.some(function(i){return n(i.otQty);})&&!n(S.op.ot))mark(null,'opOt','Waktu kerja operator di mesin (OT) belum diisi');
   }
+  var ltFirst=null;
   S.lost.forEach(function(l,ix){
+    if((!l.type||!n(l.minutes))&&ltFirst==null)ltFirst=ix;
     if(!l.type)errs.push('Lost time #'+(ix+1)+': jenis belum dipilih');
     if(!n(l.minutes))errs.push('Lost time #'+(ix+1)+': menit belum diisi');
   });
@@ -922,9 +1138,11 @@ function validate(){
     return null;
   }
   if(errs.length){
+    if(first&&first.sel!=null){EDP=first.sel;EDL=null;}else if(!first&&ltFirst!=null){EDL=ltFirst;EDP=null;}
     render();
+    if(!first&&ltFirst!=null){var lt=S.lost[ltFirst];first={sel:null,key:!lt.type?'type':'minutes'};}
     if(first){
-      var root=first.sel==null?document:$('it'+S.items[first.sel].id);
+      var root=first.sel==null?(EDL!=null?$('scrB'):document):$('it'+S.items[first.sel].id);
       var el=root&&root.querySelector('[data-k="'+first.key+'"]');
       if(el){el.classList.add('err');el.scrollIntoView({behavior:'smooth',block:'center'});}
     }
@@ -961,19 +1179,21 @@ function openReview(){
   $('rvBody').innerHTML=h;$('btnConfirm').textContent=S.editId?'Simpan perubahan':'Kirim laporan';$('revOv').classList.add('open');
 }
 function closeReview(){$('revOv').classList.remove('open');}
+var SENDING=false;
 function send(){
+  if(SENDING)return; // cegah kiriman dobel karena tombol diketuk berkali-kali
   var items=validate();if(!items){closeReview();return;}
-  var b=$('btnConfirm');b.disabled=true;b.innerHTML='<span class="spin"></span> Mengirim…';
+  var b=$('btnConfirm');SENDING=true;b.disabled=true;b.innerHTML='<span class="spin"></span> Mengirim…';
   var payload={date:S.date,member:S.member,
     items:items.map(function(it){var o={category:it.category,part:it.part,type:it.type,mc:it.mc,normalQty:it.normalQty,normalMin:it.normalMin,otQty:it.otQty,otMin:it.otMin,lot:it.lot,oiban:it.oiban,ng:it.ng};if(String(it.ngNote||'').trim()&&lainIdx(cat(it.category))>=0&&n(it.ng[lainIdx(cat(it.category))]))o.ngNote=String(it.ngNote).trim();if(isMc(it)){o.mcMin=it.mcMin;o.mcOtMin=it.mcOtMin;}return o;}),
     lostTimes:S.lost.map(function(l){return {type:l.type,minutes:l.minutes,remarks:l.remarks};}),replaceId:S.editId||''};
   if(items.some(isMc))payload.op={min:S.op.min,ot:S.op.ot};
   call('submitReport',[payload],function(r){
-    b.disabled=false;b.textContent='Kirim laporan';closeReview();clearDraft();HIST.member='';
+    SENDING=false;b.disabled=false;b.textContent='Kirim laporan';closeReview();clearDraft();HIST.member='';
     $('doneMsg').textContent=r.replaced?'Perubahan kiriman '+S.member+' sudah disimpan dan tetap menunggu validasi leader.':r.prod+' part dan '+r.lt+' lost time untuk '+S.member+' sudah terkirim dan menunggu validasi leader. Data masuk ke Dashboard setelah disetujui.';
     S.editId='';HIST.list=null;existCache={};
     $('app').style.display='none';$('bar').style.display='none';$('done').style.display='block';window.scrollTo(0,0);
-  },function(msg){b.disabled=false;b.textContent='Kirim laporan';toast('Gagal mengirim: '+msg);});
+  },function(msg){SENDING=false;b.disabled=false;b.textContent='Kirim laporan';toast('Gagal mengirim: '+msg);});
 }
 function newReport(otherMember){
   S=freshState(!otherMember);saveDraft();
@@ -992,6 +1212,7 @@ function startMember(){
     var d=loadDraft();
     S=d||freshState(false);
     if(LOCK&&S.member!==ME.name)S=freshState(false); // draf milik member lain di HP yang sama tidak dipakai
+    if(ME)$('hLogout').classList.add('on');
     if(LOCK){var ob=document.querySelector('#done .btn.ghost');if(ob)ob.style.display='none';}
     if(d&&(d.items.some(function(i){return i.part;})||d.lost.length))setTimeout(function(){toast('Isian terakhir yang belum terkirim dipulihkan');},300);
     $('bar').style.display='block';render();
