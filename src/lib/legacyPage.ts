@@ -8,9 +8,9 @@ export const PAGE_HTML: string = String.raw`<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>QA Production</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:400 800;font-display:swap;src:url(/fonts/plus-jakarta-sans-latin.woff2) format('woff2')}
 :root{
   --red:#9B1B1F; --red-d:#7F1519; --red-soft:#F8E8E8; --green:#166534; --green-soft:#DCFCE7;
   --ink:#16181D; --ink2:#4A4F5A; --muted:#8A909C; --line:#E7E8EC; --line2:#F0F1F4;
@@ -543,6 +543,43 @@ body.mem #btnSend{position:relative;overflow:hidden;isolation:isolate;background
 body.mem .done .ck{width:96px;height:96px;animation:pop .5s cubic-bezier(.2,.9,.3,1.2) both}
 @media(max-width:380px){.hm-n b{font-size:38px}.pc-h .pm b{font-size:15px}}
 @media(prefers-reduced-motion:reduce){#sFill.ok::after{display:none}}
+/* ---- Tipografi v4.7 (mengikuti desain C): skala huruf sederhana 12/13/14/15/16/20, berat 500-800 ---- */
+body.mem{font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;letter-spacing:0}
+body.mem .hero h1{font-size:18px;font-weight:800;letter-spacing:-.01em}
+body.mem .hero .ver{font-size:12px;font-weight:500}
+body.mem .idc small{font-size:12px;font-weight:500}
+body.mem .idc input,body.mem .idc b{font-size:16px;font-weight:700;letter-spacing:0}
+body.mem .hm-l small{font-size:14px;font-weight:500}
+body.mem .hm-n b{font-size:40px;font-weight:800;letter-spacing:-.02em}
+body.mem .hm-n span{font-size:16px;font-weight:600}
+body.mem .hm-r{font-size:13px}body.mem .hm-r b{font-size:16px;font-weight:700}
+body.mem .hm-leg{font-size:12px}
+body.mem .sec-h h2{font-size:13px;font-weight:700;letter-spacing:.06em;color:#5F6170}
+body.mem .sec-h .cnt{font-size:13px;font-weight:500}
+body.mem .pc-h .ttl b{font-size:15px;font-weight:700;letter-spacing:0}
+body.mem .pc-h .ttl small{font-size:13px;font-weight:500}
+body.mem .pc-h .badge{font-size:15px;font-weight:800}
+body.mem .pc-h .pm b{font-size:16px;font-weight:800}body.mem .pc-h .pm small{font-size:12px}
+body.mem .pc-a button{font-size:13px;font-weight:600}
+body.mem .add{font-size:15px;font-weight:700}
+body.mem .ltl .tx b{font-size:15px;font-weight:700}body.mem .ltl .tx small{font-size:13px}
+body.mem .ltl .mn{font-size:15px;font-weight:800}
+body.mem .notice{font-size:14px;line-height:1.5}
+body.mem .subrow{font-size:14px}
+body.mem .bar-sum small{font-size:12px;font-weight:500}body.mem .bar-sum b{font-size:14px;font-weight:700}
+body.mem .btn{font-size:15px;font-weight:700;letter-spacing:0}
+body.mem .scr-h h2{font-size:18px;font-weight:800;letter-spacing:-.01em}
+body.mem .scr .lb{font-size:14px;font-weight:700}
+body.mem .lb{font-size:13px;font-weight:600}
+body.mem .pair .lb{font-size:12px;font-weight:600}
+body.mem .pair .ph{font-size:15px;font-weight:700}
+body.mem .in,body.mem .pick{font-size:16px;font-weight:500}
+body.mem .cchips button{font-size:14px;font-weight:600}
+body.mem .qchips button{font-size:14px;font-weight:600}
+body.mem .dur input{font-size:20px;font-weight:700}
+body.mem .hint,body.mem small.ob-i{font-size:13px}
+body.mem .done h2{font-size:22px;font-weight:800}body.mem .done p{font-size:15px}
+@media(max-width:380px){body.mem .hm-n b{font-size:36px}body.mem .hero h1{font-size:17px}}
 </style>
 </head>
 <body>
