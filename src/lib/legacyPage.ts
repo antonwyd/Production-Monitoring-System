@@ -805,7 +805,7 @@ function itemErr(it){
   if(!it.category)return ['category','Kategori belum dipilih'];
   if(!it.part)return ['part','Part belum dipilih'];
   if(p&&p.types.length&&!it.type)return ['type','Type belum dipilih'];
-  if(c&&c.machines.length&&!it.mc)return ['mc','MC No belum dipilih (pilih - bila tidak pakai mesin)'];
+  if(c&&c.machines.length&&(!it.mc||it.mc==='-'))return ['mc','MC No belum dipilih'];
   if(!n(it.normalQty)&&!n(it.otQty))return ['normalQty','Qty normal atau OT belum diisi'];
   if(isMc(it)){
     if(n(it.normalQty)&&!n(it.mcMin))return ['mcMin','Menit MC jalan (normal) belum diisi'];
@@ -946,7 +946,6 @@ function mcChips(ix){
   if(it.mc&&it.mc!=='-'&&!list.some(function(x){return x[0]===it.mc;}))list.unshift([it.mc,'','']);
   var h='<div class="mcg">';
   list.forEach(function(x){h+='<button type="button" class="'+(it.mc===x[0]?'on':'')+'" onclick="setF('+ix+',\'mc\',\''+esc(x[0])+'\',true)">'+esc(x[0])+(x[1]?'<small class="'+x[2]+'">'+x[1]+'</small>':'')+'</button>';});
-  h+='<button type="button" class="'+(it.mc==='-'?'on':'')+'" onclick="setF('+ix+',\'mc\',\'-\',true)">-<small>bukan di mesin</small></button>';
   h+='<button type="button" class="more" onclick="pickMc('+ix+')">'+(list.length?'Mesin lain…':'Pilih MC…')+'</button>';
   return h+'</div>';
 }
@@ -1158,7 +1157,7 @@ function pickMc(ix){
     if(alt.length)o.push({head:'Bisa dipakai '+pt+' (ganti type)'}),o=o.concat(alt);
     o.push({head:'Mesin lain'});
   }
-  o=o.concat(other).concat([{value:'-',label:'-',sub:'Tidak pakai mesin'}]);
+  o=o.concat(other);
   openPick('MC No • '+c.name,o,it.mc,function(v){S.items[ix].mc=v;changed();render();});
 }
 function pickLt(ix){
@@ -1186,7 +1185,7 @@ function validate(){
     if(!it.category)mark(ix,'category',L+'kategori belum dipilih',ix);
     else if(!it.part)mark(ix,'part',L+'part belum dipilih',ix);
     else if(p&&p.types.length&&!it.type)mark(ix,'type',L+'type belum dipilih',ix);
-    if(c&&c.machines.length&&it.part&&!it.mc)mark(ix,'mc',L+'MC No belum dipilih (pilih - bila tidak pakai mesin)',ix);
+    if(c&&c.machines.length&&it.part&&(!it.mc||it.mc==='-'))mark(ix,'mc',L+'MC No belum dipilih',ix);
     if(!n(it.normalQty)&&!n(it.otQty))mark(ix,'normalQty',L+'qty normal atau OT belum diisi',ix);
     if(isMc(it)){
       if(n(it.normalQty)&&!n(it.mcMin))mark(ix,'mcMin',L+'menit MC jalan (normal) belum diisi',ix);
