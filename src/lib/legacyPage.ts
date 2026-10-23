@@ -740,6 +740,8 @@ function render(){
   h+='<div class="card ltcard">'+(EDL==null?'<div id="ltGap" style="padding-top:8px"></div>':'');
   if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.</div>';
   if(S.lost.some(function(l){return l.auto;}))h+='<p class="hint" style="margin:8px 0 0">5S, Briefing Pagi, dan Input Laporan sudah terisi otomatis. Ubah menitnya bila berbeda.</p>';
+  else if(DROPPED===S.date+'|'+S.member&&!S.lost.some(function(l){return DEF_LT.some(function(d){return d[0]===l.type;});}))
+    h+='<div class="notice ok" style="margin:10px 0 4px"><div style="flex:1">5S, Briefing Pagi, dan Input Laporan sudah tercatat di kiriman sebelumnya hari ini, jadi tidak diisi lagi agar tidak dobel.<br><button class="btn ghost sm-btn" onclick="tambahDefLt()">'+IC.plus+' Tetap tambahkan</button></div></div>';
   S.lost.forEach(function(l,ix){
     var grp=(M.lostGroups||{})[l.type]||'';
     h+='<div class="ltl" id="lt'+l.id+'" onclick="openLtEd('+ix+')"><div class="tx"><b>'+esc(l.type||'Pilih jenis')+'</b><small>'+esc([grp,l.remarks].filter(Boolean).join(' • ')||'Ketuk untuk mengubah')+'</small></div>'
@@ -1037,10 +1039,14 @@ function checkExisting(force){
 }
 
 // Bila hari itu member sudah kirim, lost time harian otomatis tidak diisi lagi.
+var DROPPED='';
+function tambahDefLt(){S.lost=S.lost.concat(defLost().map(function(l){l.auto=false;return l;}));DROPPED='';changed();render();}
 function dropAuto(r){
-  var sudah=r.lt>0||(r.subs||[]).some(function(x){return x.status!=='Ditolak';});
-  if(!sudah||!S.lost.some(function(l){return l.auto;}))return false;
+  var sudah=r.lt>0||(r.subs||[]).some(function(x){return x.status!=='Ditolak';}),key=S.date+'|'+S.member;
+  if(sudah&&!S.lost.some(function(l){return l.auto;})){if(DROPPED===key)return false;DROPPED=key;render();return true;}
+  if(!sudah){if(!DROPPED||S.lost.some(function(l){return l.auto;}))return false;DROPPED='';var add=defLost().filter(function(d){return !S.lost.some(function(l){return l.type===d.type;});});if(!add.length)return false;S.lost=add.concat(S.lost);saveDraft();render();return true;}
   S.lost=S.lost.filter(function(l){return !l.auto;});
+  DROPPED=S.date+'|'+S.member;
   saveDraft();render();
   toast('5S, briefing, dan input laporan sudah ada di kiriman sebelumnya, jadi tidak diisi lagi');
   return true;
