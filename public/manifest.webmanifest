@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Form Produksi QA",
-  "short_name": "Form QA",
+  "name": "QA Production",
+  "short_name": "QA Production",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

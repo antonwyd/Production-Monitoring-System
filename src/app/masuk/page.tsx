@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
 import LoginForm from "../login/LoginForm";
 
-export const metadata: Metadata = { title: "Masuk · Form Produksi QA", manifest: "/manifest.webmanifest" };
+export const metadata: Metadata = { title: "Masuk · QA Production", manifest: "/manifest.webmanifest" };
 
 const STEPS = [
   { t: "Isi laporan", d: "Part, qty, NG & lost time" },
@@ -24,7 +24,7 @@ export default async function MasukPage() {
             <span className="rounded-full border border-brand-600/20 bg-brand-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-700 lg:text-xs">Quality Assurance</span>
           </div>
           <h1 className="mt-6 text-[1.7rem] font-extrabold leading-tight text-slate-900 lg:mt-14 lg:text-5xl">
-            Laporan Produksi <span className="text-brand-600">QA</span>
+            <span className="text-brand-600">QA</span> Production
           </h1>
           <div className="mt-3 h-1 w-12 rounded-full bg-brand-600 lg:mt-5 lg:h-1.5 lg:w-20" />
           <p className="mt-3 max-w-md text-sm text-slate-600 lg:mt-5 lg:text-lg">Masuk dengan NIK untuk mengisi laporan harian Anda.</p>
