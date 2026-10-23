@@ -7,7 +7,7 @@ export const PAGE_HTML: string = String.raw`<!DOCTYPE html>
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Laporan Produksi QA</title>
+<title>QA Production</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
@@ -478,6 +478,9 @@ div.idc{cursor:default}div.idc:active{transform:none}
 body.mem{--dk:#1C1D22;--dk2:#2A2B31;--dk3:#3A3B44;--soft:#C7C8D0}
 body.mem .hero{background:var(--dk)}
 body.mem .hero .accent{display:none}
+body.mem .hero .logo{background:none;padding:0;border-radius:0}
+body.mem .hero img{height:40px}
+@media(max-width:480px){body.mem .hero img{height:34px}}
 body.mem .hero p{color:var(--soft)}
 body.mem .hero .ver{color:#9A9CA8}
 body.mem .band{background:var(--dk);box-shadow:0 0 0 100vmax var(--dk);padding:4px 16px 34px}
@@ -546,7 +549,7 @@ body.mem .done .ck{width:96px;height:96px;animation:pop .5s cubic-bezier(.2,.9,.
 <header class="hero">
   <div class="hero-in">
     <div class="logo"><img src="/logo-tki.png" alt="Takai"></div>
-    <div class="t"><h1 id="hTitle">Laporan Produksi QA</h1><p id="hSub">Quality Assurance • Input harian</p><small class="ver">%%VERSI%%</small></div>
+    <div class="t"><h1 id="hTitle">QA Production</h1><p id="hSub">Quality Assurance • Input harian</p><small class="ver">%%VERSI%%</small></div>
     <div class="hero-r"><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
   </div>
   <div class="accent"></div>
@@ -1296,7 +1299,7 @@ function startMember(){
       var isi=S.items.some(function(i){return i.part;})||S.lost.some(function(l){return !l.auto;});
       if(!isi)S=freshState(true);else{S.date=M.today;setTimeout(function(){toast('Tanggal diganti ke hari ini. Ubah bila laporan ini untuk tanggal lain.');},600);}
     }
-    document.body.classList.add('mem');
+    document.body.classList.add('mem');var lg=document.querySelector('.hero .logo img');if(lg)lg.src='/logo-tki-dark.png';
     if(ME)$('hLogout').classList.add('on');
     if(LOCK){var ob=document.querySelector('#done .btn.ghost');if(ob)ob.style.display='none';}
     if(d&&(d.items.some(function(i){return i.part;})||d.lost.length))setTimeout(function(){toast('Isian terakhir yang belum terkirim dipulihkan');},300);
