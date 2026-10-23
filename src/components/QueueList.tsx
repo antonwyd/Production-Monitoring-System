@@ -13,6 +13,7 @@ export default function QueueList({ cards, canDecide }: { cards: QueueCard[]; ca
   const [msg, setMsg] = useState("");
   const [toast, setToast] = useState<{ kind: ToastKind; title: string; text?: string } | null>(null);
   const complete = cards.filter((c) => !c.warnings.length);
+  const [dlg, setDlg] = useState<{ kind: "reject"; id: string; who: string } | { kind: "approveAll" } | null>(null);
 
   async function decide(ids: string[], action: "ok" | "no", note = "") {
     setBusy(true);
@@ -35,15 +36,29 @@ export default function QueueList({ cards, canDecide }: { cards: QueueCard[]; ca
   }
 
   function reject(id: string) {
-    const note = window.prompt("Alasan penolakan (akan dilihat member):");
-    if (note === null) return;
-    if (!note.trim()) return setMsg("Alasan penolakan wajib diisi.");
-    decide([id], "no", note.trim());
+    const c = cards.find((x) => x.id === id);
+    setDlg({ kind: "reject", id, who: c ? c.member : "" });
   }
 
   return (
     <section className="card anim-in lift" style={{ animationDelay: ".26s" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {dlg && (
+        <ConfirmDialog
+          danger={dlg.kind === "reject"}
+          title={dlg.kind === "reject" ? "Tolak laporan ini?" : `Setujui ${complete.length} laporan?`}
+          text={dlg.kind === "reject" ? dlg.who : "Laporan yang lengkap akan masuk ke sheet dan report."}
+          okLabel={dlg.kind === "reject" ? "Tolak" : "Setujui"}
+          inputLabel={dlg.kind === "reject" ? "Alasan penolakan (akan dilihat member)" : undefined}
+          onCancel={() => setDlg(null)}
+          onOk={(note) => {
+            const d = dlg;
+            setDlg(null);
+            if (d.kind === "reject") decide([d.id], "no", note);
+            else decide(complete.map((c) => c.id), "ok");
+          }}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
         <h2 className="text-lg font-bold">
           Menunggu validasi <span className="text-orange-700">({cards.length})</span>
@@ -52,7 +67,7 @@ export default function QueueList({ cards, canDecide }: { cards: QueueCard[]; ca
           <button
             className="btn-primary ml-auto min-h-11 w-full sm:w-auto"
             disabled={busy}
-            onClick={() => window.confirm(`Setujui ${complete.length} laporan yang lengkap?`) && decide(complete.map((c) => c.id), "ok")}
+            onClick={() => setDlg({ kind: "approveAll" })}
           >
             {busyId === "*" && <span className="spinner" aria-hidden />}
             Setujui semua yang lengkap ({complete.length})
@@ -117,5 +132,41 @@ export default function QueueList({ cards, canDecide }: { cards: QueueCard[]; ca
         </div>
       ))}
     </section>
+  );
+}
+
+// Pop-up konfirmasi sendiri, pengganti confirm()/prompt() bawaan browser yang menampilkan nama domain.
+function ConfirmDialog({ title, text, okLabel, danger, inputLabel, onOk, onCancel }: { title: string; text?: string; okLabel: string; danger?: boolean; inputLabel?: string; onOk: (note: string) => void; onCancel: () => void }) {
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
+  const ok = () => {
+    if (inputLabel && !note.trim()) return setErr("Wajib diisi");
+    onOk(note.trim());
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-5 backdrop-blur-[2px] anim-fade" role="dialog" aria-modal="true" onClick={(e) => e.target === e.currentTarget && onCancel()} onKeyDown={(e) => e.key === "Escape" && onCancel()}>
+      <div className="anim-pop w-full max-w-sm rounded-[22px] bg-white px-5 pb-5 pt-6 text-center shadow-2xl">
+        <div className={`mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl ${danger ? "bg-red-50 text-brand-600" : "bg-emerald-50 text-emerald-700"}`}>
+          {danger ? (
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+          )}
+        </div>
+        <h3 className="text-lg font-extrabold text-slate-900">{title}</h3>
+        {text && <p className="mt-1.5 text-sm text-slate-600">{text}</p>}
+        {inputLabel && (
+          <label className="mt-4 block text-left">
+            <span className="mb-1.5 block text-[13px] font-semibold text-slate-600">{inputLabel}</span>
+            <textarea autoFocus rows={3} value={note} onChange={(e) => { setNote(e.target.value); setErr(""); }} placeholder="Contoh: menit kerja belum sesuai" className="w-full resize-none rounded-xl border-[1.5px] border-slate-200 px-3 py-2.5 text-base outline-none focus:border-brand-600 focus:ring-4 focus:ring-red-100" />
+            <small className="mt-1 block min-h-4 text-xs font-semibold text-brand-600">{err}</small>
+          </label>
+        )}
+        <div className="mt-5 grid grid-cols-2 gap-2.5">
+          <button type="button" onClick={onCancel} className="h-12 rounded-2xl border-[1.5px] border-slate-200 bg-white font-bold text-slate-900 transition active:scale-[.97]">Batal</button>
+          <button type="button" autoFocus={!inputLabel} onClick={ok} className={`h-12 rounded-2xl font-bold text-white shadow-lg transition active:scale-[.97] ${danger ? "bg-brand-600 shadow-red-900/20" : "bg-emerald-700 shadow-emerald-900/20"}`}>{okLabel}</button>
+        </div>
+      </div>
+    </div>
   );
 }
