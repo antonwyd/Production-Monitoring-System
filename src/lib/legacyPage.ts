@@ -708,7 +708,7 @@ function oibanInfo(text){
 function savedMember(){if(LOCK)return ME.name;try{var m=localStorage.getItem(MEMBER_KEY)||'';return M.members.indexOf(m)>=0?m:'';}catch(e){return '';}}
 function saveMember(m){try{localStorage.setItem(MEMBER_KEY,m);}catch(e){}
 }
-function saveDraft(){try{localStorage.setItem(DRAFT_KEY,JSON.stringify(S));}catch(e){}}
+function saveDraft(){try{if(M&&M.today)S.savedOn=M.today;localStorage.setItem(DRAFT_KEY,JSON.stringify(S));}catch(e){}}
 function loadDraft(){try{var d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(d&&d.items){d.op=d.op||{min:'',ot:'',auto:true};d.items.forEach(function(i){uid=Math.max(uid,i.id);if(i.mcMin===undefined){i.mcMin=i.normalMin;i.mcOtMin=i.otMin;}});(d.lost||[]).forEach(function(i){uid=Math.max(uid,i.id);});return d;}}catch(e){}return null;}
 function clearDraft(){try{localStorage.removeItem(DRAFT_KEY);}catch(e){}}
 
@@ -1291,6 +1291,11 @@ function startMember(){
     var d=loadDraft();
     S=d||freshState(false);
     if(LOCK&&S.member!==ME.name)S=freshState(false); // draf milik member lain di HP yang sama tidak dipakai
+    // draf dari hari sebelumnya: tanggal kembali ke hari ini (kecuali sedang mengedit kiriman lama)
+    if(d&&S===d&&!S.editId&&S.savedOn!==M.today&&S.date!==M.today){
+      var isi=S.items.some(function(i){return i.part;})||S.lost.some(function(l){return !l.auto;});
+      if(!isi)S=freshState(true);else{S.date=M.today;setTimeout(function(){toast('Tanggal diganti ke hari ini. Ubah bila laporan ini untuk tanggal lain.');},600);}
+    }
     document.body.classList.add('mem');
     if(ME)$('hLogout').classList.add('on');
     if(LOCK){var ob=document.querySelector('#done .btn.ghost');if(ob)ob.style.display='none';}
