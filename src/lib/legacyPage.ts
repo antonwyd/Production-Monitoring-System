@@ -580,6 +580,49 @@ body.mem .dur input{font-size:20px;font-weight:700}
 body.mem .hint,body.mem small.ob-i{font-size:13px}
 body.mem .done h2{font-size:22px;font-weight:800}body.mem .done p{font-size:15px}
 @media(max-width:380px){body.mem .hm-n b{font-size:36px}body.mem .hero h1{font-size:17px}}
+/* ---- v4.8: gaya desain A (putih + merah): header putih, logo merah, cincin waktu kerja, tanpa biru ---- */
+body.mem .hero{background:#fff;color:var(--ink);border-bottom:1px solid #ECECF1}
+body.mem .hero h1{color:var(--ink)}
+body.mem .hero p,body.mem .hero .ver{color:var(--muted)}
+body.mem .hlo{color:var(--ink2)}
+body.mem .hero-in .mode{color:var(--red);border-color:#E9C5C7}
+body.mem .hero img{height:34px}
+body.mem .band{background:#fff;box-shadow:0 0 0 100vmax #fff;padding:12px 16px 30px;color:var(--ink)}
+body.mem .idc{background:#fff;border:1px solid #E5E6EB;color:var(--ink);box-shadow:0 1px 2px rgba(20,20,30,.04)}
+body.mem .idc>svg{color:var(--red)}
+body.mem .idc small{color:var(--muted)}
+body.mem .idc input,body.mem .idc b,body.mem .band .idc input,body.mem .band .idc b{color:var(--ink);-webkit-text-fill-color:var(--ink)}
+body.mem .idc b.ph{color:var(--muted);-webkit-text-fill-color:var(--muted)}
+body.mem .pane{padding-top:16px}
+body.mem .pane .meter{background:#fff;border:0;border-radius:22px;padding:18px;box-shadow:0 1px 2px rgba(20,20,30,.04),0 8px 24px rgba(20,20,30,.06);margin-bottom:14px}
+.rg{display:flex;align-items:center;gap:18px}
+.rg-c{position:relative;width:116px;height:116px;flex:none}
+.rg-c svg{width:116px;height:116px;display:block}
+.rg-c circle{fill:none;stroke-width:12}
+.rg-t{stroke:#F3E6E7}
+.rg-p{stroke:#B5121B;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)}
+.rg-l{stroke:#EBA5AA;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1)}
+.rg-n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.rg-n b{font-size:28px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.rg-n small{font-size:12px;color:var(--muted);margin-top:5px;font-weight:500}
+.rg-i{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.rg-i>small{font-size:13px;font-weight:600;color:var(--muted)}
+.rg-i>b{font-size:20px;font-weight:800;letter-spacing:-.01em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.rg-i>b.kr{color:var(--red)}.rg-i>b.ok{color:var(--green)}.rg-i>b.lb2{color:var(--red-d)}
+.rg-i>b svg{width:20px;height:20px}
+.rg-leg{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--ink2)}
+.rg-leg b{color:var(--ink);font-weight:700}
+.rg-leg span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:4px;background:#B5121B;margin-right:8px}
+.rg-leg span.l::before{background:#EBA5AA}.rg-leg span.o::before{background:#8A909C}
+@media(max-width:370px){.rg{gap:12px}.rg-c,.rg-c svg{width:100px;height:100px}.rg-n b{font-size:24px}.rg-i>b{font-size:17px}}
+/* lembur: tanpa biru, abu netral */
+body.mem .pair.ot{background:#F6F6F8;border-color:#E5E6EB}
+body.mem .pair.ot .ph{color:var(--ink)}
+/* tombol kirim merah, progres 480 sebagai garis putih di dasar tombol */
+body.mem #btnSend{background:#B5121B;box-shadow:0 8px 20px rgba(181,18,27,.25)}
+#sFill,#sFill.ok,#sFill.ov{top:auto;bottom:0;height:4px;z-index:1;background:rgba(255,255,255,.55)}
+#sFill.ok{background:#fff}
+#sFill.ok::after{display:none}
 </style>
 </head>
 <body>
@@ -760,7 +803,7 @@ function render(){
   h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="S.date=this.value;this.closest(\'.idc\').classList.remove(\'err\');changed(true)"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
-  h+='</div><div class="meter" id="meter"></div></div><div class="pane"><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
+  h+='</div></div><div class="pane"><div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
@@ -1024,16 +1067,20 @@ function updateBar(){
 // Meter waktu kerja: menit produksi + lost time dibanding waktu kerja normal (480).
 function drawMeter(m,lt,o,hasWork){
   var el=$('meter');if(!el)return;
-  var N=M.normalMin,tot=m+lt,rest=N-tot,sc=Math.max(N,tot)||1;
-  if(!el.querySelector('.hm-bar'))el.innerHTML='<div class="hm"><div class="hm-l"><small>Waktu kerja hari ini</small><div class="hm-n"><b id="hmN"></b><span id="hmT"></span></div></div><div class="hm-r"><b id="hmTot"></b> / '+N+'</div></div>'
-    +'<div class="hm-bar"><i class="p" id="hmP"></i><i class="l" id="hmL"></i></div><div class="hm-leg" id="hmLeg"></div>';
-  var nb=$('hmN');
-  if(!hasWork||rest>0){nb.textContent=fmt(hasWork?rest:N);nb.className='';$('hmT').textContent='menit lagi';}
-  else if(rest===0){nb.textContent=fmt(N);nb.className='ok';$('hmT').textContent='menit, lengkap';}
-  else{nb.textContent='+'+fmt(-rest);nb.className='ov';$('hmT').textContent='menit kelebihan';}
-  $('hmTot').textContent=fmt(tot);
-  $('hmP').style.width=(m/sc*100)+'%';$('hmL').style.width=(lt/sc*100)+'%';
-  $('hmLeg').innerHTML='<span>Produksi <b>'+fmt(m)+'</b> menit</span><span class="l">Lost time <b>'+fmt(lt)+'</b> menit</span>'+(o?'<span class="o">Lembur <b>'+fmt(o)+'</b> menit</span>':'');
+  var N=M.normalMin,tot=m+lt,rest=N-tot,C=326.7;
+  if(!el.querySelector('.rg'))el.innerHTML='<div class="rg"><div class="rg-c"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" class="rg-t"/><circle cx="60" cy="60" r="52" class="rg-l" id="rgL" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/><circle cx="60" cy="60" r="52" class="rg-p" id="rgP" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/></svg>'
+    +'<div class="rg-n"><b id="rgTot">0</b><small>/ '+N+' menit</small></div></div>'
+    +'<div class="rg-i"><small>Waktu kerja hari ini</small><b id="rgSt"></b><div class="rg-leg" id="rgLeg"></div></div></div>';
+  var sc=Math.max(N,tot)||1,pp=Math.min(1,m/sc),lp=Math.min(1,(m+lt)/sc);
+  $('rgP').style.strokeDashoffset=(C*(1-pp)).toFixed(1);
+  $('rgL').style.strokeDashoffset=(C*(1-lp)).toFixed(1);
+  $('rgTot').textContent=fmt(tot);
+  var st=$('rgSt');
+  if(!hasWork){st.textContent='Belum diisi';st.className='';}
+  else if(rest===0){st.innerHTML=IC.ck+' Lengkap';st.className='ok';}
+  else if(rest>0){st.textContent='Kurang '+fmt(rest)+' menit';st.className='kr';}
+  else{st.textContent='Lebih '+fmt(-rest)+' menit';st.className='lb2';}
+  $('rgLeg').innerHTML='<span>Produksi <b>'+fmt(m)+'</b> mnt</span><span class="l">Lost time <b>'+fmt(lt)+'</b> mnt</span>'+(o?'<span class="o">Lembur <b>'+fmt(o)+'</b> mnt</span>':'');
 }
 function gapMinutes(){var m=workMin(),lt=0;S.lost.forEach(function(l){lt+=n(l.minutes);});return M.normalMin-m-lt;}
 function fillGap(rest){
@@ -1336,7 +1383,7 @@ function startMember(){
       var isi=S.items.some(function(i){return i.part;})||S.lost.some(function(l){return !l.auto;});
       if(!isi)S=freshState(true);else{S.date=M.today;setTimeout(function(){toast('Tanggal diganti ke hari ini. Ubah bila laporan ini untuk tanggal lain.');},600);}
     }
-    document.body.classList.add('mem');var lg=document.querySelector('.hero .logo img');if(lg)lg.src='/logo-tki-dark.png';
+    document.body.classList.add('mem');
     if(ME)$('hLogout').classList.add('on');
     if(LOCK){var ob=document.querySelector('#done .btn.ghost');if(ob)ob.style.display='none';}
     if(d&&(d.items.some(function(i){return i.part;})||d.lost.length))setTimeout(function(){toast('Isian terakhir yang belum terkirim dipulihkan');},300);
