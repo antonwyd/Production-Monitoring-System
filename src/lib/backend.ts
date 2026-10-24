@@ -86,6 +86,8 @@ export type RawSubmission = {
 
 export type RawRows = {
   cols: string[];
+  /** Waktu (ms) isi sheet ini dibaca dari Google; bisa lebih lama dari permintaan karena cache. */
+  at?: number;
   // date, member, category, part, type, normalQty, normalMin, otQty, otMin, lot, oiban, mc, ng1..ng10, stki
   prod: (string | number)[][];
   // date, member, type, minutes, remarks
