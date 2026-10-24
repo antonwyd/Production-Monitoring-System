@@ -119,7 +119,7 @@ describe("form member → leader → report", () => {
 
     const dash = await buildReport("dashboard", { from: DATE, to: DATE }, DATE);
     expect(dash.kpis[0].value).toBe(14920);
-    expect(dash.kpis.find((k) => k.label === "NG (PPM)")!.hint).toBe("16 pcs NG");
+    expect(dash.kpis.find((k) => k.label === "NG rate")!.hint).toBe("16 pcs NG");
     const daily = await buildReport("daily", { date: DATE }, DATE);
     expect(daily.tables[0].rows.find((x) => x.member === "Harjuki")!.status).toBe("Disetujui");
     const ngType = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);

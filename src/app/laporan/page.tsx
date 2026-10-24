@@ -104,7 +104,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                 <tr className="text-left">
                   <th className={TH}>Per kategori</th>
                   <th className={`${TH} text-right`}>Hasil (pcs)</th>
-                  <th className={`${TH} text-right`}>NG (PPM)</th>
+                  <th className={`${TH} text-right`}>NG rate</th>
                   <th className={`${TH} text-right`}>Achievement</th>
                   <th className={`${TH} text-center`}>Grade</th>
                 </tr>
@@ -114,7 +114,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                   <tr key={c.name}>
                     <td className={`${TD} font-semibold`}>{c.name}</td>
                     <td className={`${TD} text-right`}>{n0(c.qty)}</td>
-                    <td className={`${TD} text-right ${(c.ngPpm ?? 0) > master.settings.ngPpmMax ? "font-semibold text-brand-600" : ""}`}>{c.ngPpm == null ? "-" : n0(c.ngPpm)}</td>
+                    <td className={`${TD} text-right ${(c.ngRate ?? 0) > master.settings.ngPpmMax / 1e6 ? "font-semibold text-brand-600" : ""}`}>{c.ngRate == null ? "-" : `${(c.ngRate * 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`}</td>
                     <td className={`${TD} text-right font-semibold ${c.ach != null && c.ach * 100 < master.settings.target ? "text-brand-600" : ""}`}>{pc(c.ach)}</td>
                     <td className={`${TD} text-center`}>
                       <Grade g={c.grade} />
