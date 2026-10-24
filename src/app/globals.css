@@ -21,7 +21,7 @@ body {
   @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none transition-[border-color,box-shadow] duration-150 hover:border-slate-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100 aria-invalid:border-red-500 aria-invalid:ring-red-100;
 }
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-base font-semibold transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-base font-semibold transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100;
 }
 @utility btn-primary {
   @apply btn bg-brand-600 text-white hover:bg-brand-700;
@@ -71,18 +71,18 @@ body {
   to { opacity: 1; transform: none; }
 }
 @keyframes ring-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-/* Design system: tidak ada animasi dekoratif. Utility lama dibiarkan ada tapi tanpa efek. */
 @utility anim-in {
-  animation: none;
+  animation: fade-up .24s cubic-bezier(.2,.7,.2,1) both;
 }
 @utility anim-bar {
-  animation: none;
+  transform-origin: left;
+  animation: grow-x .7s cubic-bezier(.2,.7,.2,1) both;
 }
 @utility lift {
-  @apply transition-colors duration-150;
+  @apply transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5;
 }
 @utility glow {
-  @apply transition-colors duration-150;
+  @apply transition duration-200 hover:shadow-lg hover:shadow-brand-600/30;
 }
 @utility anim-toast {
   animation: toast-in .22s cubic-bezier(.2,.7,.2,1) both;
@@ -101,7 +101,7 @@ body {
   animation: pulse-dot 1.2s ease-in-out infinite;
 }
 .btn-primary, .btn-success, .btn-secondary, .btn-danger { transition: transform .15s, box-shadow .2s, background-color .2s; }
-
+.btn-primary:hover { box-shadow: 0 8px 20px -6px rgb(155 27 31 / .55); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -118,7 +118,7 @@ body {
   html[data-sb="mini"] .sb-desk .sb-brand { padding-left: .6rem; padding-right: .6rem; }
 }
 @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@utility anim-page { animation: none; }
+@utility anim-page { animation: page-in .22s cubic-bezier(.2,.7,.2,1) both; }
 @keyframes toast-out { to { opacity: 0; transform: translateX(24px); } }
 @utility anim-toast-out { animation: toast-out .18s ease-in both; }
 @keyframes shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
