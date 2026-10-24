@@ -8,8 +8,9 @@ import { loadMaster } from "@/lib/service";
 import { buildLaporan } from "@/lib/views";
 import { withDataAge } from "@/lib/reports";
 import DataStatus from "@/components/DataStatus";
+import ReportCatalog from "@/components/report/ReportCatalog";
 
-export const metadata = { title: "Ringkasan Laporan · QA Production" };
+export const metadata = { title: "Pusat Laporan · QA Production" };
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
 const d1 = (v: number | null) => (v == null ? "-" : v.toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 }));
@@ -34,7 +35,14 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
     <AppShell session={session} active="laporan">
       <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Ringkasan Laporan</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">Pusat Laporan</h1>
+          <p className="text-sm text-slate-500">Semua laporan produksi, kualitas dan operasional. Periode harian, mingguan atau bulanan dipilih di dalam laporan.</p>
+        </div>
+
+        <ReportCatalog query={query} />
+
+        <div id="ringkasan" className="mt-2 border-t border-slate-200 pt-5">
+          <h2 className="text-xl font-bold">Ringkasan periode</h2>
           <p className="text-sm text-slate-500">{v.period} · hanya laporan yang sudah disetujui</p>
           <DataStatus asOf={asOf} className="mt-1" />
         </div>
@@ -257,22 +265,6 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           </section>
         </div>
 
-        <section className="no-print card px-5 py-4">
-          <h2 className="mb-3 font-bold">Analisa lebih detail</h2>
-          <div className="flex flex-wrap gap-2">
-            {[
-              ["ng-type", "Kualitas (NG) & cari lot"],
-              ["member", "Produktivitas per member"],
-              ["waktu", "Waktu & Lost Time"],
-              ["machine", "Mesin"],
-              ["disiplin", "Disiplin Lapor"],
-            ].map(([k, l]) => (
-              <Link key={k} href={`/reports/${k}?from=${v.from}&to=${v.to}${categoryId && k !== "disiplin" ? `&category=${categoryId}` : ""}`} className="btn-secondary min-h-11">
-                {l}
-              </Link>
-            ))}
-          </div>
-        </section>
       </main>
     </AppShell>
   );

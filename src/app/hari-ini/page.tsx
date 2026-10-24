@@ -1,5 +1,5 @@
 import AppShell from "@/components/AppShell";
-import { Spark, StatusDonut, TrendChart } from "@/components/DashboardCharts";
+import { Spark, TrendChart } from "@/components/DashboardCharts";
 import { CountUp } from "@/components/Motion";
 import DateNav from "@/components/DateNav";
 import QueueList from "@/components/QueueList";
@@ -13,7 +13,15 @@ import DataStatus from "@/components/DataStatus";
 
 export const metadata = { title: "Dashboard · QA Production" };
 
+const STATUS = [
+  { key: "approved", label: "Disetujui", bar: "bg-emerald-600" },
+  { key: "waiting", label: "Menunggu", bar: "bg-orange-500" },
+  { key: "rejected", label: "Ditolak", bar: "bg-rose-600" },
+  { key: "missing", label: "Belum kirim", bar: "bg-slate-400" },
+] as const;
+
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
+const h1 = (min: number) => (min / 60).toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const pct = (v: number | null, d = 2) => (v == null ? "-" : `${(v * 100).toLocaleString("id-ID", { maximumFractionDigits: d })}%`);
 
 // Ikon kartu (garis 24x24).
@@ -22,6 +30,7 @@ const ICON = {
   shield: "M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z",
   target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01",
   doc: "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6zM14 3v6h6M8 13h8M8 17h5",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
 };
 
 function KpiCard({ icon, title, delay, spark, children }: { icon: keyof typeof ICON; title: string; delay: number; spark?: React.ReactNode; children: React.ReactNode }) {
@@ -106,15 +115,6 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               {!s.complete ? `sementara, ${done} dari ${v.expected} laporan disetujui` : s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}
             </div>
           </KpiCard>
-          <KpiCard icon="shield" title="NG (PPM)" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
-            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ppm != null && s.ppm > s.ppmMax ? "text-brand-600" : ""}`}>{s.ppm == null ? "-" : <CountUp value={s.ppm} />}</div>
-            <div className="text-xs text-slate-500">
-              {n0(s.ng)} pcs · rate {pct(s.rate)} {s.complete && s.rateTrend && <TrendText t={s.rateTrend} />}
-            </div>
-            <div className={`text-xs font-semibold ${s.ppm == null ? "text-slate-500" : s.ppm > s.ppmMax ? "text-brand-600" : "text-emerald-700"}`}>
-              {s.ppm != null && s.ppm <= s.ppmMax ? "✓ " : ""}batas {n0(s.ppmMax)} PPM
-            </div>
-          </KpiCard>
           <KpiCard icon="target" title="Achievement" delay={0.19}>
             <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ach != null && s.ach * 100 < s.target ? "text-brand-600" : ""}`}>
               {s.ach == null ? "-" : <CountUp value={Math.round(s.ach * 100)} suffix="%" />} {s.ach != null && <span className="text-sm font-semibold text-slate-500 sm:text-base">Grade {s.grade}</span>}
@@ -126,22 +126,84 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               {s.ach == null ? `Target ${s.target}%` : s.ach * 100 >= s.target ? `✓ Sesuai target ${s.target}%` : `${Math.round(s.target - s.ach * 100)}% di bawah target`}
             </div>
           </KpiCard>
-          <KpiCard icon="doc" title="Laporan Masuk" delay={0.26}>
-            <div className="flex items-center gap-2 text-2xl font-bold tabular-nums sm:text-3xl">
-              <CountUp value={s.reported} ms={600} /> / {v.expected}
-              {v.expected > 0 && s.reported >= v.expected && (
-                <span className="anim-pop flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white" style={{ animationDelay: ".6s" }}>
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12.5l4.5 4.5L19 7.5" />
-                  </svg>
-                </span>
-              )}
-            </div>
+          <KpiCard icon="shield" title="NG (PPM)" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
+            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ppm != null && s.ppm > s.ppmMax ? "text-brand-600" : ""}`}>{s.ppm == null ? "-" : <CountUp value={s.ppm} />}</div>
             <div className="text-xs text-slate-500">
-              {s.waiting} menunggu, {v.missing.length} belum kirim
+              {n0(s.ng)} pcs · rate {pct(s.rate)} {s.complete && s.rateTrend && <TrendText t={s.rateTrend} />}
+            </div>
+            <div className={`text-xs font-semibold ${s.ppm == null ? "text-slate-500" : s.ppm > s.ppmMax ? "text-brand-600" : "text-emerald-700"}`}>
+              {s.ppm != null && s.ppm <= s.ppmMax ? "✓ " : ""}batas {n0(s.ppmMax)} PPM
             </div>
           </KpiCard>
+          <KpiCard icon="clock" title="Lost Time" delay={0}>
+            <div className="text-2xl font-bold tabular-nums sm:text-3xl">
+              {h1(s.ltMin)} <span className="text-sm font-semibold text-slate-500 sm:text-base">jam</span>
+            </div>
+            <div className="text-xs text-slate-500">Another Job {h1(s.ajMin)} jam</div>
+            <a href={`/reports/waktu?from=${date}&to=${date}`} className="text-xs font-semibold text-brand-600 hover:underline">
+              Lihat penyebab ›
+            </a>
+          </KpiCard>
         </section>
+
+        <section className="card p-4 sm:p-5" aria-label="Status laporan member">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-bold">Status Laporan Member</h2>
+            <span className="text-sm text-slate-500">{v.expected} member diharapkan lapor</span>
+          </div>
+          <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
+            {STATUS.map((x) => (
+              <span key={x.key} className={x.bar} style={{ width: `${v.expected ? (v.status[x.key] / v.expected) * 100 : 0}%` }} />
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {STATUS.map((x) => (
+              <div key={x.key} className="flex items-center gap-2.5">
+                <span className={`h-3 w-3 shrink-0 rounded-sm ${x.bar}`} />
+                <span className="text-xl font-bold tabular-nums">{v.status[x.key]}</span>
+                <span className="text-sm text-slate-600">{x.label}</span>
+              </div>
+            ))}
+          </div>
+          {(v.missing.length > 0 || v.rejected.length > 0) && (
+            <details className="mt-3 border-t border-slate-100 pt-3 text-sm">
+              <summary className="cursor-pointer font-medium text-slate-700">Lihat nama</summary>
+              {v.rejected.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ditolak, belum dikirim ulang</div>
+                  {v.rejected.map((r) => (
+                    <div key={r.member} className="py-0.5">
+                      <b>{r.member}</b> <span className="text-slate-500">· {r.note}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {v.missing.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum kirim</div>
+                  <div className="mt-1 text-slate-700">{v.missing.join(", ")}</div>
+                </div>
+              )}
+            </details>
+          )}
+        </section>
+
+        <nav className="no-print flex flex-wrap gap-2" aria-label="Aksi cepat">
+          <a href="/" className="btn-secondary min-h-11 text-sm">
+            Kirim laporan
+          </a>
+          {canDecide && (
+            <a href="/?page=leader" className="btn-secondary min-h-11 text-sm">
+              Validasi laporan{s.waiting ? ` (${s.waiting})` : ""}
+            </a>
+          )}
+          <a href={`/laporan?from=${date}&to=${date}`} className="btn-secondary min-h-11 text-sm">
+            Pusat Laporan
+          </a>
+          <a href={`/reports/waktu?from=${date}&to=${date}`} className="btn-secondary min-h-11 text-sm">
+            Lost Time hari ini
+          </a>
+        </nav>
 
         {v.attention.length > 0 && (
           <section className="card anim-in p-4 sm:p-5" style={{ animationDelay: ".1s" }}>
@@ -215,73 +277,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
           </section>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <section className="card anim-in lift p-5" style={{ animationDelay: ".2s" }}>
-            <h2 className="mb-4 text-lg font-bold">Status Laporan {date === today ? "Hari Ini" : ""}</h2>
-            <div className="flex flex-wrap items-center gap-6">
-              <StatusDonut done={done} waiting={s.waiting} missing={v.missing.length} label={`${s.reported}/${v.expected}`} />
-              <div className="flex min-w-40 flex-1 flex-col gap-3 text-sm">
-                {[
-                  ["bg-emerald-600", "Disetujui", done],
-                  ["bg-orange-500", "Menunggu validasi", s.waiting],
-                  ["bg-rose-600", "Belum kirim", v.missing.length],
-                ].map(([c, l, n]) => (
-                  <div key={l as string} className="flex items-center gap-3">
-                    <span className={`h-3.5 w-3.5 rounded ${c}`} />
-                    <span className="flex-1">{l}</span>
-                    <b className="tabular-nums">{n}</b>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {v.missing.length > 0 && (
-              <div className="mt-5 border-t border-slate-100 pt-4">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Belum kirim</div>
-                <div className="flex flex-wrap gap-2">
-                  {v.missing.map((m) => (
-                    <span key={m} className="rounded-full bg-rose-50 px-3 py-1 text-sm text-rose-900">
-                      {m}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {v.rejected.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Ditolak, belum dikirim ulang</div>
-                {v.rejected.map((r) => (
-                  <div key={r.member} className="py-1 text-sm">
-                    <b>{r.member}</b> <span className="text-slate-500">· {r.note}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          <section className="card anim-in lift p-5" style={{ animationDelay: ".22s" }}>
-            <h2 className="mb-4 text-lg font-bold">Aktivitas Terbaru</h2>
-            {v.activity.length ? (
-              <ol className="relative flex flex-col gap-4 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-slate-200">
-                {v.activity.map((a, i) => (
-                  <li key={i} className="anim-in relative flex items-start gap-3" style={{ animationDelay: `${0.25 + i * 0.04}s` }}>
-                    <span
-                      className={`z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${a.kind === "ok" ? "bg-emerald-100 text-emerald-700" : a.kind === "no" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                        <path d={a.kind === "ok" ? "M5 12.5l4.5 4.5L19 7.5" : a.kind === "no" ? "M7 7l10 10M17 7L7 17" : "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6zM14 3v6h6"} />
-                      </svg>
-                    </span>
-                    <div className="min-w-0 flex-1 text-sm">
-                      <div className="font-medium">{a.text}</div>
-                      <div className="text-xs text-slate-500">{a.kind === "kirim" ? "dari form member" : `oleh ${a.by}`}</div>
-                    </div>
-                    <span className="shrink-0 text-xs tabular-nums text-slate-400">{a.time}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <Empty>Belum ada aktivitas.</Empty>
-            )}
-          </section>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <section className="card anim-in lift p-5" style={{ animationDelay: ".24s" }}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold">Mesin dengan NG Tertinggi</h2>

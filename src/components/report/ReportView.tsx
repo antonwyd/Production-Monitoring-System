@@ -6,7 +6,8 @@ import Charts from "./Charts";
 import { Grade } from "@/components/ui";
 import FilterBar, { type FilterSelect } from "./FilterBar";
 import KpiCards from "./KpiCards";
-import ReportTabs from "./ReportTabs";
+import ReportTabs, { groupNameOf } from "./ReportTabs";
+import Link from "next/link";
 import ShowAll from "./ShowAll";
 import DataStatus from "@/components/DataStatus";
 
@@ -66,6 +67,12 @@ export default function ReportView({
     <main className="flex w-full flex-col gap-4 px-4 pb-12 pt-5 sm:gap-5 lg:px-8 lg:pt-6">
       <div className="flex flex-col gap-3">
         <div>
+          <nav aria-label="Breadcrumb" className="no-print mb-1 text-xs text-slate-500">
+            <Link href="/laporan" className="hover:text-brand-600">
+              Pusat Laporan
+            </Link>
+            {groupNameOf(k) && <span> / {groupNameOf(k)}</span>}
+          </nav>
           <h1 className="text-2xl font-bold sm:text-3xl">{report.title}</h1>
           <p className="text-sm text-slate-500">
             {report.subtitle}

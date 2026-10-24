@@ -63,7 +63,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
           {g.title && <div className="sb-hide px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>}
           {g.items.map((it) => {
             const on = it.key === active;
-            const cls = `sb-item relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-[background-color,color,transform] duration-200 ease-out active:scale-[0.98] ${on ? "bg-brand-600 font-semibold text-white shadow-lg shadow-black/20 before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-100" : "font-medium text-slate-300 hover:translate-x-0.5 hover:bg-white/5 hover:text-white"}`;
+            const cls = `sb-item relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors duration-150 ${on ? "bg-brand-600 font-semibold text-white before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r-full before:bg-brand-100" : "font-medium text-slate-300 hover:bg-white/5 hover:text-white"}`;
             return it.external ? (
               <a key={it.key} href={it.href} target={it.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className={cls} title={it.label} aria-current={on ? "page" : undefined}>
                 <Icon name={it.icon} />
@@ -148,7 +148,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-slate-200 bg-white/95 px-2 pb-[calc(6px+env(safe-area-inset-bottom))] pt-1.5 backdrop-blur lg:hidden">
         {[
           { key: "hari-ini", href: "/hari-ini", label: "Home", icon: "dash" },
-          { key: "laporan", href: "/laporan", label: "Ringkasan", icon: "report" },
+          { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
           null,
           { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas", icon: "quality" },
         ].map((it, i) =>
