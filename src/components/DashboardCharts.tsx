@@ -18,8 +18,7 @@ export function TrendChart({ data }: { data: { label: string; qty: number; ng: n
           <Tooltip cursor={{ fill: "rgba(155,27,31,0.06)" }} contentStyle={{ borderRadius: 10, border: "none", background: "#1d2430", color: "#fff", fontSize: 12 }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} formatter={(v, name) => (name === "NG Rate" ? pct(Number(v)) : `${n0(Number(v))} pcs`)} />
           <Legend verticalAlign="top" height={28} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
           <Bar yAxisId="q" dataKey="qty" name="Hasil Produksi" fill="#9b1b1f" radius={[3, 3, 0, 0]} maxBarSize={26} isAnimationActive animationDuration={700} />
-          <Bar yAxisId="q" dataKey="ng" name="NG" fill="#f4a3a8" radius={[3, 3, 0, 0]} maxBarSize={12} isAnimationActive animationDuration={700} />
-          <Line yAxisId="r" dataKey="rate" name="NG Rate" stroke="#eab308" strokeWidth={2} dot={{ r: 3, fill: "#eab308" }} isAnimationActive animationDuration={700} />
+          <Line yAxisId="r" dataKey="rate" name="NG Rate" stroke="#1d2430" strokeWidth={2} dot={{ r: 3, fill: "#1d2430" }} isAnimationActive animationDuration={700} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -52,7 +51,7 @@ export function StatusDonut({ done, waiting, missing, label }: { done: number; w
       </ResponsiveContainer>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold tabular-nums">{label}</span>
-        <span className="text-xs text-slate-500">sudah kirim</span>
+        <span className="text-xs text-slate-500">laporan masuk</span>
       </div>
     </div>
   );

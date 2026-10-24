@@ -46,7 +46,7 @@ export type RawMaster = {
   parts: { category: string; name: string; type: string; stki: number }[];
   machines: { category: string; mc: string; line: string; main: string; alt: string }[];
   lostTypes: { name: string; group: string }[];
-  settings: { normalMin: number; otLimitHrs: number; target: number; gradeA: number; gradeB: number; gradeC: number };
+  settings: { normalMin: number; otLimitHrs: number; target: number; gradeA: number; gradeB: number; gradeC: number; ngPpmMax?: number; utilTarget?: number; mcHrsDay?: number };
 };
 
 /** Isi kiriman seperti yang disimpan v1 di kolom "Data" tab Antrian Validasi (pakai nama, bukan id). */

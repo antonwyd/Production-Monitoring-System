@@ -156,7 +156,7 @@ export const MASTER_TABLES: MasterTable[] = [
   {
     id: "setting",
     title: "Setting",
-    desc: "Jam kerja normal, batas lembur, target, dan batas grade. Persen ditulis 100 untuk 100%.",
+    desc: "Jam kerja normal, batas lembur, target achievement, batas grade, batas NG (PPM), target utilisasi mesin, dan jam tersedia mesin per hari (8 = 1 shift). Persen ditulis 100 untuk 100%.",
     sheet: MD,
     col: "S",
     firstRow: 7,

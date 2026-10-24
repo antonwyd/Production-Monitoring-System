@@ -45,7 +45,7 @@ export function masterFromRaw(raw: RawMaster): MasterData {
       name,
       codes: Array.from({ length: 10 }, (_, i) => codes[i] || `NG${i + 1}`),
     })),
-    settings: { ...raw.settings, stkiHighPct: 150, stkiLowPct: 30 },
+    settings: { ...raw.settings, ngPpmMax: raw.settings.ngPpmMax ?? 1000, utilTarget: raw.settings.utilTarget ?? 85, mcHrsDay: raw.settings.mcHrsDay ?? raw.settings.normalMin / 60, stkiHighPct: 150, stkiLowPct: 30 },
   };
 }
 

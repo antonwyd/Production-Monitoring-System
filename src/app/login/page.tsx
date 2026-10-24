@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession, HOME_BY_ROLE } from "@/lib/auth";
 import LoginForm from "./LoginForm";
 
-export const metadata = { title: "Masuk · Produksi QA" };
+export const metadata = { title: "Masuk · QA Production" };
 
 /** Foto produk bearing TKI (WebP: 480px ≈24 KB, 900px ≈49 KB, 1400px ≈79 KB; browser memilih sesuai layar). */
 function BearingPhoto({ className }: { className?: string }) {

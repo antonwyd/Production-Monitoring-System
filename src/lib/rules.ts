@@ -199,6 +199,9 @@ export function settingsFromRows(rows: { key: string; value: string }[]): Settin
     gradeC: v("grade_c", 80),
     stkiHighPct: v("stki_high_pct", 150),
     stkiLowPct: v("stki_low_pct", 30),
+    ngPpmMax: v("ng_ppm_max", 1000),
+    utilTarget: v("util_target", 85),
+    mcHrsDay: v("mc_hrs_day", 8),
   };
 }
 

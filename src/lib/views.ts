@@ -1,7 +1,7 @@
 // Data untuk dua halaman utama web: "Hari Ini" (leader) dan "Laporan" (kepala produksi).
 // Semua angka dihitung dari baris yang sudah disetujui leader, sama seperti report lain.
 import { callBackend, type RawSubmission } from "./backend";
-import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
+import { addDays, formatDateId, monthEnd, monthStart, nowJakarta } from "./dates";
 import {
   add,
   aggCols,
@@ -15,16 +15,18 @@ import {
   type LostFact,
   type Report,
   type Row,
+  ppm,
+  vsTarget,
 } from "./reports";
 import { achievement, grade, ngRate } from "./rules";
 import { loadMaster } from "./service";
 import type { MasterData, Settings } from "./types";
 
 export type Trend = { text: string; good: boolean } | null;
-export type Tile = { label: string; value: string; sub: string; trend: Trend };
+export type Tile = { label: string; value: string; sub: string; trend: Trend; target?: string; status?: "good" | "bad" };
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
-const p1 = (v: number | null) => (v == null ? "-" : `${(v * 100).toFixed(1).replace(".", ",")}%`);
+const p2 = (v: number | null) => (v == null ? "-" : `${(v * 100).toFixed(2).replace(".", ",")}%`);
 const p0 = (v: number | null) => (v == null ? "-" : `${Math.round(v * 100)}%`);
 const h1 = (min: number) => `${(min / 60).toFixed(1).replace(".", ",").replace(/,0$/, "")} jam`;
 
@@ -32,7 +34,7 @@ function totals(facts: Fact[], st: Settings) {
   const a = emptyAgg();
   facts.forEach((f) => add(a, f));
   const ach = achievement(a.std, a.rated);
-  return { qty: a.qty, ng: a.ng, rate: ngRate(a.ng, a.qty), ach, grade: grade(ach, st) };
+  return { qty: a.qty, ng: a.ng, rate: ngRate(a.ng, a.qty), ppm: ppm(a.ng, a.qty), ach, grade: grade(ach, st) };
 }
 
 /** Panah tren: naik/turun dibanding pembanding. higherIsBetter menentukan warna. */
@@ -88,7 +90,24 @@ export type TodayView = {
   topNg: { name: string; qty: number; bar: number; share: number }[];
   expected: number;
   /** Ringkas untuk kartu dashboard. */
-  stats: { qty: number; ng: number; rate: number | null; ach: number | null; grade: string; target: number; reported: number; waiting: number; qtyTrend: Trend; rateTrend: Trend };
+  stats: {
+    qty: number;
+    ng: number;
+    rate: number | null;
+    ppm: number | null;
+    ppmMax: number;
+    ach: number | null;
+    grade: string;
+    target: number;
+    reported: number;
+    waiting: number;
+    /** Hari itu sudah lengkap (semua lapor & divalidasi) atau sudah lewat: aman dibandingkan. */
+    complete: boolean;
+    qtyTrend: Trend;
+    rateTrend: Trend;
+  };
+  /** Hal yang perlu ditindaklanjuti, merah dulu. */
+  attention: { level: "bad" | "warn" | "info"; text: string; href?: string }[];
   /** 7 hari sampai tanggal itu: hasil, NG, NG rate per hari. */
   trend: { date: string; label: string; qty: number; ng: number; rate: number | null }[];
   /** Kiriman & keputusan leader untuk tanggal itu, terbaru dulu. */
@@ -135,7 +154,7 @@ export async function buildToday(date: string): Promise<TodayView> {
   const prev = prevDate ? facts.filter((f) => f.workDate === prevDate) : [];
   const t = totals(today, st);
   const p = totals(prev, st);
-  const vs = prevDate === addDays(date, -1) ? "vs kemarin" : prevDate ? `vs ${formatDateId(prevDate).slice(0, -5)}` : "";
+  const vsText = prevDate === addDays(date, -1) ? "vs kemarin" : prevDate ? `vs ${formatDateId(prevDate).slice(0, -5)}` : "";
 
   // Member yang diharapkan lapor: yang punya data 14 hari terakhir atau mengirim hari ini.
   const sentToday = new Map<string, string[]>();
@@ -152,13 +171,42 @@ export async function buildToday(date: string): Promise<TodayView> {
     .sort((a, b) => a.sent.localeCompare(b.sent))
     .map((s) => card(s, st.normalMin));
   const reported = expected.filter((m) => doneToday.has(m.name) || (sentToday.get(m.name) ?? []).some((x) => x !== "Ditolak")).length;
+  // Hari berjalan yang belum lengkap jangan dibandingkan dengan hari penuh: angkanya pasti terlihat turun.
+  const now = nowJakarta();
+  const complete = date < now.slice(0, 10) || (missing.length === 0 && queue.length === 0 && rejected.length === 0);
+  const vs = complete ? vsText : "";
+
+  const attention: TodayView["attention"] = [];
+  const hoursWaiting = (sent: string) => (Date.parse(`${now.slice(0, 10)}T${now.slice(11, 16)}:00Z`) - Date.parse(`${date}T${sent}:00Z`)) / 36e5;
+  const old = queue.filter((c) => date === now.slice(0, 10) && hoursWaiting(c.sent) >= 2);
+  if (old.length) attention.push({ level: "bad", text: `${old.length} laporan menunggu validasi lebih dari 2 jam (${old.map((c) => c.member).join(", ")})`, href: "/?page=leader" });
+  if (rejected.length) attention.push({ level: "warn", text: `${rejected.length} laporan ditolak belum dikirim ulang: ${rejected.map((r) => r.member).join(", ")}` });
+  const lowAch = [...groupBy(today, (f) => f.memberId).values()]
+    .map((g) => ({ name: g.first.memberName, ach: achievement(g.agg.std, g.agg.rated) }))
+    .filter((m) => m.ach != null && m.ach * 100 < st.gradeC)
+    .sort((a, b) => (a.ach ?? 0) - (b.ach ?? 0));
+  if (lowAch.length)
+    attention.push({ level: "bad", text: `Achievement di bawah ${st.gradeC}%: ${lowAch.map((m) => `${m.name} ${p0(m.ach)}`).join(", ")}`, href: `/reports/daily?date=${date}` });
+  const ngParts = [...groupBy(today, (f) => f.partId).values()]
+    .map((g) => ({ part: g.first.part, id: g.first.partId, ppm: ppm(g.agg.ng, g.agg.qty), n: g.agg.qty + g.agg.ng }))
+    .filter((x) => x.n >= 100 && (x.ppm ?? 0) > st.ngPpmMax)
+    .sort((a, b) => (b.ppm ?? 0) - (a.ppm ?? 0));
+  for (const x of ngParts.slice(0, 3))
+    attention.push({ level: "bad", text: `NG ${x.part}: ${n0(x.ppm ?? 0)} PPM, batas ${n0(st.ngPpmMax)}`, href: `/reports/ng-type?from=${date}&to=${date}&part=${x.id}` });
+  if (missing.length && (date < now.slice(0, 10) || Number(now.slice(11, 13)) >= 15))
+    attention.push({ level: "warn", text: `${missing.length} member belum kirim laporan: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", ..." : ""}` });
+  if (today.length) {
+    const running = new Set(today.filter((f) => f.mcNo !== "-").map((f) => `${f.categoryId}|${f.mcNo}`));
+    const idle = master.machines.filter((m) => !running.has(`${m.categoryId}|${m.mcNo}`)).length;
+    if (idle) attention.push({ level: "info", text: `${idle} dari ${master.machines.length} mesin tidak jalan`, href: `/reports/machine?from=${date}&to=${date}` });
+  }
 
   return {
     date,
     dateLabel: new Date(`${date}T00:00:00Z`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
     tiles: [
       { label: "Hasil", value: n0(t.qty), sub: "pcs, yang sudah disetujui", trend: vs ? trendPct(t.qty, p.qty, vs) : null },
-      { label: "NG", value: n0(t.ng), sub: `NG rate ${p1(t.rate)}`, trend: vs ? trendPoint(t.rate, p.rate, vs, false, 1) : null },
+      { label: "NG", value: n0(t.ng), sub: `NG rate ${p2(t.rate)}`, trend: vs ? trendPoint(t.rate, p.rate, vs, false, 2) : null },
       { label: "Achievement", value: p0(t.ach), sub: t.ach == null ? "belum ada data" : `Grade ${t.grade}, target ${st.target}%`, trend: vs ? trendPoint(t.ach, p.ach, vs) : null },
       {
         label: "Laporan masuk",
@@ -176,14 +224,18 @@ export async function buildToday(date: string): Promise<TodayView> {
       qty: t.qty,
       ng: t.ng,
       rate: t.rate,
+      ppm: t.ppm,
+      ppmMax: st.ngPpmMax,
       ach: t.ach,
       grade: String(t.grade),
       target: st.target,
       reported,
       waiting: queue.length,
+      complete,
       qtyTrend: vs ? trendPct(t.qty, p.qty, vs) : null,
       rateTrend: vs ? trendPoint(t.rate, p.rate, vs, false, 2) : null,
     },
+    attention: attention.sort((a, b) => ["bad", "warn", "info"].indexOf(a.level) - ["bad", "warn", "info"].indexOf(b.level)),
     activity: subs
       .flatMap((x) => {
         const parts = x.items?.length ? `${x.items.length} part` : "lost time";
@@ -217,8 +269,8 @@ export async function buildToday(date: string): Promise<TodayView> {
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int" },
       { label: "NG (pcs)", value: t.ng, format: "int" },
-      { label: "NG rate", value: t.rate, format: "pct" },
-      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}` },
+      { label: "NG (PPM)", value: t.ppm, format: "ppm", hint: `NG rate ${p2(t.rate)}`, target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
+      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
       { label: "Laporan masuk", value: `${reported} dari ${expected.length}`, hint: `${queue.length} menunggu, ${missing.length} belum kirim` },
     ],
     detail: today
@@ -259,7 +311,7 @@ export type LaporanView = {
   lots: { part: string; lot: string; ng: number; rate: number | null }[];
   notes: { what: string; who: string }[];
   machines: MachineRow[];
-  categories: { name: string; qty: number; ngRate: number | null; ach: number | null; grade: string }[];
+  categories: { name: string; qty: number; ngRate: number | null; ngPpm: number | null; ach: number | null; grade: string }[];
   totalNg: number;
 };
 
@@ -373,15 +425,14 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
     vsLabel,
     tiles: [
       { label: "Hasil", value: n0(t.qty), sub: "pcs", trend: trendPct(t.qty, pt.qty, vsLabel) },
-      { label: "NG rate", value: p1(t.rate), sub: `${n0(t.ng)} pcs NG`, trend: trendPoint(t.rate, pt.rate, vsLabel, false, 1) },
-      { label: "Achievement", value: p0(t.ach), sub: t.ach == null ? "belum ada data" : `Grade ${t.grade}`, trend: trendPoint(t.ach, pt.ach, vsLabel) },
+      { label: "NG (PPM)", value: t.ppm == null ? "-" : n0(t.ppm), sub: `${n0(t.ng)} pcs NG · ${p2(t.rate)}`, trend: trendPct(t.ppm ?? 0, pt.ppm ?? 0, vsLabel, false), target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
+      { label: "Achievement", value: p0(t.ach), sub: t.ach == null ? "belum ada data" : `Grade ${t.grade}`, trend: trendPoint(t.ach, pt.ach, vsLabel), target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
       { label: "Waktu hilang", value: h1(lt), sub: "lost time, tanpa Another Job", trend: trendPct(lt, plt, vsLabel, false) },
     ],
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int" },
-      { label: "NG (pcs)", value: t.ng, format: "int" },
-      { label: "NG rate", value: t.rate, format: "pct" },
-      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}` },
+      { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
+      { label: "NG (PPM)", value: t.ppm, format: "ppm", hint: `${n0(t.ng)} pcs NG, NG rate ${p2(t.rate)}`, target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
       { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
       { label: "Hari kerja lengkap", value: `${days.length - problems.length} dari ${days.length}`, hint: `bulan ${BULAN[Number(mFrom.slice(5, 7)) - 1]}, batas kirim 10 ${BULAN[Number(next.slice(5, 7)) - 1]}` },
     ],
@@ -400,7 +451,7 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
     categories: [...groupBy(facts, (f) => f.categoryId).values()]
       .map((g) => {
         const c = aggCols(g.agg, st);
-        return { name: g.first.categoryName, qty: g.agg.qty, ngRate: c.ngRate, ach: c.ach, grade: String(c.grade) };
+        return { name: g.first.categoryName, qty: g.agg.qty, ngRate: c.ngRate, ngPpm: c.ngPpm, ach: c.ach, grade: String(c.grade) };
       })
       .sort((a, b) => b.qty - a.qty),
     totalNg: t.ng,
@@ -414,7 +465,15 @@ export function laporanToReport(v: LaporanView): Report {
     title: "Laporan Produksi QA",
     subtitle: v.period,
     kpis: v.kpis,
-    charts: [],
+    charts: [
+      {
+        type: "pareto",
+        title: "Pareto NG (pcs)",
+        xKey: "name",
+        series: [{ key: "qty", label: "NG", format: "int" }],
+        data: v.ngTypes.reduce<Row[]>((acc, n) => [...acc, { name: n.name, qty: n.qty, cum: (Number(acc.at(-1)?.cum) || 0) + n.share }], []),
+      },
+    ],
     tables: [
       {
         title: "Per kategori",
@@ -422,6 +481,7 @@ export function laporanToReport(v: LaporanView): Report {
           { key: "name", label: "Kategori" },
           { key: "qty", label: "Hasil (pcs)", format: "int" },
           { key: "ngRate", label: "NG rate", format: "pct" },
+          { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
           { key: "ach", label: "Achievement", format: "pct" },
           { key: "grade", label: "Grade", format: "grade" },
         ],
@@ -462,6 +522,7 @@ export function laporanToReport(v: LaporanView): Report {
       },
       {
         title: "Catatan NG Lain-lain",
+        detail: true,
         columns: [
           { key: "what", label: "Catatan" },
           { key: "who", label: "Member, tanggal, part" },
@@ -469,7 +530,7 @@ export function laporanToReport(v: LaporanView): Report {
         rows: v.notes as unknown as Row[],
       },
       {
-        title: "Mesin PF",
+        title: "Mesin",
         columns: [
           { key: "category", label: "Kategori" },
           { key: "mc", label: "MC" },

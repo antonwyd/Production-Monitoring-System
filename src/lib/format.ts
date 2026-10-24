@@ -8,6 +8,7 @@ export function formatCell(v: string | number | null | undefined, f?: ColFormat)
   if (typeof v === "string") return v;
   switch (f) {
     case "int":
+    case "ppm":
       return fmt(v, 0);
     case "dec1":
       return fmt(v, 1);

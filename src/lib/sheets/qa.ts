@@ -232,6 +232,10 @@ export async function apiMaster() {
   );
   const machines: { category: string; mc: string; line: string; main: string; alt: string }[] = [];
   m.categories.forEach((c) => c.machines.forEach((mc) => machines.push({ category: c.name, mc, line: "", main: "", alt: "", ...(c.mcInfo?.[mc] ?? {}) })));
+  const raw = (label: string, def: number) => {
+    const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0);
+    return k !== undefined && m.settings[k] !== "" && Number(m.settings[k]) > 0 ? Number(m.settings[k]) : def;
+  };
   const val = (label: string, def: number) => {
     const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0);
     if (k === undefined || m.settings[k] === "") return def;
@@ -252,6 +256,9 @@ export async function apiMaster() {
       gradeA: val("Grade A", 100),
       gradeB: val("Grade B", 90),
       gradeC: val("Grade C", 80),
+      ngPpmMax: raw("NG limit", 1000),
+      mcHrsDay: raw("Machine available", m.normalMin / 60),
+      utilTarget: val("Machine utilization target", 85),
     },
   };
 }

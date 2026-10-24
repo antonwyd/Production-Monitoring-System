@@ -2,9 +2,15 @@ import type { Tile as TileData } from "@/lib/views";
 
 export function Tile({ t, compact }: { t: TileData; compact?: boolean }) {
   return (
-    <div className={`card flex flex-col gap-1 ${compact ? "p-3" : "px-5 py-4"}`}>
+    <div className={`card relative flex flex-col gap-1 overflow-hidden ${compact ? "p-3" : "px-4 py-3.5 sm:px-5 sm:py-4"}`}>
+      {t.status && <span className={`absolute inset-y-3 left-0 w-1 rounded-r ${t.status === "good" ? "bg-emerald-600" : "bg-brand-600"}`} />}
       <div className="text-sm text-slate-500">{t.label}</div>
-      <div className={`font-bold tabular-nums ${compact ? "text-2xl" : "text-3xl"}`}>{t.value}</div>
+      <div className={`font-bold tabular-nums ${compact ? "text-2xl" : "text-2xl sm:text-3xl"}`}>{t.value}</div>
+      {t.target && (
+        <div className={`text-xs font-semibold ${t.status === "good" ? "text-emerald-700" : t.status === "bad" ? "text-brand-600" : "text-slate-500"}`}>
+          {t.status === "good" ? "✓ Sesuai target" : t.status === "bad" ? "Di luar target" : "Target"} · {t.target}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         {t.trend && (
           <span className={`rounded-full px-2 py-0.5 font-semibold ${t.trend.good ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"}`}>

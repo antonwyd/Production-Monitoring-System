@@ -2,7 +2,7 @@
 // yaitu kiriman yang sudah disetujui leader (plus baris yang diisi langsung di sheet).
 import { callBackend, type RawRows, type RawSubmission } from "./backend";
 import { catId, memberId as memberIdOf, partId as partIdOf } from "./ids";
-import { achievement, grade, ngRate, partLabel } from "./rules";
+import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
 import { uraiOiban } from "./sheets/qa";
@@ -16,7 +16,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   daily: "Laporan Harian",
   member: "Laporan per Member",
   category: "Laporan per Kategori",
-  machine: "Laporan Mesin PF",
+  machine: "Laporan Mesin",
   "ng-type": "Laporan Kualitas (NG)",
   "ng-lot": "Laporan NG per Lot",
   monthly: "Rekap Bulanan",
@@ -24,18 +24,37 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   disiplin: "Laporan Disiplin Lapor",
 };
 
-export type ColFormat = "text" | "int" | "dec1" | "dec2" | "pct" | "grade" | "date";
+export type ColFormat = "text" | "int" | "dec1" | "dec2" | "pct" | "ppm" | "grade" | "date";
 export type Column = { key: string; label: string; format?: ColFormat };
 export type Row = Record<string, string | number | null>;
-export type Table = { title: string; columns: Column[]; rows: Row[]; total?: Row };
+export type Table = {
+  title: string;
+  columns: Column[];
+  rows: Row[];
+  total?: Row;
+  /** Daftar rincian panjang: di web dilipat, di PDF dipotong. */
+  detail?: boolean;
+  /** Catatan pendek di bawah judul tabel. */
+  note?: string;
+};
 export type Chart = {
-  type: "line" | "bar";
+  /** pareto = batang urut terbesar + garis kumulatif (kolom "cum", 0..1). */
+  type: "line" | "bar" | "pareto";
   title: string;
   xKey: string;
   series: { key: string; label: string; format?: ColFormat }[];
   data: Row[];
 };
-export type Kpi = { label: string; value: string | number | null; format?: ColFormat; hint?: string };
+export type Kpi = {
+  label: string;
+  value: string | number | null;
+  format?: ColFormat;
+  hint?: string;
+  /** Target yang dibandingkan, sudah dalam teks (mis. "100%", "maks 1.000"). */
+  target?: string;
+  /** good = sesuai target (hijau), bad = di luar target (merah). */
+  status?: "good" | "bad";
+};
 export type Report = { kind: ReportKind; title: string; subtitle: string; kpis: Kpi[]; charts: Chart[]; tables: Table[] };
 
 export type ReportParams = {
@@ -181,12 +200,35 @@ export function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact)
   return m;
 }
 
+/** NG per sejuta pcs diperiksa (hasil + NG). */
+export const ppm = (ng: number, qty: number) => (qty + ng > 0 ? Math.round((ng / (qty + ng)) * 1e6) : null);
+
+/** Label tanggal pendek untuk sumbu grafik, mis. "18 Okt". */
+export const dayLabel = (d: string) => formatDateId(d).split(" ").slice(0, 2).join(" ");
+
+/** Tambah kolom kumulatif (0..1) untuk grafik Pareto. Baris harus sudah urut terbesar dulu. */
+export function withCum<T extends Record<string, unknown>>(rows: T[], key: string): (T & { cum: number })[] {
+  const total = rows.reduce((a, r) => a + (Number(r[key]) || 0), 0);
+  let run = 0;
+  return rows.map((r) => {
+    run += Number(r[key]) || 0;
+    return { ...r, cum: total ? run / total : 0 };
+  });
+}
+
+/** Status KPI terhadap target. lowerIsBetter untuk NG / lost time. */
+export function vsTarget(value: number | null | undefined, target: number, lowerIsBetter = false): "good" | "bad" | undefined {
+  if (value == null || !Number.isFinite(value)) return undefined;
+  return (lowerIsBetter ? value <= target : value >= target) ? "good" : "bad";
+}
+
 export function aggCols(a: Agg, st: Settings) {
   const ach = achievement(a.std, a.rated);
   return {
     qty: a.qty,
     ng: a.ng,
     ngRate: ngRate(a.ng, a.qty),
+    ngPpm: ppm(a.ng, a.qty),
     hours: a.rated,
     stdHours: a.std,
     ach,
@@ -198,11 +240,14 @@ const AGG_COLUMNS: Column[] = [
   { key: "qty", label: "Hasil (pcs)", format: "int" },
   { key: "ng", label: "NG (pcs)", format: "int" },
   { key: "ngRate", label: "NG rate", format: "pct" },
+  { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
   { key: "hours", label: "Jam kerja", format: "dec1" },
   { key: "stdHours", label: "Jam standar", format: "dec1" },
   { key: "ach", label: "Achievement", format: "pct" },
   { key: "grade", label: "Grade", format: "grade" },
 ];
+
+const formatNum = (v: number) => fmt(v, 0);
 
 function totalRow(facts: Fact[], st: Settings, label: Row): Row {
   const a = emptyAgg();
@@ -249,14 +294,14 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       .filter((d) => byDay.has(d))
       .map((d) => {
         const a = byDay.get(d)!.agg;
-        return { date: d.slice(5), qty: a.qty, ng: a.ng, ach: achievement(a.std, a.rated) };
+        return { date: dayLabel(d), qty: a.qty, ng: a.ng, ach: achievement(a.std, a.rated) };
       });
     const byMember = [...groupBy(facts, (f) => f.memberId).values()]
       .map((g) => ({ member: g.first.memberName, ...aggCols(g.agg, st) }))
       .sort((a, b) => (Number(b.ach) || 0) - (Number(a.ach) || 0));
     const ngMap = new Map<string, number>();
     for (const f of facts) f.ng.forEach((n, i) => n && ngMap.set(label(f.ngGroupId, i), (ngMap.get(label(f.ngGroupId, i)) ?? 0) + n));
-    const topNg = [...ngMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([ng, qty]) => ({ ng, qty }));
+    const topNg = withCum([...ngMap.entries()].sort((a, b) => b[1] - a[1]).map(([ng, qty]) => ({ ng, qty })), "qty").slice(0, 10);
     const ltMap = new Map<string, { group: string; minutes: number }>();
     for (const l of lost) {
       const e = ltMap.get(l.name) ?? { group: l.group, minutes: 0 };
@@ -272,9 +317,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       subtitle: period,
       kpis: [
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
-        { label: "NG (pcs)", value: t.ng, format: "int" },
-        { label: "NG rate", value: t.ngRate, format: "pct" },
-        { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
+        { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(Number(t.ach) * 100, st.target) },
+        { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
         { label: "Jam kerja (rated)", value: t.hours, format: "dec1" },
         { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
         { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
@@ -282,8 +326,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       charts: [
         { type: "line", title: "Hasil per hari (pcs)", xKey: "date", series: [{ key: "qty", label: "Hasil", format: "int" }], data: trend },
         { type: "line", title: "Achievement per hari", xKey: "date", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: trend },
-        { type: "bar", title: "NG terbanyak", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: topNg },
-        { type: "bar", title: "Lost Time & Another Job per jenis (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: ltRows },
+        { type: "pareto", title: "Pareto NG (pcs)", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: topNg },
+        { type: "pareto", title: "Pareto Lost Time & Another Job (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: withCum(ltRows, "hours").slice(0, 10) },
       ],
       tables: [
         { title: "Per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: byCat },
@@ -370,12 +414,12 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       subtitle: `${member ? `${member.name} (${member.nik})` : "-"} · ${period}`,
       kpis: [
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
-        { label: "Achievement", value: t.ach, format: "pct" },
-        { label: "Grade periode", value: t.grade as string },
+        { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
+        { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
         { label: "Hari lapor", value: dayRows.length, format: "int" },
       ],
       charts: [
-        { type: "bar", title: "Achievement per hari", xKey: "date", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: dayRows.map((r) => ({ ...r, date: String(r.date).slice(5) })) },
+        { type: "bar", title: "Achievement per hari", xKey: "date", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: dayRows.map((r) => ({ ...r, date: dayLabel(String(r.date)) })) },
       ],
       tables: [
         {
@@ -410,54 +454,105 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
   }
 
   if (kind === "machine") {
-    // Sama dengan tab Report - Machine di Sheet: jam MC jalan per mesin dan Standar MC PF (bukan STKI part).
+    // Semua mesin di Master Data (PF dan Drum), termasuk yang tidak jalan di periode ini.
+    // Utilisasi = jam mesin jalan ÷ (hari kerja x jam tersedia per hari, Setting). Efisiensi = jam standar MC ÷ jam jalan.
     const { facts } = await loadFacts(master, from, to, p.categoryId);
-    const rows = [...groupBy(facts, (f) => `${f.categoryId}|${f.mcNo}`).values()]
-      .map((g) => {
-        const fs = facts.filter((f) => f.categoryId === g.first.categoryId && f.mcNo === g.first.mcNo);
+    const workDays = new Set(facts.map((f) => f.workDate)).size;
+    const availHrs = workDays * st.mcHrsDay;
+    const key = (c: number, mc: string) => `${c}|${mc}`;
+    const used = groupBy(
+      facts.filter((f) => f.mcNo !== "-"),
+      (f) => key(f.categoryId, f.mcNo),
+    );
+    const list = new Map<string, { categoryId: number; category: string; mcNo: string; line: string }>();
+    for (const m of master.machines)
+      if (!p.categoryId || m.categoryId === p.categoryId)
+        list.set(key(m.categoryId, m.mcNo), { categoryId: m.categoryId, category: master.categories.find((c) => c.id === m.categoryId)?.name ?? "", mcNo: m.mcNo, line: m.line });
+    for (const [k, g] of used) if (!list.has(k)) list.set(k, { categoryId: g.first.categoryId, category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line });
+    let sumHours = 0,
+      sumStd = 0,
+      sumRated = 0;
+    const rows = [...list.entries()]
+      .map(([k, m]) => {
+        const g = used.get(k);
         let mcHours = 0,
           stdHours = 0,
           ratedHours = 0;
-        for (const f of fs) {
+        for (const f of facts) {
+          if (f.categoryId !== m.categoryId || f.mcNo !== m.mcNo) continue;
           mcHours += f.mcHours;
           if (f.mcStd > 0) {
             stdHours += f.qty / f.mcStd;
             ratedHours += f.mcHours;
           }
         }
+        sumHours += mcHours;
+        sumStd += stdHours;
+        sumRated += ratedHours;
+        const qty = g?.agg.qty ?? 0;
+        const ng = g?.agg.ng ?? 0;
+        const util = availHrs > 0 ? mcHours / availHrs : null;
+        const eff = ratedHours > 0 ? stdHours / ratedHours : null;
+        const rate = ngRate(ng, qty);
         return {
-          category: g.first.categoryName,
-          mcNo: g.first.mcNo,
-          line: g.first.line,
-          qty: g.agg.qty,
-          ng: g.agg.ng,
-          ngRate: ngRate(g.agg.ng, g.agg.qty),
+          category: m.category,
+          mcNo: m.mcNo,
+          line: m.line,
+          status: !g ? "Tidak jalan" : util != null && util * 100 >= st.utilTarget ? "OK" : "Di bawah target",
+          days: g ? new Set(facts.filter((f) => f.categoryId === m.categoryId && f.mcNo === m.mcNo).map((f) => f.workDate)).size : 0,
           mcHours,
-          pcsHr: mcHours > 0 ? g.agg.qty / mcHours : null,
+          util,
+          qty,
+          pcsHr: mcHours > 0 ? qty / mcHours : null,
           stdHours: ratedHours > 0 ? stdHours : null,
-          eff: ratedHours > 0 ? stdHours / ratedHours : null,
+          eff,
+          ng,
+          ngPpm: ppm(ng, qty),
+          oee: util != null && eff != null && g ? Math.min(util, 1) * eff * (1 - (rate ?? 0)) : null,
         };
       })
-      .sort((a, b) => Number(b.ng) - Number(a.ng));
+      .sort((a, b) => a.category.localeCompare(b.category) || a.mcNo.localeCompare(b.mcNo, "id", { numeric: true }));
+    const running = rows.filter((r) => r.status !== "Tidak jalan").length;
+    const avgUtil = availHrs > 0 && rows.length ? sumHours / (availHrs * rows.length) : null;
+    const runUtil = availHrs > 0 && running ? sumHours / (availHrs * running) : null;
+    const tq = rows.reduce((a, r) => a + r.qty, 0);
+    const tng = rows.reduce((a, r) => a + r.ng, 0);
     return {
       ...base,
-      subtitle: period,
-      kpis: [],
-      charts: [{ type: "bar", title: "NG per mesin (tertinggi)", xKey: "mcNo", series: [{ key: "ng", label: "NG", format: "int" }], data: rows.slice(0, 15) }],
+      subtitle: `${period} · ${workDays} hari kerja`,
+      kpis: [
+        { label: "Mesin jalan", value: `${running} dari ${rows.length}`, hint: `${rows.length - running} mesin tidak jalan di periode ini` },
+        { label: "Utilisasi mesin yang jalan", value: runUtil, format: "pct", hint: `semua mesin ${avgUtil == null ? "-" : `${Math.round(avgUtil * 100)}%`}`, target: `${st.utilTarget}%`, status: vsTarget(runUtil == null ? null : runUtil * 100, st.utilTarget) },
+        { label: "Efisiensi vs Std MC", value: sumRated > 0 ? sumStd / sumRated : null, format: "pct", target: `${st.target}%`, status: vsTarget(sumRated > 0 ? (sumStd / sumRated) * 100 : null, st.target) },
+        { label: "NG (PPM)", value: ppm(tng, tq), format: "ppm", target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(ppm(tng, tq), st.ngPpmMax, true) },
+      ],
+      charts: [
+        {
+          type: "bar",
+          title: "Utilisasi mesin yang jalan (urut tertinggi)",
+          xKey: "mcNo",
+          series: [{ key: "util", label: "Utilisasi", format: "pct" }],
+          data: rows.filter((r) => r.status !== "Tidak jalan").sort((a, b) => (b.util ?? 0) - (a.util ?? 0)).map((r) => ({ ...r, mcNo: new Set(rows.map((x) => x.category)).size > 1 ? `${r.category.split(" ")[0]} ${r.mcNo.replace(/^MC\s*/i, "")}` : r.mcNo })),
+        },
+      ],
       tables: [
         {
-          title: "Per mesin (urut NG tertinggi)",
+          title: "Semua mesin",
+          note: `Utilisasi = jam mesin jalan ÷ (${workDays} hari kerja x ${fmt(st.mcHrsDay, 0)} jam tersedia per hari, ubah di Master Data > Setting). OEE kira-kira = utilisasi x efisiensi x (1 − NG rate).`,
           columns: [
             { key: "category", label: "Kategori" },
             { key: "mcNo", label: "Mesin" },
             { key: "line", label: "Line" },
+            { key: "status", label: "Status" },
+            { key: "days", label: "Hari jalan", format: "int" },
+            { key: "mcHours", label: "Jam jalan", format: "dec1" },
+            { key: "util", label: "Utilisasi", format: "pct" },
             { key: "qty", label: "Hasil (pcs)", format: "int" },
-            { key: "ng", label: "NG (pcs)", format: "int" },
-            { key: "ngRate", label: "NG rate", format: "pct" },
-            { key: "mcHours", label: "Jam mesin jalan", format: "dec1" },
             { key: "pcsHr", label: "Hasil per jam", format: "dec1" },
             { key: "stdHours", label: "Jam standar MC", format: "dec1" },
             { key: "eff", label: "Efisiensi", format: "pct" },
+            { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
+            { key: "oee", label: "OEE (kira-kira)", format: "pct" },
           ],
           rows,
         },
@@ -481,14 +576,15 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       });
     const rows = [...map.values()].sort((a, b) => b.qty - a.qty).map((e) => ({ ...e, share: total ? e.qty / total : null }));
     const byDay = groupBy(facts, (f) => f.workDate);
-    const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: d.slice(5), ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty) }));
+    const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: dayLabel(d), ng: g.agg.ng, ngPpm: ppm(g.agg.ng, g.agg.qty) }));
+    const all = totalRow(facts, st, {});
     // Kualitas = jenis NG + NG per lot dalam satu halaman.
     const lotTable = (await buildReport("ng-lot", p, today)).tables[0];
     // Matriks part x jenis NG: 8 jenis NG terbanyak jadi kolom, sisanya "Lainnya".
     const topNames = [...new Set(rows.map((r) => r.ng))].slice(0, 8);
     const matrix = [...groupBy(facts, (f) => f.partId).values()]
       .map((g) => {
-        const out: Row = { part: g.first.part, category: g.first.categoryName, qty: g.agg.qty, ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty), other: 0 };
+        const out: Row = { part: g.first.part, category: g.first.categoryName, qty: g.agg.qty, ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty), ngPpm: ppm(g.agg.ng, g.agg.qty), other: 0 };
         topNames.forEach((_, j) => (out[`n${j}`] = 0));
         for (const f of facts.filter((x) => x.partId === g.first.partId))
           f.ng.forEach((n, i) => {
@@ -509,6 +605,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { key: "qty", label: "Hasil (pcs)", format: "int" },
         { key: "ng", label: "NG (pcs)", format: "int" },
         { key: "ngRate", label: "NG rate", format: "pct" },
+        { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
         ...topNames.map((n, j) => ({ key: `n${j}`, label: n, format: "int" as const })),
         ...(matrix.some((r) => Number(r.other) > 0) ? [{ key: "other", label: "Lainnya", format: "int" as const }] : []),
       ],
@@ -544,10 +641,15 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     return {
       ...base,
       subtitle: period,
-      kpis: [{ label: "NG (pcs)", value: total, format: "int" }],
+      kpis: [
+        { label: "NG (PPM)", value: all.ngPpm, format: "ppm", target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(all.ngPpm as number | null, st.ngPpmMax, true) },
+        { label: "NG (pcs)", value: total, format: "int" },
+        { label: "NG rate", value: all.ngRate, format: "pct" },
+        { label: "Hasil diperiksa (pcs)", value: all.qty, format: "int" },
+      ],
       charts: [
-        { type: "bar", title: "NG per jenis", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: rows.slice(0, 15) },
-        { type: "line", title: "Tren NG harian", xKey: "date", series: [{ key: "ng", label: "NG", format: "int" }], data: trend },
+        { type: "pareto", title: "Pareto NG per jenis (pcs)", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: withCum(rows, "qty").slice(0, 12) },
+        { type: "line", title: "Tren NG harian (PPM)", xKey: "date", series: [{ key: "ngPpm", label: "NG (PPM)", format: "ppm" }], data: trend },
       ],
       tables: [
         ...search,
@@ -565,6 +667,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         lotTable,
         {
           title: "Catatan NG Lain-lain",
+          detail: true,
           columns: [
             { key: "date", label: "Tanggal", format: "date" },
             { key: "member", label: "Member" },
@@ -596,6 +699,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           qty: g.agg.qty,
           ng: g.agg.ng,
           ngRate: ngRate(g.agg.ng, g.agg.qty),
+          ngPpm: ppm(g.agg.ng, g.agg.qty),
           topNg: g.agg.ng ? `${label(g.first.ngGroupId, topIdx)} (${counts[topIdx]})` : "-",
           firstDate: lotFacts.map((f) => f.workDate).sort()[0],
         };
@@ -617,6 +721,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "qty", label: "Hasil (pcs)", format: "int" },
             { key: "ng", label: "NG (pcs)", format: "int" },
             { key: "ngRate", label: "NG rate", format: "pct" },
+            { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
             { key: "topNg", label: "NG terbanyak" },
           ],
           rows,
@@ -705,15 +810,16 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: period,
       kpis: [
-        { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
-        { label: "Potensi hasil hilang (pcs)", value: Math.round(totalPcsLost), format: "int", hint: "Lost Time x STKI part hari itu" },
+        { label: "Jam efektif produksi", value: workMin + lt + aj ? workMin / (workMin + lt + aj) : null, format: "pct", hint: "dari jam normal, sisanya lost time + another job" },
+        { label: "Lost Time (jam)", value: lt / 60, format: "dec1", hint: `potensi hilang ${formatNum(Math.round(totalPcsLost))} pcs` },
         { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
         { label: "Jam lembur (OT)", value: otMin / 60, format: "dec1" },
-        { label: "Porsi lost time", value: workMin + lt + aj ? lt / (workMin + lt + aj) : null, format: "pct", hint: "dari total jam normal" },
       ],
       charts: [
-        { type: "bar", title: "Lost Time & Another Job per jenis (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: typeRows.slice(0, 12) },
-        { type: "line", title: "Lost Time per minggu (jam)", xKey: "week", series: [{ key: "ltHrs", label: "Lost Time", format: "dec1" }], data: weekRows },
+        { type: "pareto", title: "Pareto Lost Time & Another Job (jam)", xKey: "name", series: [{ key: "hours", label: "Jam", format: "dec1" }], data: withCum(typeRows, "hours").slice(0, 12) },
+        ...(weekRows.length > 1 && weekRows.some((w) => w.ltHrs > 0)
+          ? [{ type: "line" as const, title: "Lost Time per minggu (jam)", xKey: "week", series: [{ key: "ltHrs", label: "Lost Time", format: "dec1" as const }], data: weekRows }]
+          : []),
       ],
       tables: [
         {
@@ -755,6 +861,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         },
         {
           title: "Rincian lost time",
+          detail: true,
           columns: [
             { key: "date", label: "Tanggal", format: "date" },
             { key: "member", label: "Member" },
@@ -825,12 +932,11 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     });
     return {
       ...base,
-      subtitle: `${formatDateId(from)} – ${formatDateId(to)} · dari semua kiriman (termasuk yang belum/ditolak)`,
+      subtitle: `${formatDateId(from)} – ${formatDateId(to)} · dari semua kiriman, termasuk yang menunggu dan ditolak`,
       kpis: [
-        { label: "Kiriman", value: subs.length, format: "int" },
-        { label: "Dikirim di hari yang sama", value: subs.length ? sameDay / subs.length : null, format: "pct" },
-        { label: "Ditolak leader", value: rejected.length, format: "int" },
+        { label: "Dikirim di hari yang sama", value: subs.length ? sameDay / subs.length : null, format: "pct", hint: `${sameDay} dari ${subs.length} kiriman` },
         { label: "Rata-rata waktu validasi (jam)", value: avgHrs, format: "dec1" },
+        { label: "Ditolak leader", value: rejected.length, format: "int" },
         { label: "Masih menunggu", value: waiting.length, format: "int" },
       ],
       charts: [
@@ -881,7 +987,31 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
   const month = p.month && /^\d{4}-\d{2}$/.test(p.month) ? p.month : today.slice(0, 7);
   const mFrom = `${month}-01`;
   const mTo = monthEnd(mFrom);
-  const { facts, lost } = await loadFacts(master, mFrom, mTo, p.categoryId);
+  // 6 bulan terakhir sekaligus: untuk tren dan perbandingan dengan bulan lalu.
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 - (5 - i), 1));
+    return d.toISOString().slice(0, 7);
+  });
+  const hist = await loadFacts(master, `${months[0]}-01`, mTo, p.categoryId);
+  const facts = hist.facts.filter((f) => f.workDate >= mFrom);
+  const lost = hist.lost.filter((l) => l.workDate >= mFrom);
+  const BLN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const monthRows = months.map((m) => {
+    const fs = hist.facts.filter((f) => f.workDate.startsWith(m));
+    const x = totalRow(fs, st, {});
+    return { month: `${BLN[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`, qty: Number(x.qty), ach: x.ach as number | null, ngPpm: x.ngPpm as number | null, has: fs.length > 0 };
+  });
+  const prev = monthRows[4];
+  const vsPrev = (now: number | null, before: number | null, digits: "pct" | "num") => {
+    if (!prev.has || now == null || before == null) return undefined;
+    if (digits === "pct") {
+      const d = (now - before) * 100;
+      return `${d >= 0 ? "▲" : "▼"} ${fmt(Math.abs(d), 1)} poin vs ${prev.month}`;
+    }
+    if (!before) return undefined;
+    const d = (now - before) / before;
+    return `${d >= 0 ? "▲" : "▼"} ${Math.round(Math.abs(d) * 100)}% vs ${prev.month}`;
+  };
   const memberRows = [...groupBy(facts, (f) => f.memberId).values()]
     .map((g) => {
       const { lt, aj } = lostSplit(lost.filter((l) => l.memberId === g.first.memberId));
@@ -896,13 +1026,17 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     ...base,
     subtitle: `Bulan ${month}${catName ? ` · ${catName}` : ""}`,
     kpis: [
-      { label: "Hasil (pcs)", value: t.qty, format: "int" },
-      { label: "NG (pcs)", value: t.ng, format: "int" },
-      { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
-      { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
-      { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
+      { label: "Hasil (pcs)", value: t.qty, format: "int", hint: vsPrev(Number(t.qty), prev.qty, "num") },
+      { label: "Achievement", value: t.ach, format: "pct", hint: vsPrev(t.ach as number | null, prev.ach, "pct") ?? `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
+      { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: vsPrev(t.ngPpm as number | null, prev.ngPpm, "num") ?? `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
+      { label: "Lost Time (jam)", value: lt / 60, format: "dec1", hint: `Another Job ${fmt(aj / 60, 1)} jam` },
     ],
-    charts: [],
+    charts: monthRows.filter((m) => m.has).length > 1
+      ? [
+          { type: "line", title: "Achievement 6 bulan", xKey: "month", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: monthRows.filter((m) => m.has).map(({ has: _h, ...m }) => m) },
+          { type: "line", title: "NG (PPM) 6 bulan", xKey: "month", series: [{ key: "ngPpm", label: "NG (PPM)", format: "ppm" }], data: monthRows.filter((m) => m.has).map(({ has: _h, ...m }) => m) },
+        ]
+      : [],
     tables: [
       {
         title: "Rekap per member",

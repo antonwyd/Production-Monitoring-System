@@ -1,13 +1,13 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import PrintButton from "@/components/report/PrintButton";
+import FilterBar from "@/components/report/FilterBar";
 import { BarRow, Empty, Grade, Tile } from "@/components/ui";
 import { requirePageRole } from "@/lib/auth";
 import { formatDateId, isValidDate, todayJakarta } from "@/lib/dates";
 import { loadMaster } from "@/lib/service";
 import { buildLaporan } from "@/lib/views";
 
-export const metadata = { title: "Laporan · Produksi QA" };
+export const metadata = { title: "Ringkasan Laporan · QA Production" };
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
 const d1 = (v: number | null) => (v == null ? "-" : v.toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 }));
@@ -32,7 +32,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
     <AppShell session={session} active="laporan">
       <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Laporan Produksi QA</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">Ringkasan Laporan</h1>
           <p className="text-sm text-slate-500">{v.period} · hanya laporan yang sudah disetujui</p>
         </div>
 
@@ -65,37 +65,28 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           )}
         </section>
 
-        <form method="get" className="card no-print flex flex-wrap items-end gap-3 px-5 py-4">
-          <label className="text-sm text-slate-500">
-            Dari
-            <input type="date" name="from" defaultValue={v.from} className="input mt-1 h-11" />
-          </label>
-          <label className="text-sm text-slate-500">
-            Sampai
-            <input type="date" name="to" defaultValue={v.to} className="input mt-1 h-11" />
-          </label>
-          <label className="text-sm text-slate-500">
-            Kategori
-            <select name="category" defaultValue={categoryId ?? ""} className="input mt-1 h-11 min-w-52">
-              <option value="">Semua kategori</option>
-              {master.categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn-secondary h-11">Tampilkan</button>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <a className="btn-primary h-11" href={`/api/export/laporan.xlsx?${query}`}>
-              Download Excel
-            </a>
-            <a className="btn-secondary h-11" href={`/api/export/monthly.xlsx?month=${v.to.slice(0, 7)}${categoryId ? `&category=${categoryId}` : ""}`}>
-              Rekap Bulanan (Excel)
-            </a>
-            <PrintButton label="Download PDF" />
-          </div>
-        </form>
+        <FilterBar
+          mode="range"
+          from={v.from}
+          to={v.to}
+          date={today}
+          month={today.slice(0, 7)}
+          today={today}
+          selects={[
+            {
+              name: "category",
+              label: "Kategori",
+              value: String(categoryId ?? ""),
+              options: [{ value: "", label: "Semua kategori" }, ...master.categories.map((c) => ({ value: String(c.id), label: c.name }))],
+            },
+          ]}
+          downloads={[
+            { label: "Ringkasan (Excel)", hint: "Kop + angka vs target + semua tabel, siap cetak A4", href: `/api/export/laporan.xlsx?${query}` },
+            { label: "Ringkasan (PDF)", hint: "Untuk dikirim atau dicetak, dengan kotak tanda tangan", href: `/api/export/laporan.pdf?${query}` },
+            { label: "Rekap Bulanan (Excel)", hint: `Per member dan per kategori, bulan ${v.month.label.replace(/^Laporan bulan /, "")}`, href: `/api/export/monthly.xlsx?month=${v.to.slice(0, 7)}${categoryId ? `&category=${categoryId}` : ""}` },
+            { label: "Rekap Bulanan (PDF)", hint: "Laporan bulanan untuk tanggal 10", href: `/api/export/monthly.pdf?month=${v.to.slice(0, 7)}${categoryId ? `&category=${categoryId}` : ""}` },
+          ]}
+        />
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {v.tiles.map((t) => (
@@ -110,7 +101,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                 <tr className="text-left">
                   <th className={TH}>Per kategori</th>
                   <th className={`${TH} text-right`}>Hasil (pcs)</th>
-                  <th className={`${TH} text-right`}>NG rate</th>
+                  <th className={`${TH} text-right`}>NG (PPM)</th>
                   <th className={`${TH} text-right`}>Achievement</th>
                   <th className={`${TH} text-center`}>Grade</th>
                 </tr>
@@ -120,8 +111,8 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                   <tr key={c.name}>
                     <td className={`${TD} font-semibold`}>{c.name}</td>
                     <td className={`${TD} text-right`}>{n0(c.qty)}</td>
-                    <td className={`${TD} text-right`}>{pc(c.ngRate, 1)}</td>
-                    <td className={`${TD} text-right font-semibold`}>{pc(c.ach)}</td>
+                    <td className={`${TD} text-right ${(c.ngPpm ?? 0) > master.settings.ngPpmMax ? "font-semibold text-brand-600" : ""}`}>{c.ngPpm == null ? "-" : n0(c.ngPpm)}</td>
+                    <td className={`${TD} text-right font-semibold ${c.ach != null && c.ach * 100 < master.settings.target ? "text-brand-600" : ""}`}>{pc(c.ach)}</td>
                     <td className={`${TD} text-center`}>
                       <Grade g={c.grade} />
                     </td>
@@ -161,9 +152,9 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                       </td>
                       <td className={`${TD} text-right`}>{p.days}</td>
                       <td className={`${TD} text-right`}>{n0(p.qty)}</td>
-                      <td className={`${TD} text-right`}>{pc(p.ngRate, 1)}</td>
+                      <td className={`${TD} text-right`}>{pc(p.ngRate, 2)}</td>
                       <td className={`${TD} text-right`}>{p.lostMin ? `${d1(p.lostMin / 60)} jam` : "-"}</td>
-                      <td className={`${TD} text-right font-semibold`}>{pc(p.ach)}</td>
+                      <td className={`${TD} text-right font-semibold ${p.ach != null && p.ach * 100 < master.settings.target ? "text-brand-600" : ""}`}>{pc(p.ach)}</td>
                       <td className={`${TD} text-center`}>
                         <Grade g={p.grade} />
                       </td>
@@ -198,7 +189,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                     {l.part} · Lot {l.lot}
                   </span>
                   <span className="font-semibold text-orange-800">
-                    {pc(l.rate, 1)} <span className="font-normal text-slate-500">({n0(l.ng)} pcs)</span>
+                    {pc(l.rate, 2)} <span className="font-normal text-slate-500">({n0(l.ng)} pcs)</span>
                   </span>
                 </div>
               ))
@@ -207,19 +198,31 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
             )}
             <h3 className="mb-1 mt-6 font-bold">Catatan NG Lain-lain</h3>
             {v.notes.length ? (
-              v.notes.map((c, i) => (
-                <div key={i} className="border-b border-slate-100 py-2.5 text-sm">
-                  <b>{c.what}</b> <span className="text-slate-500">· {c.who}</span>
-                </div>
-              ))
+              <>
+                {v.notes.slice(0, 5).map((c, i) => (
+                  <div key={i} className="border-b border-slate-100 py-2.5 text-sm">
+                    <b>{c.what}</b> <span className="text-slate-500">· {c.who}</span>
+                  </div>
+                ))}
+                {v.notes.length > 5 && (
+                  <Link href={`/reports/ng-type?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className="mt-2 inline-block text-sm font-semibold text-brand-600 hover:underline">
+                    Lihat semua catatan ({v.notes.length}) ›
+                  </Link>
+                )}
+              </>
             ) : (
               <Empty>Tidak ada catatan.</Empty>
             )}
           </section>
 
           <section className="card min-w-0 flex-[1_1_460px] p-5">
-            <h2 className="text-xl font-bold">3. Mesin PF</h2>
-            <p className="mb-2 text-sm text-slate-500">Jam mesin jalan dibanding Standar MC</p>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-xl font-bold">3. Mesin</h2>
+              <Link href={`/reports/machine?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className="text-sm font-semibold text-brand-600 hover:underline">
+                Semua mesin ›
+              </Link>
+            </div>
+            <p className="mb-2 text-sm text-slate-500">Mesin yang jalan: jam jalan dibanding Standar MC</p>
             {v.machines.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[420px] text-sm">
@@ -252,13 +255,13 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
         </div>
 
         <section className="no-print card px-5 py-4">
-          <h2 className="mb-3 font-bold">Report detail (semua bisa diunduh ke Excel)</h2>
+          <h2 className="mb-3 font-bold">Analisa lebih detail</h2>
           <div className="flex flex-wrap gap-2">
             {[
-              ["member", "Per Member"],
               ["ng-type", "Kualitas (NG) & cari lot"],
+              ["member", "Produktivitas per member"],
               ["waktu", "Waktu & Lost Time"],
-              ["machine", "Mesin PF"],
+              ["machine", "Mesin"],
               ["disiplin", "Disiplin Lapor"],
             ].map(([k, l]) => (
               <Link key={k} href={`/reports/${k}?from=${v.from}&to=${v.to}${categoryId && k !== "disiplin" ? `&category=${categoryId}` : ""}`} className="btn-secondary min-h-11">
