@@ -1,19 +1,13 @@
 import type { Report, ReportParams } from "@/lib/reports";
-import { formatCell } from "@/lib/format";
 import type { MasterData } from "@/lib/types";
 import { partLabel } from "@/lib/rules";
 import Charts from "./Charts";
-import { Grade } from "@/components/ui";
 import FilterBar, { type FilterSelect } from "./FilterBar";
 import KpiCards from "./KpiCards";
 import ReportTabs, { groupNameOf } from "./ReportTabs";
 import Link from "next/link";
-import ShowAll from "./ShowAll";
+import ReportTable from "./ReportTable";
 import DataStatus from "@/components/DataStatus";
-
-const isNum = (f?: string) => !!f && f !== "text" && f !== "grade" && f !== "date";
-/** Tabel rincian dilipat setelah baris ini. */
-const FOLD = 10;
 
 export default function ReportView({
   report,
@@ -108,69 +102,9 @@ export default function ReportView({
 
       <Charts charts={report.charts} />
 
-      {report.tables.map((t) => {
-        const fold = t.detail && t.rows.length > FOLD + 2;
-        return (
-          <section key={t.title} className="group card overflow-hidden" data-open="false">
-            <div className="flex items-baseline justify-between gap-3 px-5 pb-2 pt-4">
-              <div>
-                <h2 className="text-lg font-bold">{t.title}</h2>
-                {t.note && <p className="text-xs text-slate-500">{t.note}</p>}
-              </div>
-              {t.rows.length > 0 && <span className="shrink-0 text-xs text-slate-500">{t.rows.length} baris</span>}
-            </div>
-            <div className="max-h-[70vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-white text-left">
-                  <tr>
-                    {t.columns.map((c) => (
-                      <th key={c.key} className={`whitespace-nowrap border-b border-slate-200 px-3 py-2.5 text-xs font-medium text-slate-500 first:pl-5 last:pr-5 ${isNum(c.format) ? "text-right" : ""} ${c.format === "grade" ? "text-center" : ""}`}>
-                        {c.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {t.rows.length === 0 && (
-                    <tr>
-                      <td colSpan={t.columns.length} className="px-3 py-10 text-center text-slate-400">
-                        Belum ada data di periode ini.
-                      </td>
-                    </tr>
-                  )}
-                  {[...t.rows, ...(t.total && t.rows.length ? [t.total] : [])].map((r, i) => {
-                    const isTotal = t.total && i === t.rows.length;
-                    const missing = r.status === "Belum lapor";
-                    const idle = r.status === "Tidak jalan";
-                    return (
-                      <tr
-                        key={i}
-                        className={`border-t border-slate-100 ${isTotal ? "border-t-2 border-slate-300 bg-brand-50/60 font-bold" : "hover:bg-slate-50"} ${missing ? "bg-orange-50/60 text-orange-900" : ""} ${idle ? "text-slate-400" : ""} ${fold && i >= FOLD && !isTotal ? "group-data-[open=false]:hidden" : ""}`}
-                      >
-                        {t.columns.map((c, j) => (
-                          <td
-                            key={c.key}
-                            className={`whitespace-nowrap px-3 py-2.5 first:pl-5 last:pr-5 ${isNum(c.format) ? "text-right tabular-nums" : ""} ${c.format === "grade" ? "text-center" : ""} ${j === 0 && !isTotal ? "font-medium" : ""}`}
-                          >
-                            {c.format === "grade" ? (
-                              <Grade g={String(r[c.key] ?? "")} />
-                            ) : c.key === "status" && (r[c.key] === "OK" || r[c.key] === "Di bawah target") ? (
-                              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${r[c.key] === "OK" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>{r[c.key]}</span>
-                            ) : (
-                              formatCell(r[c.key], c.format)
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {fold && <ShowAll total={t.rows.length} shown={FOLD} />}
-          </section>
-        );
-      })}
+      {report.tables.map((t) => (
+        <ReportTable key={t.title} t={t} />
+      ))}
     </main>
   );
 }

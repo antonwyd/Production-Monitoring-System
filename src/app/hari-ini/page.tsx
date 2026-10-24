@@ -106,21 +106,42 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
           </div>
         </div>
 
+        <nav className="no-print -mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none]" aria-label="Periode">
+          {[
+            { label: "Hari ini", href: "/hari-ini", on: date === today },
+            { label: "Kemarin", href: `/hari-ini?date=${addDays(today, -1)}`, on: date === addDays(today, -1) },
+            { label: "7 hari", href: `/laporan?from=${addDays(today, -6)}&to=${today}` },
+            { label: "30 hari", href: `/laporan?from=${addDays(today, -29)}&to=${today}` },
+            { label: "Bulan ini", href: `/laporan?from=${today.slice(0, 8)}01&to=${today}` },
+          ].map((c) => (
+            <a
+              key={c.label}
+              href={c.href}
+              aria-current={c.on ? "page" : undefined}
+              className={`flex h-9 shrink-0 items-center rounded-lg border px-3.5 text-sm font-medium ${c.on ? "border-brand-600 bg-brand-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-brand-600 hover:text-brand-600"}`}
+            >
+              {c.label}
+            </a>
+          ))}
+        </nav>
+
         <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard icon="box" title="Hasil Produksi" delay={0.05} spark={<Spark kind="line" data={v.trend.map((t) => t.qty)} />}>
             <div className="text-2xl font-bold tabular-nums sm:text-3xl">
               <CountUp value={s.qty} /> <span className="text-sm font-semibold text-slate-500 sm:text-base">pcs</span>
             </div>
-            <div className="text-xs text-slate-500">
-              {!s.complete ? `sementara, ${done} dari ${v.expected} laporan disetujui` : s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}
-            </div>
+            <div className="text-xs text-slate-500">{!s.complete ? `sementara, ${done} dari ${v.expected} laporan disetujui` : s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}</div>
           </KpiCard>
           <KpiCard icon="target" title="Achievement" delay={0.19}>
             <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ach != null && s.ach * 100 < s.target ? "text-brand-600" : ""}`}>
-              {s.ach == null ? "-" : <CountUp value={Math.round(s.ach * 100)} suffix="%" />} {s.ach != null && <span className="text-sm font-semibold text-slate-500 sm:text-base">Grade {s.grade}</span>}
+              {s.ach == null ? "-" : <CountUp value={Math.round(s.ach * 100)} suffix="%" />}{" "}
+              {s.ach != null && <span className="text-sm font-semibold text-slate-500 sm:text-base">Grade {s.grade}</span>}
             </div>
             <div className="relative h-2 rounded-full bg-slate-100">
-              <div className={`anim-bar h-2 rounded-full ${s.ach != null && s.ach * 100 >= s.target ? "bg-emerald-600" : "bg-brand-600"}`} style={{ width: `${Math.min(100, Math.round((s.ach ?? 0) * 100))}%`, animationDelay: ".3s" }} />
+              <div
+                className={`anim-bar h-2 rounded-full ${s.ach != null && s.ach * 100 >= s.target ? "bg-emerald-600" : "bg-brand-600"}`}
+                style={{ width: `${Math.min(100, Math.round((s.ach ?? 0) * 100))}%`, animationDelay: ".3s" }}
+              />
             </div>
             <div className={`text-xs font-semibold ${s.ach == null ? "text-slate-500" : s.ach * 100 >= s.target ? "text-emerald-700" : "text-brand-600"}`}>
               {s.ach == null ? `Target ${s.target}%` : s.ach * 100 >= s.target ? `✓ Sesuai target ${s.target}%` : `${Math.round(s.target - s.ach * 100)}% di bawah target`}
@@ -146,47 +167,79 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
           </KpiCard>
         </section>
 
-        <section className="card p-4 sm:p-5" aria-label="Status laporan member">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-bold">Status Laporan Member</h2>
-            <span className="text-sm text-slate-500">{v.expected} member diharapkan lapor</span>
-          </div>
-          <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
-            {STATUS.map((x) => (
-              <span key={x.key} className={x.bar} style={{ width: `${v.expected ? (v.status[x.key] / v.expected) * 100 : 0}%` }} />
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {STATUS.map((x) => (
-              <div key={x.key} className="flex items-center gap-2.5">
-                <span className={`h-3 w-3 shrink-0 rounded-sm ${x.bar}`} />
-                <span className="text-xl font-bold tabular-nums">{v.status[x.key]}</span>
-                <span className="text-sm text-slate-600">{x.label}</span>
-              </div>
-            ))}
-          </div>
-          {(v.missing.length > 0 || v.rejected.length > 0) && (
-            <details className="mt-3 border-t border-slate-100 pt-3 text-sm">
-              <summary className="cursor-pointer font-medium text-slate-700">Lihat nama</summary>
-              {v.rejected.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ditolak, belum dikirim ulang</div>
-                  {v.rejected.map((r) => (
-                    <div key={r.member} className="py-0.5">
-                      <b>{r.member}</b> <span className="text-slate-500">· {r.note}</span>
-                    </div>
-                  ))}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <section className="card p-4 sm:p-5" aria-label="Status laporan member">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-bold">Status Laporan Member</h2>
+              <span className="text-sm text-slate-500">{v.expected} member diharapkan lapor</span>
+            </div>
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
+              {STATUS.map((x) => (
+                <span key={x.key} className={x.bar} style={{ width: `${v.expected ? (v.status[x.key] / v.expected) * 100 : 0}%` }} />
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {STATUS.map((x) => (
+                <div key={x.key} className="flex items-center gap-2.5">
+                  <span className={`h-3 w-3 shrink-0 rounded-sm ${x.bar}`} />
+                  <span className="text-xl font-bold tabular-nums">{v.status[x.key]}</span>
+                  <span className="text-sm text-slate-600">{x.label}</span>
                 </div>
-              )}
-              {v.missing.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum kirim</div>
-                  <div className="mt-1 text-slate-700">{v.missing.join(", ")}</div>
-                </div>
-              )}
-            </details>
-          )}
-        </section>
+              ))}
+            </div>
+            {(v.missing.length > 0 || v.rejected.length > 0) && (
+              <details className="mt-3 border-t border-slate-100 pt-3 text-sm">
+                <summary className="cursor-pointer font-medium text-slate-700">Lihat nama</summary>
+                {v.rejected.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ditolak, belum dikirim ulang</div>
+                    {v.rejected.map((r) => (
+                      <div key={r.member} className="py-0.5">
+                        <b>{r.member}</b> <span className="text-slate-500">· {r.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {v.missing.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belum kirim</div>
+                    <div className="mt-1 text-slate-700">{v.missing.join(", ")}</div>
+                  </div>
+                )}
+              </details>
+            )}
+          </section>
+          <section className="card p-4 sm:p-5">
+            <h2 className="mb-3 text-lg font-bold">Perlu Perhatian</h2>
+            {v.attention.length === 0 ? (
+              <p className="text-sm text-slate-500">Tidak ada yang perlu ditindaklanjuti.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-slate-100">
+                {v.attention.map((a, i) => {
+                  const dot = a.level === "bad" ? "bg-brand-600" : a.level === "warn" ? "bg-orange-500" : "bg-slate-400";
+                  const body = (
+                    <>
+                      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+                      <span className="flex-1">{a.text}</span>
+                      {a.href && <span className="shrink-0 text-brand-600">›</span>}
+                    </>
+                  );
+                  return (
+                    <li key={i}>
+                      {a.href ? (
+                        <a href={a.href} className="flex items-start gap-3 py-2.5 text-sm hover:text-brand-600">
+                          {body}
+                        </a>
+                      ) : (
+                        <div className="flex items-start gap-3 py-2.5 text-sm">{body}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
 
         <nav className="no-print flex flex-wrap gap-2" aria-label="Aksi cepat">
           <a href="/" className="btn-secondary min-h-11 text-sm">
@@ -204,35 +257,6 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             Lost Time hari ini
           </a>
         </nav>
-
-        {v.attention.length > 0 && (
-          <section className="card anim-in p-4 sm:p-5" style={{ animationDelay: ".1s" }}>
-            <h2 className="mb-3 text-lg font-bold">Perlu perhatian</h2>
-            <ul className="flex flex-col divide-y divide-slate-100">
-              {v.attention.map((a, i) => {
-                const dot = a.level === "bad" ? "bg-brand-600" : a.level === "warn" ? "bg-orange-500" : "bg-slate-400";
-                const body = (
-                  <>
-                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
-                    <span className="flex-1">{a.text}</span>
-                    {a.href && <span className="shrink-0 text-brand-600">›</span>}
-                  </>
-                );
-                return (
-                  <li key={i}>
-                    {a.href ? (
-                      <a href={a.href} className="flex items-start gap-3 py-2.5 text-sm hover:text-brand-600">
-                        {body}
-                      </a>
-                    ) : (
-                      <div className="flex items-start gap-3 py-2.5 text-sm">{body}</div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        )}
 
         {canDecide && s.waiting > 0 && <QueueList cards={v.queue} canDecide />}
 
@@ -259,14 +283,14 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
                   <div key={n.name} className="flex items-center gap-3">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-600">{i + 1}</span>
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex items-baseline gap-3 text-sm">
-                      <span className="min-w-0 flex-1 truncate">{n.name}</span>
-                      <b className="tabular-nums">{n0(n.qty)} pcs</b>
-                      <span className="w-12 text-right tabular-nums text-slate-500">{Math.round(n.share * 100)}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div className="anim-bar h-2 rounded-full bg-brand-600" style={{ width: `${n.bar}%`, animationDelay: `${0.25 + i * 0.05}s` }} />
-                    </div>
+                      <div className="flex items-baseline gap-3 text-sm">
+                        <span className="min-w-0 flex-1 truncate">{n.name}</span>
+                        <b className="tabular-nums">{n0(n.qty)} pcs</b>
+                        <span className="w-12 text-right tabular-nums text-slate-500">{Math.round(n.share * 100)}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="anim-bar h-2 rounded-full bg-brand-600" style={{ width: `${n.bar}%`, animationDelay: `${0.25 + i * 0.05}s` }} />
+                      </div>
                     </div>
                   </div>
                 ))}

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // Semua report dihitung dari tab Input - Production dan Input - Lost Time di Google Sheet,
 // yaitu kiriman yang sudah disetujui leader (plus baris yang diisi langsung di sheet).
 import { callBackend, openRejections, type RawRows, type RawSubmission } from "./backend";
+import { clearInputCache } from "./sheets/qa";
 import { catId, memberId as memberIdOf, partId as partIdOf } from "./ids";
 import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
@@ -100,9 +101,6 @@ export type Fact = {
 
 export type LostFact = { workDate: string; memberId: number; memberName: string; name: string; group: string; minutes: number; remarks: string };
 
-const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
-const ROWS_TTL = 60_000;
-
 const ageStore = new AsyncLocalStorage<{ at: number }>();
 
 /**
@@ -115,24 +113,16 @@ export async function withDataAge<T>(fn: () => Promise<T>): Promise<{ value: T; 
   return { value, asOf: st.at };
 }
 
-/** Data report disimpan 1 menit di server supaya pindah halaman/filter tidak selalu menunggu Google Sheet. */
+/** Baris Input untuk rentang tanggal. Cache 1 menit ada di qa.ts (satu bacaan sheet untuk semua rentang). */
 function fetchRows(from: string, to: string): Promise<RawRows> {
-  const key = `${from}|${to}`;
-  const hit = rowsCache.get(key);
   const st = ageStore.getStore();
-  if (hit && Date.now() - hit.at < ROWS_TTL) {
-    if (st) st.at = Math.min(st.at, hit.at);
-    return hit.data;
-  }
   const data = callBackend<RawRows>("rows", { from, to });
-  data.catch(() => rowsCache.delete(key));
-  if (rowsCache.size > 50) rowsCache.clear();
-  rowsCache.set(key, { at: Date.now(), data });
+  if (st) data.then((r) => r.at && (st.at = Math.min(st.at, r.at))).catch(() => undefined);
   return data;
 }
 
 export function clearReportCache() {
-  rowsCache.clear();
+  clearInputCache();
 }
 
 export async function loadFacts(master: MasterData, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {

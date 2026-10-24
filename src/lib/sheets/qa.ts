@@ -445,6 +445,7 @@ const colLetter = (n: number) => {
 
 /** Tulis baris setelah baris terakhir yang terisi di kolom input (B..). Mengembalikan nomor baris pertama. */
 async function tulis(title: string, rows: Cell[][], width: number, extraClear: string[] = []) {
+  clearInputCache();
   const end = colLetter(1 + width);
   const [[data], counts] = await Promise.all([io.get([`${q(title)}!B${FIRST_DATA_ROW}:${end}`], "UNFORMATTED_VALUE"), io.rowCounts()]);
   let lastFilled = -1;
@@ -718,11 +719,30 @@ export async function apiQueue(a: { status?: string; date?: string; member?: str
 }
 
 /** Baris Input - Production dan Input - Lost Time pada rentang tanggal (yyyy-MM-dd). */
+// Isi Input - Production & Input - Lost Time dibaca sekali lalu dipakai semua report (rentang tanggal apa pun)
+// selama 1 menit. Dulu tiap rentang tanggal membaca ulang seluruh sheet. Dikosongkan setiap ada tulis ke Input.
+const INPUT_TTL = 60_000;
+let inputCache: { at: number; data: Promise<Cell[][][]> } | null = null;
+function inputGrid(): { at: number; data: Promise<Cell[][][]> } {
+  if (inputCache && Date.now() - inputCache.at < INPUT_TTL) return inputCache;
+  const data = io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE");
+  const entry = { at: Date.now(), data };
+  data.catch(() => {
+    if (inputCache === entry) inputCache = null;
+  });
+  inputCache = entry;
+  return entry;
+}
+export function clearInputCache() {
+  inputCache = null;
+}
+
 export async function apiRows(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(to || "")) throw new QaError("Rentang tanggal tidak valid.");
   // B..AN: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori, AM/AN menit MC.
   // B..I: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis.
-  const [[prodG, ltG], m] = await Promise.all([io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE"), readMaster()]);
+  const grid = inputGrid();
+  const [[prodG, ltG], m] = await Promise.all([grid.data, readMaster()]);
   const n = (v: unknown) => Number(v) || 0;
   const opt = (v: unknown) => (v === "" || v === null || v === undefined ? "" : Number(v) || 0);
   const prod: (string | number)[][] = [];
@@ -741,7 +761,7 @@ export async function apiRows(from: string, to: string) {
     if (!d || d < from || d > to || !s(r[2])) continue;
     lost.push([d, s(r[7]) || s(r[1]), s(r[2]), n(r[3]), s(r[4])]);
   }
-  return { cols: [], prod, lost };
+  return { cols: [], prod, lost, at: grid.at };
 }
 
 /** Fungsi yang boleh dipanggil browser lewat /api/rpc/<nama> (sama dengan google.script.run di v1). */
