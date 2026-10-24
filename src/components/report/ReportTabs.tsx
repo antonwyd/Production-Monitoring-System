@@ -7,7 +7,7 @@ export const REPORT_GROUPS: { key: string; tabs: { kind: string; label: string }
     key: "report:member",
     tabs: [
       { kind: "member", label: "Per member" },
-      { kind: "category", label: "Per kategori" },
+      { kind: "category", label: "Per kategori & part" },
       { kind: "daily", label: "Harian" },
       { kind: "monthly", label: "Rekap bulanan" },
     ],
