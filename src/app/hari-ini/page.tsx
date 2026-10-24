@@ -8,6 +8,8 @@ import { Empty } from "@/components/ui";
 import { requirePageRole } from "@/lib/auth";
 import { addDays, isValidDate, todayJakarta } from "@/lib/dates";
 import { buildToday, type Trend } from "@/lib/views";
+import { withDataAge } from "@/lib/reports";
+import DataStatus from "@/components/DataStatus";
 
 export const metadata = { title: "Dashboard · QA Production" };
 
@@ -51,7 +53,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
   const q = await searchParams;
   const today = todayJakarta();
   const date = isValidDate(q.date) ? q.date : today;
-  const v = await buildToday(date);
+  const { value: v, asOf } = await withDataAge(() => buildToday(date));
   const s = v.stats;
   const done = Math.max(0, s.reported - s.waiting);
   const hour = Number(new Date().toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Jakarta" }));
@@ -69,6 +71,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             <p className="anim-in text-sm text-slate-500" style={{ animationDelay: ".08s" }}>
               Ringkasan hasil produksi dan kualitas {date === today ? "hari ini" : v.dateLabel}
             </p>
+            <DataStatus asOf={asOf} className="mt-1" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <DateNav date={date} max={today} label={v.dateLabel} />

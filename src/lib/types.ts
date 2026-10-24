@@ -18,6 +18,8 @@ export type Settings = {
   utilTarget: number;
   /** Jam tersedia per mesin per hari kerja (8 = 1 shift, 16 = 2 shift). */
   mcHrsDay: number;
+  /** Jam mesin tersedia per hari per nama kategori; kategori yang tidak ada memakai mcHrsDay. */
+  mcHrsCat?: Record<string, number>;
 };
 
 export type MasterCategory = { id: number; name: string; process: string; area: string; ngGroupId: number | null };

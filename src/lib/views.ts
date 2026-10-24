@@ -1,6 +1,6 @@
 // Data untuk dua halaman utama web: "Hari Ini" (leader) dan "Laporan" (kepala produksi).
 // Semua angka dihitung dari baris yang sudah disetujui leader, sama seperti report lain.
-import { callBackend, type RawSubmission } from "./backend";
+import { callBackend, openRejections, type RawSubmission } from "./backend";
 import { addDays, formatDateId, monthEnd, monthStart, nowJakarta } from "./dates";
 import {
   add,
@@ -163,8 +163,7 @@ export async function buildToday(date: string): Promise<TodayView> {
   const doneToday = new Set([...today.map((f) => f.memberName), ...lost.filter((l) => l.workDate === date).map((l) => lostMember(l, master))]);
   const expected = master.members.filter((m) => active.has(m.name));
   const missing = expected.filter((m) => !sentToday.has(m.name) && !doneToday.has(m.name)).map((m) => m.name);
-  const rejected = subs
-    .filter((s) => s.status === "Ditolak" && !(sentToday.get(s.member) ?? []).some((x) => x !== "Ditolak"))
+  const rejected = openRejections(subs)
     .map((s) => ({ member: s.member, note: s.note }));
   const queue = subs
     .filter((s) => s.status === "Menunggu")
@@ -356,8 +355,7 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
   for (const d of days) {
     const ds = mSubs.filter((s) => s.date === d);
     const wait = ds.filter((s) => s.status === "Menunggu").length;
-    const okMembers = new Set(ds.filter((s) => s.status !== "Ditolak").map((s) => s.member));
-    const rej = new Set(ds.filter((s) => s.status === "Ditolak" && !okMembers.has(s.member)).map((s) => s.member)).size;
+    const rej = new Set(openRejections(ds).map((s) => s.member)).size;
     const why = [wait ? `${wait} laporan belum divalidasi` : "", rej ? `${rej} laporan ditolak belum dikirim ulang` : ""].filter(Boolean).join(", ");
     if (why) problems.push({ date: d, reason: why });
   }

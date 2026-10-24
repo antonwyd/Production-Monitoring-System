@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { SheetsError } from "@/lib/sheets/client";
 import { todayJakarta } from "@/lib/dates";
-import { leaderLogin, QaError, RPC } from "@/lib/sheets/qa";
+import { LEADER_SESSION, leaderLogin, QaError, RPC } from "@/lib/sheets/qa";
 import { buildToday } from "@/lib/views";
 
 /** Tambahan khusus halaman leader di Vercel: member yang belum kirim pada tanggal itu (sama dengan Hari Ini). */
@@ -20,6 +20,11 @@ const MEMBER_FNS: Record<string, (args: unknown[]) => unknown> = {
   cekLaporan: (a) => a[1],
 };
 
+/** Fungsi halaman leader: argumen 0 = nama leader, 1 = PIN. Wajib sesi leader/admin; nama diambil dari sesi. */
+const LEADER_FNS = new Set(["leaderLogin", "getAntrian", "putuskan", "editKiriman", "belumKirim"]);
+/** Fungsi lain yang cukup butuh sesi apa saja (dulu terbuka tanpa login). */
+const SESSION_FNS = new Set(["getMasterData"]);
+
 /** Pengganti google.script.run untuk halaman form member & leader. Body: array argumen. */
 export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> }) {
   const { fn } = await ctx.params;
@@ -32,6 +37,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
     args = [];
   }
   const list = Array.isArray(args) ? args : [];
+  if (LEADER_FNS.has(fn) || SESSION_FNS.has(fn)) {
+    const s = await getSession();
+    if (!s) return Response.json({ ok: false, error: "Sesi login habis. Muat ulang halaman lalu masuk lagi dengan NIK." }, { status: 401 });
+    if (LEADER_FNS.has(fn)) {
+      if (s.role !== "leader" && s.role !== "admin") return Response.json({ ok: false, error: "Halaman ini khusus leader." }, { status: 403 });
+      list[0] = s.name;
+      list[1] = LEADER_SESSION;
+    }
+  }
   if (Object.hasOwn(MEMBER_FNS, fn)) {
     const s = await getSession();
     if (!s) return Response.json({ ok: false, error: "Sesi login habis. Muat ulang halaman lalu masuk lagi dengan NIK." }, { status: 401 });

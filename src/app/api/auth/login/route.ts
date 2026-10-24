@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     if (role === "operator" && !member) throw new HttpError(403, `Nama "${u.name}" belum ada di daftar member Master Data. Hubungi admin.`);
     await createSession({ userId: userId(nik), name: u.name ?? nik, role, area: "", memberId: member ? memberId(member.name) : null, nik });
     // Login dari halaman form member (/masuk) kembali ke form, apa pun perannya.
-    return Response.json({ ok: true, redirect: body.next === "/" ? "/" : HOME_BY_ROLE[role] });
+    const toLeader = body.next === "/?page=leader" && (role === "leader" || role === "admin");
+    return Response.json({ ok: true, redirect: body.next === "/" ? "/" : toLeader ? "/?page=leader" : HOME_BY_ROLE[role] });
   });
 }

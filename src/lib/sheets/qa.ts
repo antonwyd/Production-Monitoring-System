@@ -102,7 +102,7 @@ async function readMaster(): Promise<FullMaster> {
   if (masterCache && Date.now() - masterCache.at < MASTER_TTL) return masterCache.data;
   const [[F, L], [U, SET]] = await Promise.all([
     io.get([`${q(SHEET_MASTER)}!A1:CZ`, `${q(SHEET_LEADER)}!A2:B`], "FORMATTED_VALUE"),
-    io.get([`${q(SHEET_MASTER)}!A7:CZ`, `${q(SHEET_MASTER)}!S7:T20`], "UNFORMATTED_VALUE"),
+    io.get([`${q(SHEET_MASTER)}!A7:CZ`, `${q(SHEET_MASTER)}!S7:T30`], "UNFORMATTED_VALUE"),
   ]);
   const members: string[] = [];
   const nik: Record<string, string> = {};
@@ -224,6 +224,8 @@ export async function getMasterData(): Promise<V1Master> {
 }
 
 /** Master Data untuk report di Vercel (NIK, STKI, grup lost time, setting grade). */
+const MC_HRS_CAT = "Machine available hrs / day - ";
+
 export async function apiMaster() {
   const m = await readMaster();
   const parts: { category: string; name: string; type: string; stki: number }[] = [];
@@ -233,7 +235,7 @@ export async function apiMaster() {
   const machines: { category: string; mc: string; line: string; main: string; alt: string }[] = [];
   m.categories.forEach((c) => c.machines.forEach((mc) => machines.push({ category: c.name, mc, line: "", main: "", alt: "", ...(c.mcInfo?.[mc] ?? {}) })));
   const raw = (label: string, def: number) => {
-    const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0);
+    const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0 && !x.startsWith(MC_HRS_CAT));
     return k !== undefined && m.settings[k] !== "" && Number(m.settings[k]) > 0 ? Number(m.settings[k]) : def;
   };
   const val = (label: string, def: number) => {
@@ -257,7 +259,13 @@ export async function apiMaster() {
       gradeB: val("Grade B", 90),
       gradeC: val("Grade C", 80),
       ngPpmMax: raw("NG limit", 1000),
-      mcHrsDay: raw("Machine available", m.normalMin / 60),
+      mcHrsDay: raw("Machine available hrs / day", m.normalMin / 60),
+      // Baris "Machine available hrs / day - <Kategori>" mengganti nilai umum untuk kategori itu (mis. 16 = 2 shift).
+      mcHrsCat: Object.fromEntries(
+        Object.keys(m.settings)
+          .filter((k) => k.startsWith(MC_HRS_CAT) && Number(m.settings[k]) > 0)
+          .map((k) => [k.slice(MC_HRS_CAT.length).trim(), Number(m.settings[k])]),
+      ),
       utilTarget: val("Machine utilization target", 85),
     },
   };
@@ -548,6 +556,13 @@ export async function submitReport(payload: Payload) {
       ]);
       return { id: x.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, replaced: true };
     }
+    // Kiriman yang persis sama (member, tanggal, isi) dan masih Menunggu dianggap kiriman ganda, mis. tombol Kirim
+    // ditekan dua kali atau dikirim ulang karena sinyal putus. Kembalikan kiriman yang sudah ada, jangan tambah baris.
+    const inti = (x: { items: unknown; lostTimes: unknown; op?: unknown }) => JSON.stringify([x.items, x.lostTimes, x.op ?? null]);
+    const kembar = (await readQueue()).find(
+      (x) => x.status === ST_WAIT && x.member === s(payload.member) && x.date === s(payload.date) && inti(x) === inti({ items, lostTimes: lost, op: payload.op }),
+    );
+    if (kembar) return { id: kembar.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, duplicate: true };
     const id = newSubmissionId();
     await io.append(`${q(SHEET_QUEUE)}!A:L`, [[id, nowJakarta(), s(payload.date), asText(payload.member), items.length, totalQty, ltMin, ST_WAIT, "", "", "", asText(data)]]);
     return { id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true };
@@ -567,7 +582,14 @@ export async function riwayatMember(member: string) {
 
 // ---------- Fungsi yang dipanggil halaman leader ----------
 
+/**
+ * Pengganti PIN untuk panggilan dari halaman leader yang sudah lolos cek sesi (role leader/admin) di /api/rpc.
+ * Acak per server dan tidak pernah dikirim ke browser.
+ */
+export const LEADER_SESSION = `sesi:${crypto.randomUUID()}`;
+
 async function cekLeader(name: string, pin: string) {
+  if (pin === LEADER_SESSION && name) return;
   const ok = (await leaders()).some((l) => l.name === name && l.pin === s(pin).trim());
   if (!ok) throw new QaError("Nama leader atau PIN salah.");
 }

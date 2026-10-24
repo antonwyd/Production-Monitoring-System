@@ -6,6 +6,8 @@ import { requirePageRole } from "@/lib/auth";
 import { formatDateId, isValidDate, todayJakarta } from "@/lib/dates";
 import { loadMaster } from "@/lib/service";
 import { buildLaporan } from "@/lib/views";
+import { withDataAge } from "@/lib/reports";
+import DataStatus from "@/components/DataStatus";
 
 export const metadata = { title: "Ringkasan Laporan · QA Production" };
 
@@ -20,8 +22,8 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
   const q = await searchParams;
   const today = todayJakarta();
   const categoryId = Number(q.category) || undefined;
-  const [v, master] = await Promise.all([
-    buildLaporan({ from: isValidDate(q.from) ? q.from : undefined, to: isValidDate(q.to) ? q.to : undefined, categoryId }, today),
+  const [{ value: v, asOf }, master] = await Promise.all([
+    withDataAge(() => buildLaporan({ from: isValidDate(q.from) ? q.from : undefined, to: isValidDate(q.to) ? q.to : undefined, categoryId }, today)),
     loadMaster(),
   ]);
   const query = new URLSearchParams({ from: v.from, to: v.to, ...(categoryId ? { category: String(categoryId) } : {}) }).toString();
@@ -34,6 +36,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">Ringkasan Laporan</h1>
           <p className="text-sm text-slate-500">{v.period} · hanya laporan yang sudah disetujui</p>
+          <DataStatus asOf={asOf} className="mt-1" />
         </div>
 
         <section className="card no-print flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4">

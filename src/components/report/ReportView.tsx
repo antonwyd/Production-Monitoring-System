@@ -8,6 +8,7 @@ import FilterBar, { type FilterSelect } from "./FilterBar";
 import KpiCards from "./KpiCards";
 import ReportTabs from "./ReportTabs";
 import ShowAll from "./ShowAll";
+import DataStatus from "@/components/DataStatus";
 
 const isNum = (f?: string) => !!f && f !== "text" && f !== "grade" && f !== "date";
 /** Tabel rincian dilipat setelah baris ini. */
@@ -20,6 +21,7 @@ export default function ReportView({
   query,
   today,
   defaults,
+  asOf,
 }: {
   report: Report;
   params: ReportParams;
@@ -27,6 +29,7 @@ export default function ReportView({
   query: Record<string, string>;
   today: string;
   defaults: { from: string; to: string; date: string; month: string };
+  asOf?: number;
 }) {
   const k = report.kind;
   const mode = k === "daily" ? "date" : k === "monthly" ? "month" : "range";
@@ -68,6 +71,7 @@ export default function ReportView({
             {report.subtitle}
             {approvedOnly && " · hanya laporan yang sudah disetujui"}
           </p>
+          {asOf && <DataStatus asOf={asOf} className="mt-1" />}
         </div>
         <ReportTabs kind={k} query={query} />
       </div>

@@ -1,6 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 // Semua report dihitung dari tab Input - Production dan Input - Lost Time di Google Sheet,
 // yaitu kiriman yang sudah disetujui leader (plus baris yang diisi langsung di sheet).
-import { callBackend, type RawRows, type RawSubmission } from "./backend";
+import { callBackend, openRejections, type RawRows, type RawSubmission } from "./backend";
 import { catId, memberId as memberIdOf, partId as partIdOf } from "./ids";
 import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
@@ -102,11 +103,27 @@ export type LostFact = { workDate: string; memberId: number; memberName: string;
 const rowsCache = new Map<string, { at: number; data: Promise<RawRows> }>();
 const ROWS_TTL = 60_000;
 
+const ageStore = new AsyncLocalStorage<{ at: number }>();
+
+/**
+ * Jalankan fn dan catat kapan data Sheet tertua yang dipakai dibaca, untuk label "Data per jam ..." di halaman.
+ * Tanpa label ini cache 1 menit bisa membuat angka terlihat belum berubah tanpa tanda apa pun.
+ */
+export async function withDataAge<T>(fn: () => Promise<T>): Promise<{ value: T; asOf: number }> {
+  const st = { at: Date.now() };
+  const value = await ageStore.run(st, fn);
+  return { value, asOf: st.at };
+}
+
 /** Data report disimpan 1 menit di server supaya pindah halaman/filter tidak selalu menunggu Google Sheet. */
 function fetchRows(from: string, to: string): Promise<RawRows> {
   const key = `${from}|${to}`;
   const hit = rowsCache.get(key);
-  if (hit && Date.now() - hit.at < ROWS_TTL) return hit.data;
+  const st = ageStore.getStore();
+  if (hit && Date.now() - hit.at < ROWS_TTL) {
+    if (st) st.at = Math.min(st.at, hit.at);
+    return hit.data;
+  }
   const data = callBackend<RawRows>("rows", { from, to });
   data.catch(() => rowsCache.delete(key));
   if (rowsCache.size > 50) rowsCache.clear();
@@ -156,10 +173,28 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
       ng: Array.from({ length: 10 }, (_, i) => n(12 + i)),
     });
   }
+  // Lost time di Sheet tidak menyimpan kategori. Bila difilter satu kategori, menit lost time member di hari itu
+  // dibagi sesuai porsi menit kerjanya di kategori tsb (normal + OT), supaya tidak terhitung penuh di tiap kategori.
+  const share = new Map<string, { all: number; cat: number }>();
+  if (categoryId)
+    for (const r of raw.prod) {
+      const k = `${r[0]}|${r[1]}`;
+      const e = share.get(k) ?? { all: 0, cat: 0 };
+      const min = (Number(r[6]) || 0) + (Number(r[8]) || 0);
+      e.all += min;
+      if (catId(String(r[2])) === categoryId) e.cat += min;
+      share.set(k, e);
+    }
   const lost: LostFact[] = [];
   for (const r of raw.lost) {
     const mid = memberIdOf(String(r[1]));
     if (memberId && mid !== memberId) continue;
+    let factor = 1;
+    if (categoryId) {
+      const e = share.get(`${r[0]}|${r[1]}`);
+      factor = e && e.all > 0 ? e.cat / e.all : 0;
+      if (!factor) continue;
+    }
     const name = String(r[2]);
     lost.push({
       workDate: String(r[0]),
@@ -167,7 +202,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
       memberName: String(r[1]),
       name,
       group: master.lostTimeTypes.find((t) => t.name === name)?.group ?? "LOST_TIME",
-      minutes: Number(r[3]) || 0,
+      minutes: (Number(r[3]) || 0) * factor,
       remarks: String(r[4] ?? ""),
     });
   }
@@ -341,11 +376,13 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     const { facts, lost } = await loadFacts(master, date, date, p.categoryId);
     const subs = await callBackend<RawSubmission[]>("queue", { date });
     const byMember = groupBy(facts, (f) => f.memberId);
+    const rejectedOpen = new Set(openRejections(subs).map((r) => r.member));
     const rows: Row[] = master.members.map((m) => {
       const g = byMember.get(m.id);
       const ml = lost.filter((l) => l.memberId === m.id);
       const { lt, aj } = lostSplit(ml);
       const statuses = subs.filter((r) => r.member === m.name).map((r) => r.status);
+      const openRej = rejectedOpen.has(m.name);
       // Baris yang diisi langsung di sheet juga dihitung sudah lapor.
       const approved = statuses.includes("Disetujui") || !!g || ml.length > 0;
       const pending = statuses.includes("Menunggu");
@@ -354,7 +391,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         nik: m.nik,
         member: m.name,
         area: m.area,
-        status: approved ? "Disetujui" : pending ? "Menunggu" : statuses.length ? "Ditolak" : "Belum lapor",
+        // Kiriman ditolak yang belum dikirim ulang didahulukan supaya tidak terlewat.
+        status: openRej ? "Ditolak" : approved ? "Disetujui" : pending ? "Menunggu" : statuses.length ? "Ditolak" : "Belum lapor",
         ...ag,
         lostMin: lt,
         ajMin: aj,
@@ -501,7 +539,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     // Utilisasi = jam mesin jalan ÷ (hari kerja x jam tersedia per hari, Setting). Efisiensi = jam standar MC ÷ jam jalan.
     const { facts } = await loadFacts(master, from, to, p.categoryId);
     const workDays = new Set(facts.map((f) => f.workDate)).size;
-    const availHrs = workDays * st.mcHrsDay;
+    // Jam tersedia per hari bisa beda per kategori (Setting "Machine available hrs / day - <Kategori>").
+    const hrsOf = (category: string) => st.mcHrsCat?.[category] ?? st.mcHrsDay;
     const key = (c: number, mc: string) => `${c}|${mc}`;
     const used = groupBy(
       facts.filter((f) => f.mcNo !== "-"),
@@ -514,7 +553,10 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     for (const [k, g] of used) if (!list.has(k)) list.set(k, { categoryId: g.first.categoryId, category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line });
     let sumHours = 0,
       sumStd = 0,
-      sumRated = 0;
+      sumRated = 0,
+      sumAvail = 0,
+      runHours = 0,
+      runAvail = 0;
     const rows = [...list.entries()]
       .map(([k, m]) => {
         const g = used.get(k);
@@ -529,9 +571,15 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             ratedHours += f.mcHours;
           }
         }
+        const availHrs = workDays * hrsOf(m.category);
         sumHours += mcHours;
         sumStd += stdHours;
         sumRated += ratedHours;
+        sumAvail += availHrs;
+        if (g) {
+          runHours += mcHours;
+          runAvail += availHrs;
+        }
         const qty = g?.agg.qty ?? 0;
         const ng = g?.agg.ng ?? 0;
         const util = availHrs > 0 ? mcHours / availHrs : null;
@@ -556,8 +604,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       })
       .sort((a, b) => a.category.localeCompare(b.category) || a.mcNo.localeCompare(b.mcNo, "id", { numeric: true }));
     const running = rows.filter((r) => r.status !== "Tidak jalan").length;
-    const avgUtil = availHrs > 0 && rows.length ? sumHours / (availHrs * rows.length) : null;
-    const runUtil = availHrs > 0 && running ? sumHours / (availHrs * running) : null;
+    const avgUtil = sumAvail > 0 ? sumHours / sumAvail : null;
+    const runUtil = runAvail > 0 ? runHours / runAvail : null;
     const tq = rows.reduce((a, r) => a + r.qty, 0);
     const tng = rows.reduce((a, r) => a + r.ng, 0);
     return {
@@ -581,7 +629,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       tables: [
         {
           title: "Semua mesin",
-          note: `Utilisasi = jam mesin jalan ÷ (${workDays} hari kerja x ${fmt(st.mcHrsDay, 0)} jam tersedia per hari, ubah di Master Data > Setting). OEE kira-kira = utilisasi x efisiensi x (1 − NG rate).`,
+          note: `Utilisasi = jam mesin jalan ÷ (${workDays} hari kerja x jam tersedia per hari: ${[...new Set(rows.map((r) => r.category))].map((c) => `${c} ${fmt(hrsOf(c), 0)} jam`).join(", ")}; ubah di Master Data > Setting). OEE kira-kira = utilisasi x efisiensi x (1 − NG rate).`,
           columns: [
             { key: "category", label: "Kategori" },
             { key: "mcNo", label: "Mesin" },
@@ -778,7 +826,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     // Bila kategori dipilih, lost time hanya dari member-hari yang bekerja di kategori itu.
     const dayKey = (d: string, m: number) => `${d}|${m}`;
     const worked = new Set(facts.map((f) => dayKey(f.workDate, f.memberId)));
-    const lost = p.categoryId ? allLost.filter((l) => worked.has(dayKey(l.workDate, l.memberId))) : allLost;
+    const lost = allLost; // sudah dibagi per kategori di loadFacts
     // STKI rata-rata (berbobot menit) per member-hari, untuk menghitung potensi hasil yang hilang.
     const stkiDay = new Map<string, { w: number; min: number }>();
     for (const f of facts) {

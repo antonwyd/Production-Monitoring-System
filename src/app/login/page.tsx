@@ -21,9 +21,13 @@ function BearingPhoto({ className }: { className?: string }) {
   );
 }
 
-export default async function LoginPage() {
+const LEADER_PAGE = "/?page=leader";
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  // ?next=leader: dari halaman Validasi Leader, kembali ke sana setelah masuk.
+  const toLeader = (await searchParams).next === "leader";
   const s = await getSession();
-  if (s) redirect(HOME_BY_ROLE[s.role]);
+  if (s) redirect(toLeader && (s.role === "leader" || s.role === "admin") ? LEADER_PAGE : HOME_BY_ROLE[s.role]);
   return (
     <main className="flex min-h-screen flex-col bg-white lg:flex-row">
       <section className="relative flex shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-gradient-to-b from-white to-[#f4f5f7] lg:min-h-screen lg:w-[56%] lg:border-b-0 lg:border-r">
@@ -48,7 +52,7 @@ export default async function LoginPage() {
         <div className="w-full max-w-md xl:max-w-lg">
           <h2 className="text-2xl font-bold lg:text-3xl xl:text-4xl">Selamat Datang 👋</h2>
           <p className="mb-7 mt-1 text-sm text-slate-500 lg:mb-9 lg:text-base xl:text-lg">Masuk ke sistem untuk melanjutkan</p>
-          <LoginForm />
+          <LoginForm next={toLeader ? LEADER_PAGE : undefined} />
           <p className="mt-10 text-center text-xs text-slate-400 lg:mt-16">
             © {new Date().getFullYear()} PT Takai Seiki Indonesia
             <br />

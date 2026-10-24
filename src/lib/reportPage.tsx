@@ -3,7 +3,7 @@ import ReportView from "@/components/report/ReportView";
 import { navKeyOf } from "@/components/report/ReportTabs";
 import { requirePageRole } from "@/lib/auth";
 import { monthStart, todayJakarta } from "@/lib/dates";
-import { buildReport, parseReportParams, type ReportKind } from "@/lib/reports";
+import { buildReport, parseReportParams, withDataAge, type ReportKind } from "@/lib/reports";
 import { loadMaster } from "@/lib/service";
 
 export async function renderReportPage(kind: ReportKind, searchParams: Record<string, string | string[] | undefined>) {
@@ -12,7 +12,7 @@ export async function renderReportPage(kind: ReportKind, searchParams: Record<st
   for (const [k, v] of Object.entries(searchParams)) if (typeof v === "string" && v) flat[k] = v;
   const params = parseReportParams(flat);
   const today = todayJakarta();
-  const [report, master] = await Promise.all([buildReport(kind, params, today), loadMaster()]);
+  const [{ value: report, asOf }, master] = await Promise.all([withDataAge(() => buildReport(kind, params, today)), loadMaster()]);
   return (
     <AppShell session={session} active={navKeyOf(kind)}>
       <ReportView
@@ -21,6 +21,7 @@ export async function renderReportPage(kind: ReportKind, searchParams: Record<st
         master={master}
         query={flat}
         today={today}
+        asOf={asOf}
         defaults={{ from: monthStart(today), to: today, date: today, month: today.slice(0, 7) }}
       />
     </AppShell>
