@@ -80,7 +80,13 @@ export default function ReportView({
         month={params.month ?? defaults.month}
         today={today}
         selects={selects}
-        search={k === "ng-type" ? { name: "q", label: "Cari lot / oiban", placeholder: "Cari lot atau oiban, mis. 0123", value: params.q ?? "" } : undefined}
+        search={
+          k === "ng-type"
+            ? { name: "q", label: "Cari lot / oiban", placeholder: "Cari lot atau oiban, mis. 0123", value: params.q ?? "" }
+            : k === "category"
+              ? { name: "q", label: "Cari part", placeholder: "Cari part, mis. 627D1", value: params.q ?? "" }
+              : undefined
+        }
         downloads={[
           { label: "Excel (.xlsx)", hint: "Kop + angka vs target + semua tabel, siap cetak A4", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
           { label: "PDF", hint: "Untuk dikirim atau dicetak, dengan kotak tanda tangan", href: `/api/export/${k}.pdf${qs ? `?${qs}` : ""}` },

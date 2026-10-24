@@ -124,6 +124,13 @@ describe("form member → leader → report", () => {
     expect(daily.tables[0].rows.find((x) => x.member === "Harjuki")!.status).toBe("Disetujui");
     const ngType = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
     expect(ngType.tables[0].rows[0]).toMatchObject({ ng: "Kizu", qty: 10 });
+    const cat = await buildReport("category", { from: DATE, to: DATE }, DATE);
+    const piv = cat.tables[0];
+    expect(piv.title).toBe("Total per part (semua kategori)");
+    expect(piv.total!.qty).toBe(14920);
+    expect(piv.columns.map((c) => c.label)).toContain("PF Iron Cage");
+    const one = await buildReport("category", { from: DATE, to: DATE, q: "6902 j" }, DATE);
+    expect(one.tables[0].rows.every((x) => String(x.part).startsWith("6902-J"))).toBe(true);
     for (const kind of ["member", "category", "machine", "ng-lot", "monthly"] as const)
       expect((await buildReport(kind, { from: DATE, to: DATE, month: "2026-10" }, DATE)).tables.length).toBeGreaterThan(0);
   });

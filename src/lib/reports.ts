@@ -15,7 +15,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   dashboard: "Dashboard",
   daily: "Laporan Harian",
   member: "Laporan per Member",
-  category: "Laporan per Kategori",
+  category: "Laporan per Kategori & Part",
   machine: "Laporan Mesin",
   "ng-type": "Laporan Kualitas (NG)",
   "ng-lot": "Laporan NG per Lot",
@@ -434,21 +434,64 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
   }
 
   if (kind === "category") {
-    const { facts } = await loadFacts(master, from, to, p.categoryId);
+    const all = (await loadFacts(master, from, to, p.categoryId)).facts;
+    // Cari part: "627D1" juga cocok dengan "627 D1" / "627-D1".
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const q = p.q ? norm(p.q) : "";
+    const facts = q ? all.filter((f) => norm(f.part).includes(q)) : all;
     const catRows = [...groupBy(facts, (f) => f.categoryId).values()].map((g) => ({ category: g.first.categoryName, ...aggCols(g.agg, st) }));
     const partRows = [...groupBy(facts, (f) => f.partId).values()]
       .map((g) => ({ category: g.first.categoryName, part: g.first.part, stki: g.first.stki, ...aggCols(g.agg, st) }))
       .sort((a, b) => String(a.category).localeCompare(String(b.category)) || Number(b.qty) - Number(a.qty));
+    // Total per part + type lintas kategori: satu kolom per kategori (urut Master Data) lalu ALL.
+    const cats = master.categories.filter((c) => facts.some((f) => f.categoryId === c.id));
+    const ck = (id: number) => `c${id}`;
+    const pivot = (key: (f: Fact) => string, label: string) => {
+      const rows = [...groupBy(facts, key).entries()].map(([k, g]) => {
+        const fs = facts.filter((f) => key(f) === k);
+        const row: Row = { [label]: k };
+        for (const c of cats) row[ck(c.id)] = fs.filter((f) => f.categoryId === c.id).reduce((s, f) => s + f.qty, 0) || null;
+        return { ...row, ...aggCols(g.agg, st) } as Row;
+      });
+      const total: Row = { [label]: "TOTAL" };
+      for (const c of cats) total[ck(c.id)] = facts.filter((f) => f.categoryId === c.id).reduce((s, f) => s + f.qty, 0);
+      return { rows, total: { ...total, ...totalRow(facts, st, {}) } };
+    };
+    const pivotCols = (first: Column): Column[] => [
+      first,
+      ...cats.map((c) => ({ key: ck(c.id), label: c.name, format: "int" as const })),
+      { key: "qty", label: "ALL (pcs)", format: "int" },
+      { key: "ng", label: "NG (pcs)", format: "int" },
+      { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
+    ];
+    const byPart = pivot((f) => f.part, "part");
+    byPart.rows.sort((a, b) => Number(b.qty) - Number(a.qty));
+    const byDay = pivot((f) => f.workDate, "date");
+    byDay.rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const t = totalRow(facts, st, { category: "TOTAL" });
     return {
       ...base,
-      subtitle: period,
-      kpis: [],
+      subtitle: `${period}${p.q ? ` · part "${p.q}"` : ""}`,
+      kpis: [
+        { label: "Hasil ALL (pcs)", value: t.qty, format: "int", hint: `${byPart.rows.length} part/type` },
+        ...cats.slice(0, 3).map((c) => ({ label: `${c.name} (pcs)`, value: byPart.total[ck(c.id)], format: "int" as const })),
+      ],
       charts: [
         { type: "bar", title: "Achievement per kategori", xKey: "category", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: catRows },
       ],
       tables: [
-        { title: "Per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: catRows, total: totalRow(facts, st, { category: "TOTAL" }) },
-        { title: "Per part", columns: [{ key: "category", label: "Kategori" }, { key: "part", label: "Part" }, { key: "stki", label: "STKI", format: "int" }, ...AGG_COLUMNS], rows: partRows },
+        {
+          title: "Total per part (semua kategori)",
+          note: "Hasil = qty normal + OT yang sudah disetujui. Kolom per kategori lalu ALL. Pakai kotak Cari part untuk satu part, mis. 627D1.",
+          columns: pivotCols({ key: "part", label: "Part / Type" }),
+          rows: byPart.rows,
+          total: byPart.total,
+        },
+        ...(from !== to
+          ? [{ title: "Total per hari", note: "Hasil per tanggal per kategori. Pilih Bulan ini untuk rekap sebulan.", columns: pivotCols({ key: "date", label: "Tanggal", format: "date" }), rows: byDay.rows, total: byDay.total }]
+          : []),
+        { title: "Per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: catRows, total: t },
+        { title: "Per part", columns: [{ key: "category", label: "Kategori" }, { key: "part", label: "Part" }, { key: "stki", label: "STKI", format: "int" }, ...AGG_COLUMNS], rows: partRows, total: totalRow(facts, st, { category: "TOTAL" }) },
       ],
     };
   }
@@ -1052,7 +1095,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         rows: memberRows,
         total: t,
       },
-      { title: "Rekap per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: catRows },
+      { title: "Rekap per kategori", columns: [{ key: "category", label: "Kategori" }, ...AGG_COLUMNS], rows: catRows, total: totalRow(facts, st, { category: "TOTAL" }) },
     ],
   };
 }

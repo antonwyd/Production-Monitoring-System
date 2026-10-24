@@ -69,11 +69,14 @@ export default function FilterBar({
 
   const y = add(today, -1);
   const lm = add(monthStart(today), -1);
+  // Minggu kerja mulai Senin.
+  const mon = add(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
   const presets: { label: string; patch: Record<string, string | null>; on: boolean }[] =
     mode === "range"
       ? [
           { label: "Hari ini", patch: { from: today, to: today }, on: from === today && to === today },
           { label: "Kemarin", patch: { from: y, to: y }, on: from === y && to === y },
+          { label: "Minggu ini", patch: { from: mon, to: today }, on: from === mon && to === today && mon !== today },
           { label: "7 hari", patch: { from: add(today, -6), to: today }, on: from === add(today, -6) && to === today },
           { label: "Bulan ini", patch: { from: monthStart(today), to: today }, on: from === monthStart(today) && to === today },
           { label: "Bulan lalu", patch: { from: monthStart(lm), to: monthEnd(lm) }, on: from === monthStart(lm) && to === monthEnd(lm) },
