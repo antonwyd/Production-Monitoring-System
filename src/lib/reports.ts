@@ -226,6 +226,9 @@ export function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact)
 }
 
 /** NG per sejuta pcs diperiksa (hasil + NG). */
+/** Batas NG rate dari Setting "NG limit" (disimpan dalam PPM: 1000 = 0,1%). */
+export const ngMax = (st: Settings) => st.ngPpmMax / 1e6;
+export const ngMaxText = (st: Settings) => `${(st.ngPpmMax / 1e4).toLocaleString("id-ID", { maximumFractionDigits: 3 })}%`;
 export const ppm = (ng: number, qty: number) => (qty + ng > 0 ? Math.round((ng / (qty + ng)) * 1e6) : null);
 
 /** Label tanggal pendek untuk sumbu grafik, mis. "18 Okt". */
@@ -265,7 +268,6 @@ const AGG_COLUMNS: Column[] = [
   { key: "qty", label: "Hasil (pcs)", format: "int" },
   { key: "ng", label: "NG (pcs)", format: "int" },
   { key: "ngRate", label: "NG rate", format: "pct" },
-  { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
   { key: "hours", label: "Jam kerja", format: "dec1" },
   { key: "stdHours", label: "Jam standar", format: "dec1" },
   { key: "ach", label: "Achievement", format: "pct" },
@@ -343,7 +345,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       kpis: [
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(Number(t.ach) * 100, st.target) },
-        { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
+        { label: "NG rate", value: t.ngRate, format: "pct", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${ngMaxText(st)}`, status: vsTarget(t.ngRate as number | null, ngMax(st), true) },
         { label: "Jam kerja (rated)", value: t.hours, format: "dec1" },
         { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
         { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
@@ -443,7 +445,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       kpis: [
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
-        { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
+        { label: "NG rate", value: t.ngRate, format: "pct", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${ngMaxText(st)}`, status: vsTarget(t.ngRate as number | null, ngMax(st), true) },
         { label: "Hari lapor", value: dayRows.length, format: "int" },
       ],
       charts: [
@@ -490,7 +492,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...cats.map((c) => ({ key: ck(c.id), label: c.name, format: "int" as const })),
       { key: "qty", label: "ALL (pcs)", format: "int" },
       { key: "ng", label: "NG (pcs)", format: "int" },
-      { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
+      { key: "ngRate", label: "NG rate", format: "pct" },
     ];
     const byPart = pivot((f) => f.part, "part");
     byPart.rows.sort((a, b) => Number(b.qty) - Number(a.qty));
@@ -588,7 +590,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           stdHours: ratedHours > 0 ? stdHours : null,
           eff,
           ng,
-          ngPpm: ppm(ng, qty),
+          ngRate: rate,
           oee: util != null && eff != null && g ? Math.min(util, 1) * eff * (1 - (rate ?? 0)) : null,
         };
       })
@@ -605,7 +607,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { label: "Mesin jalan", value: `${running} dari ${rows.length}`, hint: `${rows.length - running} mesin tidak jalan di periode ini` },
         { label: "Utilisasi mesin yang jalan", value: runUtil, format: "pct", hint: `semua mesin ${avgUtil == null ? "-" : `${Math.round(avgUtil * 100)}%`}`, target: `${st.utilTarget}%`, status: vsTarget(runUtil == null ? null : runUtil * 100, st.utilTarget) },
         { label: "Efisiensi vs Std MC", value: sumRated > 0 ? sumStd / sumRated : null, format: "pct", target: `${st.target}%`, status: vsTarget(sumRated > 0 ? (sumStd / sumRated) * 100 : null, st.target) },
-        { label: "NG (PPM)", value: ppm(tng, tq), format: "ppm", target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(ppm(tng, tq), st.ngPpmMax, true) },
+        { label: "NG rate", value: ngRate(tng, tq), format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(ngRate(tng, tq), ngMax(st), true) },
       ],
       charts: [
         {
@@ -632,7 +634,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "pcsHr", label: "Hasil per jam", format: "dec1" },
             { key: "stdHours", label: "Jam standar MC", format: "dec1" },
             { key: "eff", label: "Efisiensi", format: "pct" },
-            { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
+            { key: "ngRate", label: "NG rate", format: "pct" },
             { key: "oee", label: "OEE (kira-kira)", format: "pct" },
           ],
           rows,
@@ -657,7 +659,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       });
     const rows = [...map.values()].sort((a, b) => b.qty - a.qty).map((e) => ({ ...e, share: total ? e.qty / total : null }));
     const byDay = groupBy(facts, (f) => f.workDate);
-    const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: dayLabel(d), ng: g.agg.ng, ngPpm: ppm(g.agg.ng, g.agg.qty) }));
+    const trend = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, g]) => ({ date: dayLabel(d), ng: g.agg.ng, ngRate: ngRate(g.agg.ng, g.agg.qty) }));
     const all = totalRow(facts, st, {});
     // Kualitas = jenis NG + NG per lot dalam satu halaman.
     const lotTable = (await buildReport("ng-lot", p, today)).tables[0];
@@ -686,7 +688,6 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { key: "qty", label: "Hasil (pcs)", format: "int" },
         { key: "ng", label: "NG (pcs)", format: "int" },
         { key: "ngRate", label: "NG rate", format: "pct" },
-        { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
         ...topNames.map((n, j) => ({ key: `n${j}`, label: n, format: "int" as const })),
         ...(matrix.some((r) => Number(r.other) > 0) ? [{ key: "other", label: "Lainnya", format: "int" as const }] : []),
       ],
@@ -723,14 +724,13 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: period,
       kpis: [
-        { label: "NG (PPM)", value: all.ngPpm, format: "ppm", target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(all.ngPpm as number | null, st.ngPpmMax, true) },
         { label: "NG (pcs)", value: total, format: "int" },
-        { label: "NG rate", value: all.ngRate, format: "pct" },
+        { label: "NG rate", value: all.ngRate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(all.ngRate as number | null, ngMax(st), true) },
         { label: "Hasil diperiksa (pcs)", value: all.qty, format: "int" },
       ],
       charts: [
         { type: "pareto", title: "Pareto NG per jenis (pcs)", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: withCum(rows, "qty").slice(0, 12) },
-        { type: "line", title: "Tren NG harian (PPM)", xKey: "date", series: [{ key: "ngPpm", label: "NG (PPM)", format: "ppm" }], data: trend },
+        { type: "line", title: "Tren NG rate harian", xKey: "date", series: [{ key: "ngRate", label: "NG rate", format: "pct" }], data: trend },
       ],
       tables: [
         ...search,
@@ -802,7 +802,6 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "qty", label: "Hasil (pcs)", format: "int" },
             { key: "ng", label: "NG (pcs)", format: "int" },
             { key: "ngRate", label: "NG rate", format: "pct" },
-            { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
             { key: "topNg", label: "NG terbanyak" },
           ],
           rows,
@@ -1080,7 +1079,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
   const monthRows = months.map((m) => {
     const fs = hist.facts.filter((f) => f.workDate.startsWith(m));
     const x = totalRow(fs, st, {});
-    return { month: `${BLN[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`, qty: Number(x.qty), ach: x.ach as number | null, ngPpm: x.ngPpm as number | null, has: fs.length > 0 };
+    return { month: `${BLN[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`, qty: Number(x.qty), ach: x.ach as number | null, ngRate: x.ngRate as number | null, has: fs.length > 0 };
   });
   const prev = monthRows[4];
   const vsPrev = (now: number | null, before: number | null, digits: "pct" | "num") => {
@@ -1109,13 +1108,13 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int", hint: vsPrev(Number(t.qty), prev.qty, "num") },
       { label: "Achievement", value: t.ach, format: "pct", hint: vsPrev(t.ach as number | null, prev.ach, "pct") ?? `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
-      { label: "NG (PPM)", value: t.ngPpm, format: "ppm", hint: vsPrev(t.ngPpm as number | null, prev.ngPpm, "num") ?? `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${formatNum(st.ngPpmMax)}`, status: vsTarget(t.ngPpm as number | null, st.ngPpmMax, true) },
+      { label: "NG rate", value: t.ngRate, format: "pct", hint: vsPrev(t.ngRate as number | null, prev.ngRate, "pct") ?? `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${ngMaxText(st)}`, status: vsTarget(t.ngRate as number | null, ngMax(st), true) },
       { label: "Lost Time (jam)", value: lt / 60, format: "dec1", hint: `Another Job ${fmt(aj / 60, 1)} jam` },
     ],
     charts: monthRows.filter((m) => m.has).length > 1
       ? [
           { type: "line", title: "Achievement 6 bulan", xKey: "month", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: monthRows.filter((m) => m.has).map(({ has: _h, ...m }) => m) },
-          { type: "line", title: "NG (PPM) 6 bulan", xKey: "month", series: [{ key: "ngPpm", label: "NG (PPM)", format: "ppm" }], data: monthRows.filter((m) => m.has).map(({ has: _h, ...m }) => m) },
+          { type: "line", title: "NG rate 6 bulan", xKey: "month", series: [{ key: "ngRate", label: "NG rate", format: "pct" }], data: monthRows.filter((m) => m.has).map(({ has: _h, ...m }) => m) },
         ]
       : [],
     tables: [

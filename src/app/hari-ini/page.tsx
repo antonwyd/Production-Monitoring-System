@@ -106,13 +106,13 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               {!s.complete ? `sementara, ${done} dari ${v.expected} laporan disetujui` : s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}
             </div>
           </KpiCard>
-          <KpiCard icon="shield" title="NG (PPM)" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
-            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ppm != null && s.ppm > s.ppmMax ? "text-brand-600" : ""}`}>{s.ppm == null ? "-" : <CountUp value={s.ppm} />}</div>
+          <KpiCard icon="shield" title="NG rate" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
+            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.rate != null && s.rate > s.ppmMax / 1e6 ? "text-brand-600" : ""}`}>{pct(s.rate)}</div>
             <div className="text-xs text-slate-500">
-              {n0(s.ng)} pcs · rate {pct(s.rate)} {s.complete && s.rateTrend && <TrendText t={s.rateTrend} />}
+              {n0(s.ng)} pcs NG {s.complete && s.rateTrend && <TrendText t={s.rateTrend} />}
             </div>
-            <div className={`text-xs font-semibold ${s.ppm == null ? "text-slate-500" : s.ppm > s.ppmMax ? "text-brand-600" : "text-emerald-700"}`}>
-              {s.ppm != null && s.ppm <= s.ppmMax ? "✓ " : ""}batas {n0(s.ppmMax)} PPM
+            <div className={`text-xs font-semibold ${s.rate == null ? "text-slate-500" : s.rate > s.ppmMax / 1e6 ? "text-brand-600" : "text-emerald-700"}`}>
+              {s.rate != null && s.rate <= s.ppmMax / 1e6 ? "✓ " : ""}batas {pct(s.ppmMax / 1e6, 3)}
             </div>
           </KpiCard>
           <KpiCard icon="target" title="Achievement" delay={0.19}>

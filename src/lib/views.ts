@@ -15,6 +15,8 @@ import {
   type LostFact,
   type Report,
   type Row,
+  ngMax,
+  ngMaxText,
   ppm,
   vsTarget,
 } from "./reports";
@@ -187,11 +189,11 @@ export async function buildToday(date: string): Promise<TodayView> {
   if (lowAch.length)
     attention.push({ level: "bad", text: `Achievement di bawah ${st.gradeC}%: ${lowAch.map((m) => `${m.name} ${p0(m.ach)}`).join(", ")}`, href: `/reports/daily?date=${date}` });
   const ngParts = [...groupBy(today, (f) => f.partId).values()]
-    .map((g) => ({ part: g.first.part, id: g.first.partId, ppm: ppm(g.agg.ng, g.agg.qty), n: g.agg.qty + g.agg.ng }))
-    .filter((x) => x.n >= 100 && (x.ppm ?? 0) > st.ngPpmMax)
+    .map((g) => ({ part: g.first.part, id: g.first.partId, ppm: ppm(g.agg.ng, g.agg.qty), ng: g.agg.ng, qty: g.agg.qty, n: g.agg.qty + g.agg.ng }))
+    .filter((x) => x.n >= 100 && (x.ppm ?? 0) > st.ngPpmMax) // sama dengan NG rate > batas
     .sort((a, b) => (b.ppm ?? 0) - (a.ppm ?? 0));
   for (const x of ngParts.slice(0, 3))
-    attention.push({ level: "bad", text: `NG ${x.part}: ${n0(x.ppm ?? 0)} PPM, batas ${n0(st.ngPpmMax)}`, href: `/reports/ng-type?from=${date}&to=${date}&part=${x.id}` });
+    attention.push({ level: "bad", text: `NG ${x.part}: ${p2(ngRate(x.ng, x.qty))}, batas ${ngMaxText(st)}`, href: `/reports/ng-type?from=${date}&to=${date}&part=${x.id}` });
   if (missing.length && (date < now.slice(0, 10) || Number(now.slice(11, 13)) >= 15))
     attention.push({ level: "warn", text: `${missing.length} member belum kirim laporan: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", ..." : ""}` });
   if (today.length) {
@@ -268,7 +270,7 @@ export async function buildToday(date: string): Promise<TodayView> {
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int" },
       { label: "NG (pcs)", value: t.ng, format: "int" },
-      { label: "NG (PPM)", value: t.ppm, format: "ppm", hint: `NG rate ${p2(t.rate)}`, target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
+      { label: "NG rate", value: t.rate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(t.rate, ngMax(st), true) },
       { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
       { label: "Laporan masuk", value: `${reported} dari ${expected.length}`, hint: `${queue.length} menunggu, ${missing.length} belum kirim` },
     ],
@@ -423,14 +425,14 @@ export async function buildLaporan(p: { from?: string; to?: string; categoryId?:
     vsLabel,
     tiles: [
       { label: "Hasil", value: n0(t.qty), sub: "pcs", trend: trendPct(t.qty, pt.qty, vsLabel) },
-      { label: "NG (PPM)", value: t.ppm == null ? "-" : n0(t.ppm), sub: `${n0(t.ng)} pcs NG · ${p2(t.rate)}`, trend: trendPct(t.ppm ?? 0, pt.ppm ?? 0, vsLabel, false), target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
+      { label: "NG rate", value: p2(t.rate), sub: `${n0(t.ng)} pcs NG`, trend: trendPct(t.rate ?? 0, pt.rate ?? 0, vsLabel, false), target: `maks ${ngMaxText(st)}`, status: vsTarget(t.rate, ngMax(st), true) },
       { label: "Achievement", value: p0(t.ach), sub: t.ach == null ? "belum ada data" : `Grade ${t.grade}`, trend: trendPoint(t.ach, pt.ach, vsLabel), target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
       { label: "Waktu hilang", value: h1(lt), sub: "lost time, tanpa Another Job", trend: trendPct(lt, plt, vsLabel, false) },
     ],
     kpis: [
       { label: "Hasil (pcs)", value: t.qty, format: "int" },
       { label: "Achievement", value: t.ach, format: "pct", hint: t.ach == null ? undefined : `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : t.ach * 100, st.target) },
-      { label: "NG (PPM)", value: t.ppm, format: "ppm", hint: `${n0(t.ng)} pcs NG, NG rate ${p2(t.rate)}`, target: `maks ${n0(st.ngPpmMax)}`, status: vsTarget(t.ppm, st.ngPpmMax, true) },
+      { label: "NG rate", value: t.rate, format: "pct", hint: `${n0(t.ng)} pcs NG`, target: `maks ${ngMaxText(st)}`, status: vsTarget(t.rate, ngMax(st), true) },
       { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
       { label: "Hari kerja lengkap", value: `${days.length - problems.length} dari ${days.length}`, hint: `bulan ${BULAN[Number(mFrom.slice(5, 7)) - 1]}, batas kirim 10 ${BULAN[Number(next.slice(5, 7)) - 1]}` },
     ],
@@ -479,7 +481,6 @@ export function laporanToReport(v: LaporanView): Report {
           { key: "name", label: "Kategori" },
           { key: "qty", label: "Hasil (pcs)", format: "int" },
           { key: "ngRate", label: "NG rate", format: "pct" },
-          { key: "ngPpm", label: "NG (PPM)", format: "ppm" },
           { key: "ach", label: "Achievement", format: "pct" },
           { key: "grade", label: "Grade", format: "grade" },
         ],
