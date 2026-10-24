@@ -54,9 +54,6 @@ export default function FilterBar({
   const sp = useSearchParams();
   const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
-  // HP: pilihan kategori/member/part dilipat di balik tombol Filter supaya tidak memenuhi layar.
-  const [more, setMore] = useState(false);
-  const activeCount = selects.filter((x) => x.value && x.value !== x.options[0]?.value).length + (search?.value ? 1 : 0);
   useEffect(() => setBusy(false), [sp]);
 
   const href = (patch: Record<string, string | null>) => {
@@ -157,17 +154,7 @@ export default function FilterBar({
       )}
 
       {(selects.length > 0 || search) && (
-        <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="flex h-9 items-center justify-between rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 sm:hidden">
-          <span>
-            Filter{activeCount ? <span className="ml-1.5 rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-bold text-white">{activeCount}</span> : null}
-          </span>
-          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${more ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-      )}
-      {(selects.length > 0 || search) && (
-        <div className={`${more ? "grid" : "hidden"} grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3`}>
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
           {selects.map((s) => (
             <label key={s.name} className="text-sm text-slate-500">
               <span className="sr-only sm:not-sr-only sm:block">{s.label}</span>
