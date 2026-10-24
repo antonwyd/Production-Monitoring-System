@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import ReportView from "@/components/report/ReportView";
+import { navKeyOf } from "@/components/report/ReportTabs";
 import { requirePageRole } from "@/lib/auth";
 import { monthStart, todayJakarta } from "@/lib/dates";
 import { buildReport, parseReportParams, type ReportKind } from "@/lib/reports";
@@ -13,12 +14,13 @@ export async function renderReportPage(kind: ReportKind, searchParams: Record<st
   const today = todayJakarta();
   const [report, master] = await Promise.all([buildReport(kind, params, today), loadMaster()]);
   return (
-    <AppShell session={session} active={`report:${kind}`}>
+    <AppShell session={session} active={navKeyOf(kind)}>
       <ReportView
         report={report}
         params={params}
         master={master}
-        query={new URLSearchParams(flat).toString()}
+        query={flat}
+        today={today}
         defaults={{ from: monthStart(today), to: today, date: today, month: today.slice(0, 7) }}
       />
     </AppShell>

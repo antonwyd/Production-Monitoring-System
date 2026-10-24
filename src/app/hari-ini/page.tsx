@@ -3,12 +3,13 @@ import { Spark, StatusDonut, TrendChart } from "@/components/DashboardCharts";
 import { CountUp } from "@/components/Motion";
 import DateNav from "@/components/DateNav";
 import QueueList from "@/components/QueueList";
+import DownloadMenu from "@/components/report/DownloadMenu";
 import { Empty } from "@/components/ui";
 import { requirePageRole } from "@/lib/auth";
 import { addDays, isValidDate, todayJakarta } from "@/lib/dates";
 import { buildToday, type Trend } from "@/lib/views";
 
-export const metadata = { title: "Dashboard · Produksi QA" };
+export const metadata = { title: "Dashboard · QA Production" };
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
 const pct = (v: number | null, d = 2) => (v == null ? "-" : `${(v * 100).toLocaleString("id-ID", { maximumFractionDigits: d })}%`);
@@ -23,15 +24,15 @@ const ICON = {
 
 function KpiCard({ icon, title, delay, spark, children }: { icon: keyof typeof ICON; title: string; delay: number; spark?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="card anim-in lift group relative flex gap-4 p-5" style={{ animationDelay: `${delay}s` }}>
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-6deg]">
+    <div className="card anim-in lift group relative flex gap-4 p-4 sm:p-5" style={{ animationDelay: `${delay}s` }}>
+      <span className="hidden h-12 w-12 shrink-0 sm:flex items-center justify-center rounded-full bg-brand-50 text-brand-600 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[-6deg]">
         <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
           <path d={ICON[icon]} />
         </svg>
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-2">
-          <div className="whitespace-nowrap text-sm font-semibold text-slate-700">{title}</div>
+          <div className="text-sm font-semibold leading-tight text-slate-700 sm:whitespace-nowrap">{title}</div>
           {spark}
         </div>
         {children}
@@ -56,6 +57,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
   const hour = Number(new Date().toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Jakarta" }));
   const salam = hour < 11 ? "Selamat Pagi" : hour < 15 ? "Selamat Siang" : hour < 18 ? "Selamat Sore" : "Selamat Malam";
   const first = session.name.split(" ")[0];
+  const canDecide = session.role === "leader" || session.role === "admin";
   return (
     <AppShell session={session} active="hari-ini">
       <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
@@ -83,41 +85,46 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
                 <span className="anim-pop absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">{s.waiting}</span>
               )}
             </a>
-            <a className="btn-primary h-11" href={`/api/export/hari-ini.xlsx?date=${date}`}>
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
-              </svg>
-              Download Excel
-            </a>
+            <DownloadMenu
+              links={[
+                { label: "Laporan hari ini (Excel)", hint: "Detail produksi, lost time, antrian, belum kirim", href: `/api/export/hari-ini.xlsx?date=${date}` },
+                { label: "Laporan hari ini (PDF)", hint: "Untuk rapat pagi atau dikirim ke WhatsApp", href: `/api/export/hari-ini.pdf?date=${date}` },
+              ]}
+            />
           </div>
         </div>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard icon="box" title="Hasil Produksi" delay={0.05} spark={<Spark kind="line" data={v.trend.map((t) => t.qty)} />}>
-            <div className="text-3xl font-bold tabular-nums">
-              <CountUp value={s.qty} /> <span className="text-base font-semibold text-slate-500">pcs</span>
-            </div>
-            <div className="text-xs text-slate-500">{s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}</div>
-          </KpiCard>
-          <KpiCard icon="shield" title="NG" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
-            <div className="text-3xl font-bold tabular-nums">
-              <CountUp value={s.ng} /> <span className="text-base font-semibold text-slate-500">pcs</span>
+            <div className="text-2xl font-bold tabular-nums sm:text-3xl">
+              <CountUp value={s.qty} /> <span className="text-sm font-semibold text-slate-500 sm:text-base">pcs</span>
             </div>
             <div className="text-xs text-slate-500">
-              NG rate <b className="text-slate-800">{pct(s.rate)}</b> {s.rateTrend && <TrendText t={s.rateTrend} />}
+              {!s.complete ? `sementara, ${done} dari ${v.expected} laporan disetujui` : s.qtyTrend ? <TrendText t={s.qtyTrend} /> : "yang sudah disetujui"}
+            </div>
+          </KpiCard>
+          <KpiCard icon="shield" title="NG (PPM)" delay={0.12} spark={<Spark kind="bar" data={v.trend.map((t) => t.ng)} />}>
+            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ppm != null && s.ppm > s.ppmMax ? "text-brand-600" : ""}`}>{s.ppm == null ? "-" : <CountUp value={s.ppm} />}</div>
+            <div className="text-xs text-slate-500">
+              {n0(s.ng)} pcs · rate {pct(s.rate)} {s.complete && s.rateTrend && <TrendText t={s.rateTrend} />}
+            </div>
+            <div className={`text-xs font-semibold ${s.ppm == null ? "text-slate-500" : s.ppm > s.ppmMax ? "text-brand-600" : "text-emerald-700"}`}>
+              {s.ppm != null && s.ppm <= s.ppmMax ? "✓ " : ""}batas {n0(s.ppmMax)} PPM
             </div>
           </KpiCard>
           <KpiCard icon="target" title="Achievement" delay={0.19}>
-            <div className="text-3xl font-bold tabular-nums">
-              {s.ach == null ? "-" : <CountUp value={Math.round(s.ach * 100)} suffix="%" />} {s.ach != null && <span className="text-base font-semibold text-slate-500">Grade {s.grade}</span>}
+            <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${s.ach != null && s.ach * 100 < s.target ? "text-brand-600" : ""}`}>
+              {s.ach == null ? "-" : <CountUp value={Math.round(s.ach * 100)} suffix="%" />} {s.ach != null && <span className="text-sm font-semibold text-slate-500 sm:text-base">Grade {s.grade}</span>}
             </div>
-            <div className="h-2 rounded-full bg-slate-100">
-              <div className="anim-bar h-2 rounded-full bg-brand-600" style={{ width: `${Math.min(100, Math.round((s.ach ?? 0) * 100))}%`, animationDelay: ".3s" }} />
+            <div className="relative h-2 rounded-full bg-slate-100">
+              <div className={`anim-bar h-2 rounded-full ${s.ach != null && s.ach * 100 >= s.target ? "bg-emerald-600" : "bg-brand-600"}`} style={{ width: `${Math.min(100, Math.round((s.ach ?? 0) * 100))}%`, animationDelay: ".3s" }} />
             </div>
-            <div className="text-right text-xs text-slate-500">Target {s.target}%</div>
+            <div className={`text-xs font-semibold ${s.ach == null ? "text-slate-500" : s.ach * 100 >= s.target ? "text-emerald-700" : "text-brand-600"}`}>
+              {s.ach == null ? `Target ${s.target}%` : s.ach * 100 >= s.target ? `✓ Sesuai target ${s.target}%` : `${Math.round(s.target - s.ach * 100)}% di bawah target`}
+            </div>
           </KpiCard>
           <KpiCard icon="doc" title="Laporan Masuk" delay={0.26}>
-            <div className="flex items-center gap-2 text-3xl font-bold tabular-nums">
+            <div className="flex items-center gap-2 text-2xl font-bold tabular-nums sm:text-3xl">
               <CountUp value={s.reported} ms={600} /> / {v.expected}
               {v.expected > 0 && s.reported >= v.expected && (
                 <span className="anim-pop flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white" style={{ animationDelay: ".6s" }}>
@@ -132,6 +139,37 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             </div>
           </KpiCard>
         </section>
+
+        {v.attention.length > 0 && (
+          <section className="card anim-in p-4 sm:p-5" style={{ animationDelay: ".1s" }}>
+            <h2 className="mb-3 text-lg font-bold">Perlu perhatian</h2>
+            <ul className="flex flex-col divide-y divide-slate-100">
+              {v.attention.map((a, i) => {
+                const dot = a.level === "bad" ? "bg-brand-600" : a.level === "warn" ? "bg-orange-500" : "bg-slate-400";
+                const body = (
+                  <>
+                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+                    <span className="flex-1">{a.text}</span>
+                    {a.href && <span className="shrink-0 text-brand-600">›</span>}
+                  </>
+                );
+                return (
+                  <li key={i}>
+                    {a.href ? (
+                      <a href={a.href} className="flex items-start gap-3 py-2.5 text-sm hover:text-brand-600">
+                        {body}
+                      </a>
+                    ) : (
+                      <div className="flex items-start gap-3 py-2.5 text-sm">{body}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {canDecide && s.waiting > 0 && <QueueList cards={v.queue} canDecide />}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
           <section className="card anim-in lift p-5" style={{ animationDelay: ".12s" }}>
@@ -181,7 +219,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               <StatusDonut done={done} waiting={s.waiting} missing={v.missing.length} label={`${s.reported}/${v.expected}`} />
               <div className="flex min-w-40 flex-1 flex-col gap-3 text-sm">
                 {[
-                  ["bg-emerald-600", "Sudah kirim", done],
+                  ["bg-emerald-600", "Disetujui", done],
                   ["bg-orange-500", "Menunggu validasi", s.waiting],
                   ["bg-rose-600", "Belum kirim", v.missing.length],
                 ].map(([c, l, n]) => (
@@ -274,7 +312,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             )}
           </section>
         </div>
-        <QueueList cards={v.queue} canDecide={session.role === "leader" || session.role === "admin"} />
+        {!(canDecide && s.waiting > 0) && <QueueList cards={v.queue} canDecide={canDecide} />}
         <p className="text-xs text-slate-500">Hasil, NG, achievement, dan tren dihitung dari laporan yang sudah disetujui.</p>
       </main>
     </AppShell>

@@ -4,7 +4,7 @@ import MasterEditor from "@/components/MasterEditor";
 import { requirePageRole } from "@/lib/auth";
 import { MASTER_TABLES } from "@/lib/sheets/masterEdit";
 
-export const metadata = { title: "Master Data · Produksi QA" };
+export const metadata = { title: "Master Data · QA Production" };
 
 const GROUPS: { title: string; ids: string[] }[] = [
   { title: "Produksi", ids: ["member", "part", "category", "machine", "stdmc"] },

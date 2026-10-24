@@ -16,7 +16,7 @@ const master: MasterData = {
   lostTimeTypes: [{ id: 1, name: "Pumping", group: "LOST_TIME" }],
   members: [{ id: 1, nik: "201003", name: "Harjuki", area: "PF" }],
   ngGroups: [{ id: 1, name: "Iron Cage", codes: Array.from({ length: 10 }, (_, i) => `NG${i + 1}`) }],
-  settings: { normalMin: 480, otLimitHrs: 4, target: 100, gradeA: 100, gradeB: 90, gradeC: 80, stkiHighPct: 150, stkiLowPct: 30 },
+  settings: { normalMin: 480, otLimitHrs: 4, target: 100, gradeA: 100, gradeB: 90, gradeC: 80, stkiHighPct: 150, stkiLowPct: 30, ngPpmMax: 1000, utilTarget: 85, mcHrsDay: 8 },
 };
 
 const part = (p: Partial<PartRowInput> = {}): PartRowInput => ({

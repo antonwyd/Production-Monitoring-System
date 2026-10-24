@@ -14,11 +14,16 @@ function navFor(role: Session["role"]): NavGroup[] {
     {
       items: [
         { key: "hari-ini", href: "/hari-ini", label: "Dashboard", icon: "dash" },
-        { key: "laporan", href: "/laporan", label: "Laporan Produksi", icon: "report" },
-        { key: "report:member", href: "/reports/member", label: "Per Member", icon: "user" },
+        { key: "laporan", href: "/laporan", label: "Ringkasan Laporan", icon: "report" },
+      ],
+    },
+    {
+      title: "Analisa",
+      items: [
         { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas (NG)", icon: "quality" },
+        { key: "report:member", href: "/reports/member", label: "Produktivitas", icon: "user" },
         { key: "report:waktu", href: "/reports/waktu", label: "Waktu & Lost Time", icon: "clock" },
-        { key: "report:machine", href: "/reports/machine", label: "Mesin PF", icon: "machine" },
+        { key: "report:machine", href: "/reports/machine", label: "Mesin", icon: "machine" },
         { key: "report:disiplin", href: "/reports/disiplin", label: "Disiplin Lapor", icon: "check" },
       ],
     },

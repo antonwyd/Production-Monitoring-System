@@ -9,7 +9,7 @@ type Props = {
 
 export async function generateMetadata({ params }: Props) {
   const { kind } = await params;
-  return { title: `${REPORT_TITLES[kind as ReportKind] ?? "Report"} · Produksi QA` };
+  return { title: `${REPORT_TITLES[kind as ReportKind] ?? "Report"} · QA Production` };
 }
 
 export default async function ReportPage({ params, searchParams }: Props) {

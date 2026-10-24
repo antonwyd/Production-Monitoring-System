@@ -119,7 +119,7 @@ describe("form member → leader → report", () => {
 
     const dash = await buildReport("dashboard", { from: DATE, to: DATE }, DATE);
     expect(dash.kpis[0].value).toBe(14920);
-    expect(dash.kpis[1].value).toBe(16);
+    expect(dash.kpis.find((k) => k.label === "NG (PPM)")!.hint).toBe("16 pcs NG");
     const daily = await buildReport("daily", { date: DATE }, DATE);
     expect(daily.tables[0].rows.find((x) => x.member === "Harjuki")!.status).toBe("Disetujui");
     const ngType = await buildReport("ng-type", { from: DATE, to: DATE }, DATE);
@@ -245,6 +245,7 @@ describe("tampilan baru: Hari Ini dan Laporan", () => {
 describe("report baru dan Excel", () => {
   it("waktu, disiplin, cari lot/oiban, dan semua halaman bisa jadi Excel", async () => {
     const { reportToXlsx } = await import("@/lib/excel");
+    const { reportToPdf } = await import("@/lib/pdf");
     const { buildToday, buildLaporan, laporanToReport, todayToReport } = await import("@/lib/views");
     const r = await qa.submitReport({ ...payload(), lostTimes: [{ type: "Ganti Pole", minutes: "30", remarks: "pole aus" }] });
     await qa.putuskanTanpaPin("Dian Kartika", [r.id], "ok", "");
@@ -255,11 +256,11 @@ describe("report baru dan Excel", () => {
     const waktu = await buildReport("waktu", { from: DATE, to: DATE }, DATE);
     expect(waktu.tables[0].rows[0]).toMatchObject({ name: "Ganti Pole", group: "Lost Time", count: 1 });
     // 30 menit x STKI 1100 pcs/jam = 550 pcs
-    expect(waktu.kpis[1].value).toBe(550);
+    expect(waktu.kpis.find((k) => k.label === "Lost Time (jam)")!.hint).toBe("potensi hilang 550 pcs");
     expect(waktu.tables[3].rows[0]).toMatchObject({ member: "Harjuki", minutes: 30, remarks: "pole aus" });
 
     const dis = await buildReport("disiplin", { from: DATE, to: DATE }, DATE);
-    expect(dis.kpis[0].value).toBe(2);
+    expect(dis.kpis[0].hint).toBe("0 dari 2 kiriman"); // tes mengirim di hari lain
     expect(dis.tables[1].rows).toEqual([expect.objectContaining({ member: "Suharyanto", note: "menit kurang" })]);
 
     const byOiban = await buildReport("ng-type", { from: DATE, to: DATE, q: "509" }, DATE);
@@ -279,6 +280,7 @@ describe("report baru dan Excel", () => {
     for (const rep of reports) {
       const buf = await reportToXlsx(rep);
       expect(buf.subarray(0, 2).toString()).toBe("PK");
+      expect(reportToPdf(rep).subarray(0, 5).toString()).toBe("%PDF-");
     }
   });
 });
