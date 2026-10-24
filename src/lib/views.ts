@@ -105,7 +105,15 @@ export type TodayView = {
     complete: boolean;
     qtyTrend: Trend;
     rateTrend: Trend;
+    /** Menit lost time / Another Job hari itu (laporan disetujui). */
+    ltMin: number;
+    ajMin: number;
   };
+  /**
+   * Status per member yang diharapkan lapor, saling eksklusif (jumlahnya = expected):
+   * Ditolak (belum dikirim ulang) > Menunggu > Disetujui > Belum kirim.
+   */
+  status: { approved: number; waiting: number; rejected: number; missing: number };
   /** Hal yang perlu ditindaklanjuti, merah dulu. */
   attention: { level: "bad" | "warn" | "info"; text: string; href?: string }[];
   /** 7 hari sampai tanggal itu: hasil, NG, NG rate per hari. */
@@ -200,6 +208,17 @@ export async function buildToday(date: string): Promise<TodayView> {
     if (idle) attention.push({ level: "info", text: `${idle} dari ${master.machines.length} mesin tidak jalan`, href: `/reports/machine?from=${date}&to=${date}` });
   }
 
+  const openRej = new Set(rejected.map((r) => r.member));
+  const status = { approved: 0, waiting: 0, rejected: 0, missing: 0 };
+  for (const m of expected) {
+    const st2 = sentToday.get(m.name) ?? [];
+    if (openRej.has(m.name)) status.rejected++;
+    else if (st2.includes("Menunggu")) status.waiting++;
+    else if (doneToday.has(m.name) || st2.includes("Disetujui")) status.approved++;
+    else status.missing++;
+  }
+  const ltToday = lostSplit(lost.filter((l) => l.workDate === date));
+
   return {
     date,
     dateLabel: new Date(`${date}T00:00:00Z`).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
@@ -233,7 +252,10 @@ export async function buildToday(date: string): Promise<TodayView> {
       complete,
       qtyTrend: vs ? trendPct(t.qty, p.qty, vs) : null,
       rateTrend: vs ? trendPoint(t.rate, p.rate, vs, false, 2) : null,
+      ltMin: ltToday.lt,
+      ajMin: ltToday.aj,
     },
+    status,
     attention: attention.sort((a, b) => ["bad", "warn", "info"].indexOf(a.level) - ["bad", "warn", "info"].indexOf(b.level)),
     activity: subs
       .flatMap((x) => {

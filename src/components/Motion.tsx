@@ -1,24 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-/** Angka berjalan dari 0 ke nilai akhir saat halaman tampil. */
-export function CountUp({ value, decimals = 0, suffix = "", ms = 900 }: { value: number; decimals?: number; suffix?: string; ms?: number }) {
-  const [v, setV] = useState(0);
-  const raf = useRef(0);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setV(value);
-    const t0 = performance.now();
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / ms);
-      setV(value * (1 - Math.pow(1 - p, 3)));
-      if (p < 1) raf.current = requestAnimationFrame(tick);
-    };
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-  }, [value, ms]);
+/** Angka KPI. Dulu dianimasikan dari 0; sekarang langsung tampil (design system: tanpa animasi dekoratif). */
+export function CountUp({ value, decimals = 0, suffix = "" }: { value: number; decimals?: number; suffix?: string; ms?: number }) {
   return (
     <span className="tabular-nums">
-      {v.toLocaleString("id-ID", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+      {value.toLocaleString("id-ID", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
       {suffix}
     </span>
   );
