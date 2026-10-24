@@ -751,7 +751,7 @@ function ask(o,cb){
   d.querySelector('.dlg-x').onclick=tutup;d.querySelector('.dlg-ok').onclick=oke;
   setTimeout(function(){var f=o.input?$('dlgIn'):d.querySelector('.dlg-ok');if(f)f.focus();},60);
 }
-function keluar(){ask({title:'Keluar dari akun?',msg:'Anda masuk sebagai '+ME.name+'.',ok:'Keluar',icon:'out',danger:true},function(){fetch('/api/auth/logout',{method:'POST'}).then(function(){location.href='/masuk';},function(){location.href='/masuk';});});}
+function keluar(){ask({title:'Keluar dari akun?',msg:'Anda masuk sebagai '+ME.name+'.',ok:'Keluar',icon:'out',danger:true},function(){fetch('/api/auth/logout',{method:'POST'}).then(function(){location.href=ME.leader?'/login':'/masuk';},function(){location.href=ME.leader?'/login':'/masuk';});});}
 var IC = {
   cal:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg>',
   user:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
@@ -1474,6 +1474,8 @@ function startLeader(){
   withMaster(function(m){M=m;renderLogin();},function(msg){$('app').innerHTML='<div class="loading">Gagal memuat data: '+esc(msg)+'</div>';});
 }
 function renderLogin(err){
+  // Di Vercel leader sudah masuk dengan NIK + PIN (sesi); nama diambil dari sesi, PIN tidak ditanya lagi.
+  if(ME&&ME.leader){L.name=ME.name;L.pin='-';if(err){$('app').innerHTML='<div class="loading">'+esc(err)+'</div>';}else loadQueue();return;}
   var saved='';try{saved=localStorage.getItem(LKEY)||'';}catch(e){}
   if(!L.name&&M.leaders.indexOf(saved)>=0)L.name=saved;
   var h='<div class="lg2"><div class="lg2-l"><div class="lg2-t"><div class="k">PT Takai Seiki Indonesia</div><h2>Validasi Laporan <em>Produksi</em></h2><i class="lg2-bar"></i><p>Periksa dan setujui laporan harian member sebelum masuk ke Dashboard.</p></div>'
@@ -1509,7 +1511,7 @@ function leaderShell(body){
   return '<div class="lband"><div class="lwho"><span><b>'+esc(L.name)+'</b> · Leader</span>'
     +'<input class="in" type="date" value="'+esc(L.date)+'" onchange="L.date=this.value;loadQueue()">'
     +(L.date?'<button class="lnk" onclick="L.date=\'\';loadQueue()">Semua tanggal</button>':'')
-    +'<span style="margin-left:auto;display:flex;gap:14px"><a href="/hari-ini" style="text-decoration:none">Hari Ini &amp; Laporan</a><button class="lnk" onclick="L.pin=\'\';L.data=null;renderLogin()">Keluar</button></span></div>'
+    +'<span style="margin-left:auto;display:flex;gap:14px"><a href="/hari-ini" style="text-decoration:none">Hari Ini &amp; Laporan</a><button class="lnk" onclick="keluar()">Keluar</button></span></div>'
     +'<div class="ltabs">'+tab('Menunggu','Menunggu')+tab('Disetujui','Disetujui')+tab('Ditolak','Ditolak')+'</div></div>'
     +body;
 }

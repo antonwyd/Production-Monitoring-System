@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { setTransport } from "@/lib/backend";
-import { buildReport, clearReportCache } from "@/lib/reports";
-import { invalidateMaster } from "@/lib/service";
+import { openRejections, setTransport, type RawSubmission } from "@/lib/backend";
+import { buildReport, clearReportCache, loadFacts } from "@/lib/reports";
+import { invalidateMaster, loadMaster } from "@/lib/service";
 import * as qa from "@/lib/sheets/qa";
 import { FakeSheet } from "./fakeSheet";
 
@@ -371,5 +371,52 @@ describe("Sinkron dari Sheet lama", () => {
     expect(prod.filter((r) => r[1]).length).toBe(2);
     expect(prod[0][5]).toBe(7920);
     expect(prod[0][37]).toBe(420);
+  });
+});
+
+describe("Tahap 1: keandalan", () => {
+  it("kiriman ganda yang persis sama tidak menambah baris", async () => {
+    const a = await qa.submitReport(payload());
+    const b = await qa.submitReport(payload());
+    expect(b).toMatchObject({ id: a.id, duplicate: true });
+    expect(fs.data["Antrian Validasi"]).toHaveLength(2);
+    // Isi berbeda tetap kiriman baru.
+    const c = await qa.submitReport({ ...payload(), lostTimes: [{ type: "5S", minutes: "30", remarks: "sore" }] });
+    expect(c.id).not.toBe(a.id);
+  });
+
+  it("halaman leader dengan sesi tidak butuh PIN, PIN salah tetap ditolak", async () => {
+    const r = await qa.submitReport(payload());
+    await expect(qa.putuskan("Dian Kartika", "0000", [r.id], "ok", "")).rejects.toThrow(/PIN salah/);
+    await qa.putuskan("Dian Kartika Sari", qa.LEADER_SESSION, [r.id], "ok", "");
+    expect(fs.data["Antrian Validasi"][1].slice(7, 9)).toEqual(["Disetujui", "Dian Kartika Sari"]);
+  });
+
+  it("lost time dibagi per kategori sesuai porsi menit kerja", async () => {
+    const it2 = { category: "Seiretsu Iron Cage", part: "608JCL-1-J", type: "D1", mc: "", normalQty: "1000", normalMin: "225", otQty: "", otMin: "", lot: "1", oiban: "", ng: ["", "", "", "", "", "", "", "", "", ""] };
+    const r = await qa.submitReport({ ...payload(), items: [{ ...payload().items[0], normalMin: "225" }, it2] });
+    await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
+    const master = await loadMaster();
+    const pf = master.categories.find((c) => c.name === "PF Iron Cage")!.id;
+    const all = await loadFacts(master, DATE, DATE);
+    const onlyPf = await loadFacts(master, DATE, DATE, pf);
+    expect(all.lost.reduce((a, l) => a + l.minutes, 0)).toBe(30);
+    expect(onlyPf.lost.reduce((a, l) => a + l.minutes, 0)).toBe(15);
+  });
+
+  it("kiriman ditolak yang belum dikirim ulang tetap terlihat", () => {
+    const sub = (id: string, sent: string, status: RawSubmission["status"]) => ({ id, sent, date: DATE, member: "Harjuki", status }) as RawSubmission;
+    expect(openRejections([sub("a", "2026-10-20 08:00", "Disetujui"), sub("b", "2026-10-20 09:00", "Ditolak")]).map((x) => x.id)).toEqual(["b"]);
+    expect(openRejections([sub("b", "2026-10-20 09:00", "Ditolak"), sub("c", "2026-10-20 10:00", "Menunggu")])).toEqual([]);
+  });
+
+  it("jam mesin tersedia bisa per kategori", async () => {
+    fs.setCell("Master Data", 12, 18, "Machine available hrs / day");
+    fs.setCell("Master Data", 12, 19, 8);
+    fs.setCell("Master Data", 13, 18, "Machine available hrs / day - PF Iron Cage");
+    fs.setCell("Master Data", 13, 19, 16);
+    const st = (await loadMaster()).settings;
+    expect(st.mcHrsDay).toBe(8);
+    expect(st.mcHrsCat).toEqual({ "PF Iron Cage": 16 });
   });
 });

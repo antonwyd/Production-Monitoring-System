@@ -102,7 +102,7 @@ async function readMaster(): Promise<FullMaster> {
   if (masterCache && Date.now() - masterCache.at < MASTER_TTL) return masterCache.data;
   const [[F, L], [U, SET]] = await Promise.all([
     io.get([`${q(SHEET_MASTER)}!A1:CZ`, `${q(SHEET_LEADER)}!A2:B`], "FORMATTED_VALUE"),
-    io.get([`${q(SHEET_MASTER)}!A7:CZ`, `${q(SHEET_MASTER)}!S7:T20`], "UNFORMATTED_VALUE"),
+    io.get([`${q(SHEET_MASTER)}!A7:CZ`, `${q(SHEET_MASTER)}!S7:T30`], "UNFORMATTED_VALUE"),
   ]);
   const members: string[] = [];
   const nik: Record<string, string> = {};
@@ -224,6 +224,8 @@ export async function getMasterData(): Promise<V1Master> {
 }
 
 /** Master Data untuk report di Vercel (NIK, STKI, grup lost time, setting grade). */
+const MC_HRS_CAT = "Machine available hrs / day - ";
+
 export async function apiMaster() {
   const m = await readMaster();
   const parts: { category: string; name: string; type: string; stki: number }[] = [];
@@ -233,7 +235,7 @@ export async function apiMaster() {
   const machines: { category: string; mc: string; line: string; main: string; alt: string }[] = [];
   m.categories.forEach((c) => c.machines.forEach((mc) => machines.push({ category: c.name, mc, line: "", main: "", alt: "", ...(c.mcInfo?.[mc] ?? {}) })));
   const raw = (label: string, def: number) => {
-    const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0);
+    const k = Object.keys(m.settings).find((x) => x.indexOf(label) === 0 && !x.startsWith(MC_HRS_CAT));
     return k !== undefined && m.settings[k] !== "" && Number(m.settings[k]) > 0 ? Number(m.settings[k]) : def;
   };
   const val = (label: string, def: number) => {
@@ -257,7 +259,13 @@ export async function apiMaster() {
       gradeB: val("Grade B", 90),
       gradeC: val("Grade C", 80),
       ngPpmMax: raw("NG limit", 1000),
-      mcHrsDay: raw("Machine available", m.normalMin / 60),
+      mcHrsDay: raw("Machine available hrs / day", m.normalMin / 60),
+      // Baris "Machine available hrs / day - <Kategori>" mengganti nilai umum untuk kategori itu (mis. 16 = 2 shift).
+      mcHrsCat: Object.fromEntries(
+        Object.keys(m.settings)
+          .filter((k) => k.startsWith(MC_HRS_CAT) && Number(m.settings[k]) > 0)
+          .map((k) => [k.slice(MC_HRS_CAT.length).trim(), Number(m.settings[k])]),
+      ),
       utilTarget: val("Machine utilization target", 85),
     },
   };
@@ -437,6 +445,7 @@ const colLetter = (n: number) => {
 
 /** Tulis baris setelah baris terakhir yang terisi di kolom input (B..). Mengembalikan nomor baris pertama. */
 async function tulis(title: string, rows: Cell[][], width: number, extraClear: string[] = []) {
+  clearInputCache();
   const end = colLetter(1 + width);
   const [[data], counts] = await Promise.all([io.get([`${q(title)}!B${FIRST_DATA_ROW}:${end}`], "UNFORMATTED_VALUE"), io.rowCounts()]);
   let lastFilled = -1;
@@ -548,6 +557,13 @@ export async function submitReport(payload: Payload) {
       ]);
       return { id: x.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, replaced: true };
     }
+    // Kiriman yang persis sama (member, tanggal, isi) dan masih Menunggu dianggap kiriman ganda, mis. tombol Kirim
+    // ditekan dua kali atau dikirim ulang karena sinyal putus. Kembalikan kiriman yang sudah ada, jangan tambah baris.
+    const inti = (x: { items: unknown; lostTimes: unknown; op?: unknown }) => JSON.stringify([x.items, x.lostTimes, x.op ?? null]);
+    const kembar = (await readQueue()).find(
+      (x) => x.status === ST_WAIT && x.member === s(payload.member) && x.date === s(payload.date) && inti(x) === inti({ items, lostTimes: lost, op: payload.op }),
+    );
+    if (kembar) return { id: kembar.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, duplicate: true };
     const id = newSubmissionId();
     await io.append(`${q(SHEET_QUEUE)}!A:L`, [[id, nowJakarta(), s(payload.date), asText(payload.member), items.length, totalQty, ltMin, ST_WAIT, "", "", "", asText(data)]]);
     return { id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true };
@@ -567,7 +583,14 @@ export async function riwayatMember(member: string) {
 
 // ---------- Fungsi yang dipanggil halaman leader ----------
 
+/**
+ * Pengganti PIN untuk panggilan dari halaman leader yang sudah lolos cek sesi (role leader/admin) di /api/rpc.
+ * Acak per server dan tidak pernah dikirim ke browser.
+ */
+export const LEADER_SESSION = `sesi:${crypto.randomUUID()}`;
+
 async function cekLeader(name: string, pin: string) {
+  if (pin === LEADER_SESSION && name) return;
   const ok = (await leaders()).some((l) => l.name === name && l.pin === s(pin).trim());
   if (!ok) throw new QaError("Nama leader atau PIN salah.");
 }
@@ -696,11 +719,30 @@ export async function apiQueue(a: { status?: string; date?: string; member?: str
 }
 
 /** Baris Input - Production dan Input - Lost Time pada rentang tanggal (yyyy-MM-dd). */
+// Isi Input - Production & Input - Lost Time dibaca sekali lalu dipakai semua report (rentang tanggal apa pun)
+// selama 1 menit. Dulu tiap rentang tanggal membaca ulang seluruh sheet. Dikosongkan setiap ada tulis ke Input.
+const INPUT_TTL = 60_000;
+let inputCache: { at: number; data: Promise<Cell[][][]> } | null = null;
+function inputGrid(): { at: number; data: Promise<Cell[][][]> } {
+  if (inputCache && Date.now() - inputCache.at < INPUT_TTL) return inputCache;
+  const data = io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE");
+  const entry = { at: Date.now(), data };
+  data.catch(() => {
+    if (inputCache === entry) inputCache = null;
+  });
+  inputCache = entry;
+  return entry;
+}
+export function clearInputCache() {
+  inputCache = null;
+}
+
 export async function apiRows(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(to || "")) throw new QaError("Rentang tanggal tidak valid.");
   // B..AN: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori, AM/AN menit MC.
   // B..I: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis.
-  const [[prodG, ltG], m] = await Promise.all([io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE"), readMaster()]);
+  const grid = inputGrid();
+  const [[prodG, ltG], m] = await Promise.all([grid.data, readMaster()]);
   const n = (v: unknown) => Number(v) || 0;
   const opt = (v: unknown) => (v === "" || v === null || v === undefined ? "" : Number(v) || 0);
   const prod: (string | number)[][] = [];
@@ -719,7 +761,7 @@ export async function apiRows(from: string, to: string) {
     if (!d || d < from || d > to || !s(r[2])) continue;
     lost.push([d, s(r[7]) || s(r[1]), s(r[2]), n(r[3]), s(r[4])]);
   }
-  return { cols: [], prod, lost };
+  return { cols: [], prod, lost, at: grid.at };
 }
 
 /** Fungsi yang boleh dipanggil browser lewat /api/rpc/<nama> (sama dengan google.script.run di v1). */

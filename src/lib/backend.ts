@@ -46,7 +46,7 @@ export type RawMaster = {
   parts: { category: string; name: string; type: string; stki: number }[];
   machines: { category: string; mc: string; line: string; main: string; alt: string }[];
   lostTypes: { name: string; group: string }[];
-  settings: { normalMin: number; otLimitHrs: number; target: number; gradeA: number; gradeB: number; gradeC: number; ngPpmMax?: number; utilTarget?: number; mcHrsDay?: number };
+  settings: { normalMin: number; otLimitHrs: number; target: number; gradeA: number; gradeB: number; gradeC: number; ngPpmMax?: number; utilTarget?: number; mcHrsDay?: number; mcHrsCat?: Record<string, number> };
 };
 
 /** Isi kiriman seperti yang disimpan v1 di kolom "Data" tab Antrian Validasi (pakai nama, bukan id). */
@@ -86,6 +86,8 @@ export type RawSubmission = {
 
 export type RawRows = {
   cols: string[];
+  /** Waktu (ms) isi sheet ini dibaca dari Google; bisa lebih lama dari permintaan karena cache. */
+  at?: number;
   // date, member, category, part, type, normalQty, normalMin, otQty, otMin, lot, oiban, mc, ng1..ng10, stki
   prod: (string | number)[][];
   // date, member, type, minutes, remarks
@@ -93,3 +95,11 @@ export type RawRows = {
 };
 
 export type RawLogin = { ok: boolean; inactive?: boolean; nik?: string; name?: string; role?: string };
+
+/**
+ * Kiriman Ditolak yang belum diperbaiki: tidak ada kiriman lain dari member itu untuk tanggal yang sama
+ * yang dikirim sesudahnya. Member seperti ini tetap tampil "Ditolak" walau punya kiriman lain yang disetujui.
+ */
+export function openRejections(subs: RawSubmission[]): RawSubmission[] {
+  return subs.filter((x) => x.status === "Ditolak" && !subs.some((y) => y !== x && y.member === x.member && y.date === x.date && y.sent > x.sent));
+}
