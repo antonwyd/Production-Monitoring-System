@@ -733,6 +733,17 @@ body.mem .ng-t .tot{font-size:13px;font-weight:600}
 body.mem .ngr .nm{font-size:14px;font-weight:500;line-height:1.3}
 body.mem .stp input{font-size:16px;font-weight:600}
 body.mem .scr-f .btn{font-size:16px;font-weight:600}
+/* v5.3 (25 Okt): header halaman leader disamakan dengan form member (merah gelap, logo putih) */
+body.ldr{overflow-x:hidden}
+body.ldr .hero{background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%);border:0;box-shadow:none}
+body.ldr .hero .logo{background:none;padding:0;border-radius:0}
+body.ldr .hero img{content:url(/logo-tki-dark.png);height:36px}
+@media(max-width:480px){body.ldr .hero img{height:32px}}
+body.ldr .hero h1{font-size:20px;font-weight:600;letter-spacing:-.01em}
+body.ldr .hero p{color:rgba(255,255,255,.72)}
+body.ldr .hero .ver{color:rgba(255,255,255,.6)}
+body.ldr .lband{position:relative;background:none;box-shadow:none;clip-path:none;isolation:isolate}
+body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%);z-index:-1}
 </style>
 </head>
 <body>
@@ -1543,6 +1554,7 @@ function route(page,base){
   var ml=$('modeLink');
   if(BASE_URL){ml.style.display='inline-block';}
   if(page==='leader'){
+    document.body.classList.add('ldr');
     ml.textContent='Halaman input';ml.href=BASE_URL;
     $('hTitle').textContent='Validasi laporan';$('hSub').textContent='Quality Assurance • Persetujuan laporan member';
     startLeader();
