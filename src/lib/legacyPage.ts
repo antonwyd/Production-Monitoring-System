@@ -680,6 +680,59 @@ body.mem .idc{border:0;box-shadow:none;background:transparent}
 body.mem .hero{border:0!important;box-shadow:none!important}
 body.mem .hero p{display:none}
 body.mem .band{margin-top:-1px;border:0}
+/* v5.2 tipografi (25 Okt): hierarki ukuran/ketebalan huruf dirapikan; hanya visual */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body.mem{font-size:15px}
+body.mem .hero h1#hTitle{font-size:20px;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+body.mem .hero .ver{font-size:12px;font-weight:500}
+body.mem .idc small{font-size:13px;font-weight:500;line-height:1.3}
+body.mem .idc input,body.mem .idc b{font-size:16px;font-weight:600;line-height:1.3}
+body.mem .rg-n b#rgTot{font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1}
+body.mem .rg-n small{font-size:13px;font-weight:500;line-height:1.2;margin-top:2px}
+body.mem .rg-i small{font-size:14px;font-weight:500;line-height:1.35}
+body.mem .rg-i b#rgSt{font-size:24px;font-weight:700;line-height:1.2;letter-spacing:-.01em}
+body.mem .rg-leg,body.mem .rg-leg span{font-size:14px;font-weight:400;line-height:1.5}
+body.mem .rg-leg b{font-size:14px;font-weight:600}
+body.mem .notice,body.mem .notice div{font-size:14px;line-height:1.5}
+body.mem .subrow .grow,body.mem .subrow .grow span{font-size:15px;line-height:1.4}
+body.mem .subrow .grow b{font-size:15px;font-weight:600}
+body.mem .subrow .pill{font-size:12px;font-weight:600}
+body.mem .hist-t span:first-child{font-size:16px;font-weight:600}
+body.mem .hist-t .cnt,body.mem .sec-h .cnt{font-size:13px;font-weight:500}
+body.mem .sec-h h2{font-size:16px;font-weight:600;text-transform:none;letter-spacing:0;line-height:1.3;color:var(--ink)}
+body.mem .pcard .badge{font-size:15px;font-weight:700}
+body.mem .pcard .ttl b{font-size:16px;font-weight:600;line-height:1.35}
+body.mem .pcard .ttl b span{font-size:15px;font-weight:500}
+body.mem .pcard .ttl small{font-size:13px;font-weight:400;line-height:1.45}
+body.mem .pcard .pm b{font-size:18px;font-weight:700;line-height:1.15}
+body.mem .pcard .pm small{font-size:12px;font-weight:400;line-height:1.2}
+body.mem .pc-a button{font-size:14px;font-weight:500}
+body.mem button.add{font-size:16px;font-weight:600}
+body.mem .card p.hint,body.mem .opcard p.hint{font-size:13px!important;line-height:1.5}
+body.mem .f .lb,body.mem .card .f span.lb{font-size:14px!important;font-weight:600;line-height:1.35}
+body.mem .in,body.mem .pick span{font-size:16px;font-weight:400}
+body.mem .ltl .tx b{font-size:16px;font-weight:600}
+body.mem .ltl .tx small{font-size:13px;font-weight:400}
+body.mem .ltl .mn{font-size:16px;font-weight:700}
+body.mem .sm-btn{font-size:15px;font-weight:600}
+body.mem .bar-sum small#sSum{font-size:13px;font-weight:500;line-height:1.35}
+body.mem .bar-sum b#sSt{font-size:15px;font-weight:600;line-height:1.35}
+body.mem #btnSend{font-size:16px;font-weight:600}
+body.mem .toast{font-size:14px;line-height:1.45}
+body.mem .scr-h h2{font-size:20px;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+body.mem .cchips button.cc{font-size:15px;font-weight:500;line-height:1.25}
+body.mem .cchips button.cc.on{font-weight:600}
+body.mem .sub{font-size:16px;font-weight:600;line-height:1.3}
+body.mem .pair .ph{font-size:15px;font-weight:600;line-height:1.3}
+body.mem .pair .f .lb,body.mem .pair .f span.lb{font-size:13px!important;font-weight:500;line-height:1.3;white-space:nowrap}
+body.mem .ob-i{font-size:13px}
+body.mem .f .lb small{font-size:13px;font-weight:400}
+body.mem .ng-t span{font-size:16px;font-weight:600}
+body.mem .ng-t span span{font-size:15px;font-weight:400}
+body.mem .ng-t .tot{font-size:13px;font-weight:600}
+body.mem .ngr .nm{font-size:14px;font-weight:500;line-height:1.3}
+body.mem .stp input{font-size:16px;font-weight:600}
+body.mem .scr-f .btn{font-size:16px;font-weight:600}
 </style>
 </head>
 <body>

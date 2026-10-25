@@ -3,7 +3,7 @@
 // (src/lib/sheets/qa.ts) langsung ke Google Sheet.
 import { PAGE_HTML } from "./legacyPage";
 
-export const APP_VERSION = "v5.1";
+export const APP_VERSION = "v5.2";
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){
