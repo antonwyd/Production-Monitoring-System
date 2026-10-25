@@ -7,8 +7,8 @@ export const PAGE_HTML: string = String.raw`<!DOCTYPE html>
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<script>/* HP: tampilan 10% lebih kecil supaya layar tidak terlalu penuh (permintaan 25 Okt). Lebar layout dibuat 1/0,9 lebar layar, browser mengecilkan sendiri. */
-(function(){try{var w=Math.min(screen.width||0,window.innerWidth||0);if(w&&w<600){document.querySelector('meta[name=viewport]').setAttribute('content','width='+Math.round(w/0.9)+', user-scalable=no');}}catch(e){}})();</script>
+<script>/* HP: tampilan 20% lebih kecil supaya layar tidak terlalu penuh (permintaan 25 Okt). Lebar layout dibuat 1/0,8 lebar layar, browser mengecilkan sendiri. */
+(function(){try{var w=Math.min(screen.width||0,window.innerWidth||0);if(w&&w<600){document.querySelector('meta[name=viewport]').setAttribute('content','width='+Math.round(w/0.8)+', user-scalable=no');}}catch(e){}})();</script>
 <title>QA Production</title>
 <link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -649,7 +649,7 @@ body.mem #btnSend{background:#B5121B;box-shadow:0 8px 20px rgba(181,18,27,.25)}
 @keyframes dlgIn{from{opacity:0;transform:translateY(12px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes dlgOut{to{opacity:0;transform:scale(.96)}}
 /* v5.1 desain (25 Okt): kartu waktu kerja merah, kategori berwarna dengan ikon, kotak lembur biru */
-body.mem .pane .meter{background:linear-gradient(135deg,#D3202A 0%,#9B1B1F 100%);color:#fff;box-shadow:0 10px 24px -10px rgba(155,27,31,.6)}
+body.mem .pane .meter{background:linear-gradient(135deg,#C8161F 0%,#7E0F15 100%);color:#fff;box-shadow:0 10px 24px -10px rgba(155,27,31,.6)}
 .meter .rg-t{stroke:rgba(255,255,255,.2)}
 .meter .rg-p{stroke:#fff}
 .meter .rg-l{stroke:rgba(255,255,255,.5)}
@@ -667,6 +667,19 @@ body.mem .pane .meter .rg-leg span.o::before{background:#FCD34D}
 .cchips button.cc.on{border-color:var(--c);color:var(--c);font-weight:600;box-shadow:0 0 0 1px var(--c) inset}
 body.mem .pair.ot{background:var(--blue-soft);border-color:#D6E3FD}
 body.mem .pair.ot .ph{color:var(--blue)}
+/* header merah gelap, logo putih-merah, tombol Leader putih, tanggal & nama dalam satu kartu putih */
+body.mem .hero{background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%);color:#fff;border-bottom:0}
+body.mem .hero img{content:url(/logo-tki-dark.png)}
+body.mem .hero h1{color:#fff}
+body.mem .hero p,body.mem .hero .ver{color:rgba(255,255,255,.72)}
+body.mem .hero-in .mode{background:#fff;color:var(--red);border:0;border-radius:14px;padding:8px 18px;font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+body.mem .hlo{color:rgba(255,255,255,.65)}
+body.mem .band{background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%) top/100% 44px no-repeat,#F4F5F7;box-shadow:none;clip-path:none;padding:4px 16px 24px}
+body.mem .idrow{background:#fff;border-radius:20px;padding:6px;gap:0;box-shadow:0 8px 24px -10px rgba(20,20,30,.25)}
+body.mem .idc{border:0;box-shadow:none;background:transparent}
+body.mem .hero{border:0!important;box-shadow:none!important}
+body.mem .hero p{display:none}
+body.mem .band{margin-top:-1px;border:0}
 </style>
 </head>
 <body>
