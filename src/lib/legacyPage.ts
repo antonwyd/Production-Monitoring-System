@@ -7,6 +7,8 @@ export const PAGE_HTML: string = String.raw`<!DOCTYPE html>
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script>/* HP: tampilan 10% lebih kecil supaya layar tidak terlalu penuh (permintaan 25 Okt). Lebar layout dibuat 1/0,9 lebar layar, browser mengecilkan sendiri. */
+(function(){try{var w=Math.min(screen.width||0,window.innerWidth||0);if(w&&w<600){document.querySelector('meta[name=viewport]').setAttribute('content','width='+Math.round(w/0.9)+', user-scalable=no');}}catch(e){}})();</script>
 <title>QA Production</title>
 <link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
