@@ -7,6 +7,8 @@ export const PAGE_HTML: string = String.raw`<!DOCTYPE html>
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script>/* HP: tampilan 20% lebih kecil supaya layar tidak terlalu penuh (permintaan 25 Okt). Lebar layout dibuat 1/0,8 lebar layar, browser mengecilkan sendiri. */
+(function(){try{var w=Math.min(screen.width||0,window.innerWidth||0);if(w&&w<600){document.querySelector('meta[name=viewport]').setAttribute('content','width='+Math.round(w/0.8)+', user-scalable=no');}}catch(e){}})();</script>
 <title>QA Production</title>
 <link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -646,6 +648,38 @@ body.mem #btnSend{background:#B5121B;box-shadow:0 8px 20px rgba(181,18,27,.25)}
 @keyframes dlgBgOut{to{background:rgba(15,15,20,0)}}
 @keyframes dlgIn{from{opacity:0;transform:translateY(12px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes dlgOut{to{opacity:0;transform:scale(.96)}}
+/* v5.1 desain (25 Okt): kartu waktu kerja merah, kategori berwarna dengan ikon, kotak lembur biru */
+body.mem .pane .meter{background:linear-gradient(135deg,#C8161F 0%,#7E0F15 100%);color:#fff;box-shadow:0 10px 24px -10px rgba(155,27,31,.6)}
+.meter .rg-t{stroke:rgba(255,255,255,.2)}
+.meter .rg-p{stroke:#fff}
+.meter .rg-l{stroke:rgba(255,255,255,.5)}
+body.mem .pane .meter .rg-n b{color:#fff}
+body.mem .pane .meter .rg-n small,body.mem .pane .meter .rg-i>small{color:rgba(255,255,255,.85)}
+body.mem .pane .meter .rg-i>b,body.mem .pane .meter .rg-i>b.kr,body.mem .pane .meter .rg-i>b.ok,body.mem .pane .meter .rg-i>b.lb2{color:#fff}
+body.mem .pane .meter .rg-leg{background:rgba(255,255,255,.13);border-radius:12px;padding:8px 12px;gap:4px;color:#fff}
+body.mem .pane .meter .rg-leg b{color:#fff}
+body.mem .pane .meter .rg-leg span::before{background:#fff;width:10px;height:10px;border-radius:5px}
+body.mem .pane .meter .rg-leg span.l::before{background:rgba(255,255,255,.55)}
+body.mem .pane .meter .rg-leg span.o::before{background:#FCD34D}
+.cchips button.cc{min-height:62px;background:var(--cb);border:1.5px solid var(--cb);color:var(--ink);gap:10px;padding:8px 12px;font-weight:500}
+.cchips button.cc .ci{flex:none;width:30px;height:30px;display:grid;place-items:center;color:var(--c)}
+.cchips button.cc .ci svg{width:26px;height:26px}
+.cchips button.cc.on{border-color:var(--c);color:var(--c);font-weight:600;box-shadow:0 0 0 1px var(--c) inset}
+body.mem .pair.ot{background:var(--blue-soft);border-color:#D6E3FD}
+body.mem .pair.ot .ph{color:var(--blue)}
+/* header merah gelap, logo putih-merah, tombol Leader putih, tanggal & nama dalam satu kartu putih */
+body.mem .hero{background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%);color:#fff;border-bottom:0}
+body.mem .hero img{content:url(/logo-tki-dark.png)}
+body.mem .hero h1{color:#fff}
+body.mem .hero p,body.mem .hero .ver{color:rgba(255,255,255,.72)}
+body.mem .hero-in .mode{background:#fff;color:var(--red);border:0;border-radius:14px;padding:8px 18px;font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+body.mem .hlo{color:rgba(255,255,255,.65)}
+body.mem .band{background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%) top/100% 44px no-repeat,#F4F5F7;box-shadow:none;clip-path:none;padding:4px 16px 24px}
+body.mem .idrow{background:#fff;border-radius:20px;padding:6px;gap:0;box-shadow:0 8px 24px -10px rgba(20,20,30,.25)}
+body.mem .idc{border:0;box-shadow:none;background:transparent}
+body.mem .hero{border:0!important;box-shadow:none!important}
+body.mem .hero p{display:none}
+body.mem .band{margin-top:-1px;border:0}
 </style>
 </head>
 <body>
@@ -976,13 +1010,23 @@ function itemSummary(it){
   if(m)bits.push(fmt(m)+(mc?' mnt MC':' mnt'));
   return bits.join(' • ')||'Belum diisi';
 }
+// Warna dan ikon tiap kategori di pilihan kategori (urutan warna mengikuti urutan Master Data).
+var CAT_COL=[['#D11F2A','#FDECEC'],['#E0465A','#FDF0F2'],['#2563EB','#EAF1FE'],['#7C3AED','#F1ECFE'],['#16A34A','#E9F8EE'],['#EA8A0C','#FEF4E6'],['#0284C7','#E7F4FC'],['#9333EA','#F4EBFE']];
+var CAT_IC={gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  cube:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg>',
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg>',
+  drum:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>'};
+function catLook(name,ci){var s=String(name||'').toLowerCase(),k=CAT_COL[ci%CAT_COL.length];
+  var i=/shield/.test(s)?'shield':/drum/.test(s)?'drum':/pf/.test(s)&&/plasti/.test(s)?'layers':/iron/.test(s)&&!/senbetsu/.test(s)?'gear':'cube';
+  return {c:k[0],b:k[1],i:CAT_IC[i]};}
 function itemHtml(it,ix){
   var c=cat(it.category), p=partOf(c,it.part), types=p?p.types:[];
   var ngTot=it.ng.reduce(function(a,b){return a+n(b);},0);
   var h='<div class="itb" id="it'+it.id+'"><div>';
   h+='<div class="f" data-k="category"><span class="lb">Kategori <span class="req">*</span></span>';
   if(M.categories.length<=12){
-    h+='<div class="cchips">'+M.categories.map(function(x,ci){var on=x.name===it.category;return '<button type="button" class="'+(on?'on':'')+'" onclick="setCat('+ix+','+ci+')">'+(on?'<span class="ck">'+IC.ck+'</span>':'')+esc(x.name)+'</button>';}).join('')+'</div>';
+    h+='<div class="cchips">'+M.categories.map(function(x,ci){var on=x.name===it.category,k=catLook(x.name,ci);return '<button type="button" class="cc'+(on?' on':'')+'" style="--c:'+k.c+';--cb:'+k.b+'" onclick="setCat('+ix+','+ci+')"><span class="ci">'+k.i+'</span>'+esc(x.name)+'</button>';}).join('')+'</div>';
   } else h+=pickBtn(it.category,'Pilih kategori','pickCat('+ix+')');
   h+='</div>';
   h+='<div class="grid'+(p&&types.length?' g2':'')+'" style="margin-top:12px">';
