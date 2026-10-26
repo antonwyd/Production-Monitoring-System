@@ -1109,7 +1109,7 @@ function itemHtml(it,ix){
   h+='</div>';
   h+='<div class="grid g2" style="margin-top:12px">'
     +'<label class="f"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Contoh: 312608097" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
-    +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" inputmode="numeric" autocomplete="off" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
+    +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
   var ngN=c?c.ng:[];
   h+='<button type="button" class="ng-t" onclick="S.items['+ix+'].ngOpen=!S.items['+ix+'].ngOpen;changed();render()"><span>Jumlah NG'+(c&&c.ngGroup?' <span style="color:var(--muted);font-weight:500">• '+esc(c.ngGroup)+'</span>':'')+'</span><span class="tot'+(ngTot?' has':'')+'" id="ngt'+it.id+'">'+(ngTot?fmt(ngTot)+' pcs':'Tidak ada')+'</span></button>';
   if(it.ngOpen){
