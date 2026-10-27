@@ -18,7 +18,6 @@ function navFor(role: Session["role"]): NavGroup[] {
         { key: "hari-ini", href: "/hari-ini", label: "Dashboard", icon: "dash" },
         { key: "form", href: "/", label: "Input Produksi", icon: "form", external: true },
         ...(canValidate ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
-        { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
         { key: "production-report", href: "/production-report", label: "Production Report", icon: "today" },
       ],
     },

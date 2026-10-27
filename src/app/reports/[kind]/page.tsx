@@ -14,10 +14,11 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function ReportPage({ params, searchParams }: Props) {
   const { kind } = await params;
-  // Menu Produksi sudah digabung ke Production Report.
-  if (kind === "category") {
+  // Produksi dan Rekap bulanan sudah dipindah ke Production Report.
+  const moved: Record<string, string> = { category: "/production-report/detail", monthly: "/production-report/rekap" };
+  if (moved[kind]) {
     const q = new URLSearchParams(Object.entries(await searchParams).filter((e): e is [string, string] => typeof e[1] === "string")).toString();
-    redirect(`/production-report/detail${q ? `?${q}` : ""}`);
+    redirect(`${moved[kind]}${q ? `?${q}` : ""}`);
   }
   if (!REPORT_KINDS.includes(kind as ReportKind) || kind === "dashboard") notFound();
   return renderReportPage(kind as ReportKind, await searchParams);

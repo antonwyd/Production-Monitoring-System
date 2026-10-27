@@ -22,7 +22,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   "ng-type": "Laporan Kualitas (NG)",
   "ng-part": "Laporan NG per Part",
   "ng-lot": "Laporan NG per Lot",
-  monthly: "Rekap Bulanan",
+  monthly: "Production Report · Rekap Bulanan",
   waktu: "Laporan Waktu & Lost Time",
   disiplin: "Laporan Disiplin Lapor",
 };
