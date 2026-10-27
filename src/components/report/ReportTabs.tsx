@@ -8,6 +8,7 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
     key: "report:ng-type",
     tabs: [
       { kind: "ng-type", label: "Per jenis NG", desc: "Jenis cacat terbanyak", color: "rose", icon: "alert" },
+      { kind: "ng-part", label: "Per part", desc: "NG per part & proses", color: "red", icon: "layers" },
       { kind: "ng-lot", label: "Per lot", desc: "NG per lot & oiban", color: "amber", icon: "box" },
     ],
   },
@@ -50,7 +51,7 @@ export default function ReportTabs({ kind, query }: { kind: string; query: Recor
   const g = REPORT_GROUPS.find((x) => x.tabs.some((t) => t.kind === kind));
   // Satu tab saja tidak perlu ditampilkan sebagai pilihan.
   if (!g || g.tabs.length < 2) return null;
-  const keep = new URLSearchParams(Object.entries(query).filter(([k]) => ["from", "to", "category"].includes(k))).toString();
+  const keep = new URLSearchParams(Object.entries(query).filter(([k]) => ["from", "to", "category", "proc", "mc", "part"].includes(k))).toString();
   return (
     <nav className={`no-print grid grid-cols-2 gap-2 sm:gap-3 ${g.tabs.length > 2 ? "lg:grid-cols-4" : "sm:max-w-xl"}`} aria-label="Jenis report">
       {g.tabs.map((t) => {

@@ -6,6 +6,7 @@ import Charts from "./Charts";
 import { Grade } from "@/components/ui";
 import FilterBar, { type FilterSelect } from "./FilterBar";
 import KpiCards from "./KpiCards";
+import QualityView from "./QualityView";
 import ReportTabs from "./ReportTabs";
 import ShowAll from "./ShowAll";
 import DataStatus from "@/components/DataStatus";
@@ -36,6 +37,14 @@ export default function ReportView({
   const usesCategory = k !== "member" && k !== "disiplin";
   const qs = new URLSearchParams(query).toString();
   const selects: FilterSelect[] = [];
+  const quality = k === "ng-type" || k === "ng-part";
+  if (quality)
+    selects.push({
+      name: "proc",
+      label: "Proses",
+      value: params.proc ?? "",
+      options: [{ value: "", label: "Semua proses" }, ...[...new Set(master.categories.map((c) => c.process).filter(Boolean))].map((x) => ({ value: x, label: x }))],
+    });
   if (usesCategory)
     selects.push({
       name: "category",
@@ -50,7 +59,7 @@ export default function ReportView({
       value: String(params.memberId ?? ""),
       options: [{ value: "", label: "Semua member" }, ...master.members.map((m) => ({ value: String(m.id), label: `${m.name} (${m.nik})` }))],
     });
-  if (k === "ng-lot" || k === "ng-type")
+  if (k === "ng-lot" || quality)
     selects.push({
       name: "part",
       label: "Part",
@@ -60,6 +69,20 @@ export default function ReportView({
         ...master.parts.filter((p) => !params.categoryId || p.categoryId === params.categoryId).map((p) => ({ value: String(p.id), label: partLabel(p) })),
       ],
     });
+  if (quality) {
+    const catName = new Map(master.categories.map((c) => [c.id, c]));
+    selects.push({
+      name: "mc",
+      label: "Mesin",
+      value: params.mc ?? "",
+      options: [
+        { value: "", label: "Semua mesin" },
+        ...master.machines
+          .filter((m) => (!params.categoryId || m.categoryId === params.categoryId) && (!params.proc || catName.get(m.categoryId)?.process === params.proc))
+          .map((m) => ({ value: `${catName.get(m.categoryId)?.name}|${m.mcNo}`, label: `${m.mcNo} · ${catName.get(m.categoryId)?.name}` })),
+      ],
+    });
+  }
   const approvedOnly = k !== "disiplin";
 
   return (
@@ -97,11 +120,16 @@ export default function ReportView({
         ]}
       />
 
-      <KpiCards kpis={report.kpis} />
+      {report.quality ? (
+        <QualityView report={report} query={query} ngLimit={master.settings.ngPpmMax / 1e6} />
+      ) : (
+        <>
+          <KpiCards kpis={report.kpis} />
+          <Charts charts={report.charts} />
+        </>
+      )}
 
-      <Charts charts={report.charts} />
-
-      {report.tables.map((t) => {
+      {report.tables.filter((t) => !t.exportOnly && k !== "ng-part").map((t) => {
         const fold = t.detail && t.rows.length > FOLD + 2;
         return (
           <section key={t.title} className="group card overflow-hidden" data-open="false">
