@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Tab = { kind: string; label: string; desc: string; color: keyof typeof COLORS; icon: keyof typeof ICONS };
+type Tab = { kind: string; label: string; desc: string; color: keyof typeof COLORS; icon: keyof typeof ICONS; href?: string };
 
 /** Report yang satu tema digabung dalam tab, filter periode/kategori ikut terbawa. */
 export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
@@ -20,8 +20,14 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
       { kind: "daily", label: "Per tanggal", desc: "Status & hasil semua member", color: "emerald", icon: "day" },
     ],
   },
-  // Produksi = berapa pcs per kategori/part/hari.
-  { key: "report:category", tabs: [{ kind: "category", label: "Per kategori & part", desc: "Hasil per part", color: "blue", icon: "layers" }] },
+  // Produksi digabung ke Production Report: laporan bulanan Presdir + detail pcs per kategori/part dengan periode bebas.
+  {
+    key: "production-report",
+    tabs: [
+      { kind: "production-report", label: "Laporan bulanan", desc: "Plan vs result per section", color: "red", icon: "month", href: "/production-report" },
+      { kind: "category", label: "Detail per part", desc: "Pcs per kategori & part, periode bebas", color: "blue", icon: "layers", href: "/production-report/detail" },
+    ],
+  },
   // Rekap bulanan = laporan resmi, menu Laporan.
   { key: "laporan", tabs: [{ kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan", color: "violet", icon: "month" }] },
 ];
@@ -60,7 +66,7 @@ export default function ReportTabs({ kind, query }: { kind: string; query: Recor
         return (
           <Link
             key={t.kind}
-            href={`/reports/${t.kind}${keep ? `?${keep}` : ""}`}
+            href={`${t.href ?? `/reports/${t.kind}`}${keep && !t.href?.endsWith("/production-report") ? `?${keep}` : ""}`}
             aria-current={on ? "page" : undefined}
             className={`flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition sm:px-4 sm:py-3 ${on ? `${c.on} shadow-md` : `bg-white text-slate-800 ring-slate-200 ${c.hover} hover:shadow-sm`}`}
           >

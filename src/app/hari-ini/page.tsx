@@ -244,7 +244,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
           >
             <TrendStack data={d.trend} target={s.target} ngLimit={ngLimit} />
           </Section>
-          <Section title={`Produksi per Proses (${hari})`} right={<Link href={`/reports/category?${range}`} className={more}>Lihat detail ›</Link>}>
+          <Section title={`Produksi per Proses (${hari})`} right={<Link href={`/production-report/detail?${range}`} className={more}>Lihat detail ›</Link>}>
             <div className="flex flex-col gap-2.5">
               {d.byProc.map((p) => {
                 const ok = p.ach != null && p.ach * 100 >= s.target;

@@ -103,7 +103,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           <section className="card overflow-x-auto px-2 py-3">
             <div className="flex items-baseline justify-between gap-3 px-3 pb-1">
               <h2 className="text-lg font-bold">Per kategori</h2>
-              <Link href={`/reports/category?from=${v.from}&to=${v.to}`} className={more}>
+              <Link href={`/production-report/detail?from=${v.from}&to=${v.to}`} className={more}>
                 Detail di Produksi ›
               </Link>
             </div>
@@ -248,7 +248,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
           <p className="mb-3 text-sm text-slate-500">Setiap halaman menjawab satu pertanyaan.</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {[
-              ["category", "Produksi", "Berapa pcs per kategori, part, dan hari?"],
+              ["category", "Production Report · detail per part", "Berapa pcs per kategori, part, dan hari?"],
               ["ng-type", "Kualitas (NG)", "NG apa, di part/lot mana, dan cari lot?"],
               ["member", "Produktivitas", "Siapa yang di bawah target, achievement & grade per orang?"],
               ["machine", "Mesin", "Mesin mana yang jalan, utilisasi & efisiensi MC?"],
