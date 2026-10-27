@@ -109,7 +109,7 @@ describe("Production Report bulanan", () => {
     const xlsx = await monthlyToXlsx(r);
     expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
     const zip = await JSZip.loadAsync(xlsx);
-    expect(Object.keys(zip.files).filter((f) => /^xl\/charts\/chart\d+\.xml$/.test(f))).toHaveLength(7);
+    expect(Object.keys(zip.files).filter((f) => /^xl\/charts\/chart\d+\.xml$/.test(f))).toHaveLength(14);
     if (process.env.MONTHLY_OUT) {
       writeFileSync(`${process.env.MONTHLY_OUT}/contoh.pdf`, pdf);
       writeFileSync(`${process.env.MONTHLY_OUT}/contoh.xlsx`, xlsx);

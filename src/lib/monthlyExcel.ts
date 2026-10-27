@@ -174,7 +174,7 @@ function sectionSheet(wb: ExcelJS.Workbook, r: MonthlyReport, s: SectionReport) 
   for (const d of s.daily) {
     const vals: (number | string | null | ExcelJS.CellFormulaValue)[] = [
       `${d.day}-${monthShort(d.date.slice(0, 7)).slice(0, 3)}`,
-      d.plan,
+      d.work ? d.plan : null,
       ...d.cols.map((v) => v || null),
       { formula: `SUM(${L(DAILY_COL + 2)}${dr}:${L(DAILY_COL + 1 + nCols)}${dr})`, result: d.total },
       { formula: `${L(DAILY_COL + 2 + nCols)}${dr}-${L(DAILY_COL + 1)}${dr}`, result: d.balance },
@@ -274,7 +274,7 @@ function series(idx: number, name: string, cat: string, val: string, color: stri
 const axis = (tag: "catAx" | "valAx", id: number, cross: number, pos: string, opts: { del?: boolean; crosses?: string; grid?: boolean } = {}) =>
   `<c:${tag}><c:axId val="${id}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="${opts.del ? 1 : 0}"/><c:axPos val="${pos}"/>${opts.grid ? '<c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="E5E7EB"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>' : ""}${tag === "valAx" ? '<c:numFmt formatCode="#,##0" sourceLinked="0"/>' : ""}<c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="700"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr><c:crossAx val="${cross}"/><c:crosses val="${opts.crosses ?? "autoZero"}"/>${tag === "catAx" ? '<c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/>' : '<c:crossBetween val="between"/>'}</c:${tag}>`;
 
-function chartXml(sheet: string, firstRow: number, lastRow: number, nCols: number, title: string) {
+function chartXml(sheet: string, firstRow: number, lastRow: number, nCols: number, title: string, kind: "cum" | "daily") {
   const L = (c: number) => {
     let s = "";
     for (let n = c; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
@@ -282,16 +282,17 @@ function chartXml(sheet: string, firstRow: number, lastRow: number, nCols: numbe
   };
   const ref = (c: number) => `'${sheet.replace(/'/g, "''")}'!$${L(c)}$${firstRow}:$${L(c)}$${lastRow}`;
   const cat = ref(DAILY_COL);
-  const bars =
-    series(0, "Daily Plan", cat, ref(DAILY_COL + 1), "7030A0", "bar") + series(1, "Daily Result", cat, ref(DAILY_COL + 2 + nCols), "92D050", "bar");
-  const lines =
-    series(2, "Total Plan", cat, ref(DAILY_COL + 4 + nCols), "7030A0", "line", true) + series(3, "Total Result", cat, ref(DAILY_COL + 5 + nCols), "70AD47", "line");
+  // Kumulatif: Result garis merah tua tebal, Plan garis putus abu-abu. Harian: batang Result + garis putus Plan harian.
+  const plot =
+    kind === "cum"
+      ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${series(0, "Result kumulatif", cat, ref(DAILY_COL + 5 + nCols), "9B1B1F", "line")}${series(1, "Plan kumulatif", cat, ref(DAILY_COL + 4 + nCols), "64748B", "line", true)}<c:marker val="1"/><c:axId val="1001"/><c:axId val="1002"/></c:lineChart>`
+      : `<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${series(0, "Result harian", cat, ref(DAILY_COL + 2 + nCols), "9B1B1F", "bar")}<c:gapWidth val="70"/><c:axId val="1001"/><c:axId val="1002"/></c:barChart><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${series(1, "Plan harian", cat, ref(DAILY_COL + 1), "64748B", "line", true)}<c:marker val="1"/><c:axId val="1001"/><c:axId val="1002"/></c:lineChart>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1000" b="1"/></a:pPr><a:r><a:rPr lang="en-US" sz="1000" b="1"/><a:t>${esc(title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>${bars}<c:gapWidth val="60"/><c:axId val="1001"/><c:axId val="1002"/></c:barChart><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${lines}<c:marker val="1"/><c:axId val="1003"/><c:axId val="1004"/></c:lineChart>${axis("catAx", 1001, 1002, "b")}${axis("valAx", 1002, 1001, "l", { grid: true })}${axis("catAx", 1003, 1004, "b", { del: true })}${axis("valAx", 1004, 1003, "r", { crosses: "max" })}</c:plotArea><c:legend><c:legendPos val="t"/><c:overlay val="0"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="800"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="6350"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr></c:chartSpace>`;
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900" b="1"/></a:pPr><a:r><a:rPr lang="en-US" sz="900" b="1"><a:solidFill><a:srgbClr val="1E293B"/></a:solidFill></a:rPr><a:t>${esc(title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${plot}${axis("catAx", 1001, 1002, "b")}${axis("valAx", 1002, 1001, "l", { grid: true })}</c:plotArea><c:legend><c:legendPos val="t"/><c:overlay val="0"/><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="800"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill></a:defRPr></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="6350"><a:solidFill><a:srgbClr val="E2E8F0"/></a:solidFill></a:ln></c:spPr></c:chartSpace>`;
 }
 
-const anchor = (rid: string, id: number) =>
-  `<xdr:twoCellAnchor><xdr:from><xdr:col>${CHART_FROM.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${CHART_FROM.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${CHART_TO.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${CHART_TO.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${id}" name="Chart ${id}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="${rid}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
+const anchor = (rid: string, id: number, fromRow: number, toRow: number) =>
+  `<xdr:twoCellAnchor><xdr:from><xdr:col>${CHART_FROM.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${CHART_TO.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${id}" name="Chart ${id}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="${rid}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`;
 
 /** Sisipkan grafik ke drawing tiap sheet section (drawing sudah ada karena logo). */
 async function addCharts(buf: Buffer, charts: { sheetIndex: number; sheet: string; firstRow: number; lastRow: number; nCols: number; title: string }[]) {
@@ -305,15 +306,24 @@ async function addCharts(buf: Buffer, charts: { sheetIndex: number; sheet: strin
     if (!target) continue;
     const drawingPath = `xl/drawings/${target.split("/").pop()}`;
     const drawingRels = `xl/drawings/_rels/${target.split("/").pop()}.rels`;
-    n++;
-    const chartPath = `xl/charts/chart${n}.xml`;
-    zip.file(chartPath, chartXml(c.sheet, c.firstRow, c.lastRow, c.nCols, c.title));
-    const rid = `rIdChart${n}`;
-    const dr = (await zip.file(drawingRels)?.async("string")) ?? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
-    zip.file(drawingRels, dr.replace("</Relationships>", `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${n}.xml"/></Relationships>`));
-    const d = await zip.file(drawingPath)!.async("string");
-    zip.file(drawingPath, d.replace("</xdr:wsDr>", `${anchor(rid, 100 + n)}</xdr:wsDr>`));
-    types = types.replace("</Types>", `<Override PartName="/${chartPath}" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>`);
+    const split = CHART_FROM.row + Math.round((CHART_TO.row - CHART_FROM.row) * 0.55);
+    const parts: ["cum" | "daily", string, number, number][] = [
+      ["cum", `Kumulatif · ${c.title}`, CHART_FROM.row, split],
+      ["daily", "Harian", split, CHART_TO.row],
+    ];
+    let d = await zip.file(drawingPath)!.async("string");
+    let dr = (await zip.file(drawingRels)?.async("string")) ?? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    for (const [kind, title, from, to] of parts) {
+      n++;
+      const chartPath = `xl/charts/chart${n}.xml`;
+      zip.file(chartPath, chartXml(c.sheet, c.firstRow, c.lastRow, c.nCols, title, kind));
+      const rid = `rIdChart${n}`;
+      dr = dr.replace("</Relationships>", `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${n}.xml"/></Relationships>`);
+      d = d.replace("</xdr:wsDr>", `${anchor(rid, 100 + n, from, to)}</xdr:wsDr>`);
+      types = types.replace("</Types>", `<Override PartName="/${chartPath}" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/></Types>`);
+    }
+    zip.file(drawingRels, dr);
+    zip.file(drawingPath, d);
   }
   zip.file("[Content_Types].xml", types);
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });

@@ -13,8 +13,8 @@ const MAROON: RGB = [155, 27, 31];
 const INK: RGB = [30, 41, 59];
 const MUTED: RGB = [100, 116, 139];
 const LINE: RGB = [203, 213, 225];
-const PLAN: RGB = [112, 48, 160];
-const RESULT: RGB = [146, 208, 80];
+const PLAN: RGB = [100, 116, 139];
+const SOFT: RGB = [232, 165, 167];
 const RED: RGB = [192, 0, 0];
 const GOOD: RGB = [6, 95, 70];
 
@@ -63,80 +63,119 @@ function heading(doc: jsPDF, t: string, x: number, y: number) {
   doc.text(t, x, y);
 }
 
-/** Batang Daily Plan & Daily Result (sumbu kiri) + garis Total Plan & Total Result kumulatif (sumbu kanan). */
+/** Nilai sumbu yang enak dibaca: 0, 250 rb, 500 rb, ... */
+function niceMax(v: number) {
+  if (v <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  const m = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((k) => k * p >= v)!;
+  return m * p;
+}
+const short = (v: number) => (v >= 1e6 ? `${(v / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt` : v >= 1e3 ? `${Math.round(v / 1e3)} rb` : String(Math.round(v)));
+
+/** Dua panel: atas kumulatif Result (area) vs Plan (garis putus), bawah result harian (merah tua = capai plan). */
 function chart(doc: jsPDF, s: SectionReport, x: number, y: number, w: number, h: number) {
-  doc.setDrawColor(...LINE).setLineWidth(0.3).rect(x, y, w, h);
-  const px = x + 15,
-    py = y + 12,
-    pw = w - 32,
-    ph = h - 22;
   const d = s.daily;
-  const maxBar = Math.max(1, ...d.map((r) => Math.max(r.plan, r.total)));
-  const maxCum = Math.max(1, ...d.map((r) => Math.max(r.cumPlan, r.cumResult)));
-  // legenda
-  doc.setFont("helvetica", "normal").setFontSize(6.5).setTextColor(...INK);
-  const leg: [string, RGB, "bar" | "dash" | "line"][] = [
-    ["Daily Plan", PLAN, "bar"],
-    ["Daily Result", RESULT, "bar"],
-    ["Total Plan", PLAN, "dash"],
-    ["Total Result", RESULT, "line"],
+  const last = d[d.length - 1];
+  doc.setDrawColor(...LINE).setLineWidth(0.25).roundedRect(x, y, w, h, 1.5, 1.5, "S");
+
+  // angka utama
+  const pctv = s.hasPlan && last.cumPlan ? last.cumResult / last.cumPlan : null;
+  const kp: [string, string, RGB][] = [
+    ["Result", int(last.cumResult), INK],
+    ["Plan", s.hasPlan ? int(last.cumPlan) : "-", INK],
+    ["Pencapaian", pct(pctv), pctv == null ? INK : pctv >= 1 ? GOOD : RED],
+    ["Selisih", s.hasPlan ? neg(last.cumResult - last.cumPlan) : "-", pctv == null ? INK : pctv >= 1 ? GOOD : RED],
   ];
-  leg.forEach(([t, c, k], i) => {
-    const lx = x + 6 + i * 30;
-    if (k === "bar") doc.setFillColor(...c).rect(lx, y + 3.3, 5, 2.2, "F");
+  const kw = (w - 8) / 4;
+  kp.forEach(([k, v, c], i) => {
+    const kx = x + 4 + i * kw;
+    doc.setFillColor(248, 250, 252).roundedRect(kx, y + 3, kw - 2, 10, 1, 1, "F");
+    doc.setFont("helvetica", "normal").setFontSize(6).setTextColor(...MUTED).text(k, kx + 2, y + 6.3);
+    doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(...c).text(v, kx + 2, y + 11.2);
+  });
+
+  const px = x + 13,
+    pw = w - 17;
+  const step = pw / d.length;
+  const axisY = (top: number, ph: number, max: number, label: string) => {
+    doc.setFont("helvetica", "bold").setFontSize(6.5).setTextColor(...INK).text(label, x + 4, top - 1.5);
+    doc.setFont("helvetica", "normal").setFontSize(5.5).setTextColor(...MUTED);
+    for (let i = 0; i <= 4; i++) {
+      const gy = top + ph - (ph * i) / 4;
+      doc.setDrawColor(235, 238, 242).setLineWidth(0.15).line(px, gy, px + pw, gy);
+      doc.text(short((max * i) / 4), px - 1, gy + 0.8, { align: "right" });
+    }
+  };
+  const xLabels = (base: number) => {
+    doc.setFontSize(5.2);
+    d.forEach((r, i) => {
+      if (i % 3 !== 0) return;
+      doc.setTextColor(...(r.work ? MUTED : RED)).text(String(r.day), px + step * i + step / 2, base + 3, { align: "center" });
+    });
+  };
+
+  // Panel 1: kumulatif
+  const t1 = y + 19,
+    h1 = (h - 32) * 0.58;
+  const max1 = niceMax(Math.max(last.cumResult, s.hasPlan ? last.cumPlan : 0));
+  axisY(t1, h1, max1, "Kumulatif");
+  const cx = (i: number) => px + step * i + step / 2;
+  const cy = (v: number) => t1 + h1 - (h1 * v) / max1;
+  // area result
+  const pts = d.map((r, i) => [cx(i), cy(r.cumResult)] as [number, number]);
+  const gs = (doc as unknown as { GState: new (o: { opacity: number }) => unknown }).GState;
+  doc.saveGraphicsState();
+  (doc as unknown as { setGState: (g: unknown) => void }).setGState(new gs({ opacity: 0.14 }));
+  doc.setFillColor(...MAROON);
+  const lines = pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]);
+  doc.lines([...lines, [0, t1 + h1 - pts[pts.length - 1][1]], [pts[0][0] - pts[pts.length - 1][0], 0], [0, pts[0][1] - (t1 + h1)]], pts[0][0], pts[0][1], [1, 1], "F", true);
+  doc.restoreGraphicsState();
+  doc.setDrawColor(...MAROON).setLineWidth(0.8);
+  for (let i = 1; i < pts.length; i++) doc.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+  if (s.hasPlan) {
+    doc.setDrawColor(...PLAN).setLineWidth(0.5).setLineDashPattern([1.4, 1], 0);
+    for (let i = 1; i < d.length; i++) doc.line(cx(i - 1), cy(d[i - 1].cumPlan), cx(i), cy(d[i].cumPlan));
+    doc.setLineDashPattern([], 0);
+  }
+  xLabels(t1 + h1);
+
+  // Panel 2: harian
+  const t2 = t1 + h1 + 9,
+    h2 = y + h - 5 - t2;
+  const max2 = niceMax(Math.max(1, ...d.map((r) => Math.max(r.total, r.plan))));
+  axisY(t2, h2, max2, "Harian");
+  const bw = Math.min(step * 0.62, 3);
+  d.forEach((r, i) => {
+    if (!r.total) return;
+    const bh = (h2 * r.total) / max2;
+    doc.setFillColor(...(!s.hasPlan || !r.plan || r.total >= r.plan ? MAROON : SOFT)).rect(cx(i) - bw / 2, t2 + h2 - bh, bw, bh, "F");
+  });
+  if (s.hasPlan) {
+    doc.setDrawColor(...PLAN).setLineWidth(0.4).setLineDashPattern([1, 0.8], 0);
+    d.forEach((r, i) => r.plan && doc.line(cx(i) - step / 2, t2 + h2 - (h2 * r.plan) / max2, cx(i) + step / 2, t2 + h2 - (h2 * r.plan) / max2));
+    doc.setLineDashPattern([], 0);
+  }
+  xLabels(t2 + h2);
+
+  // legenda
+  const leg: [string, RGB, "bar" | "dash"][] = s.hasPlan
+    ? [
+        ["Result", MAROON, "bar"],
+        ["Di bawah plan harian", SOFT, "bar"],
+        ["Plan", PLAN, "dash"],
+      ]
+    : [["Result", MAROON, "bar"]];
+  let lx = x + w - 4;
+  doc.setFont("helvetica", "normal").setFontSize(6);
+  [...leg].reverse().forEach(([t, c, k]) => {
+    lx -= doc.getTextWidth(t) + 7;
+    if (k === "bar") doc.setFillColor(...c).rect(lx, t1 - 3.6, 3, 2.2, "F");
     else {
-      doc.setDrawColor(...c).setLineWidth(0.7);
-      if (k === "dash") doc.setLineDashPattern([1, 0.8], 0);
-      doc.line(lx, y + 4.4, lx + 5, y + 4.4);
+      doc.setDrawColor(...c).setLineWidth(0.5).setLineDashPattern([1, 0.7], 0).line(lx, t1 - 2.5, lx + 4, t1 - 2.5);
       doc.setLineDashPattern([], 0);
     }
-    doc.text(t, lx + 6.5, y + 5.3);
+    doc.setTextColor(...MUTED).text(t, lx + 5, t1 - 1.6);
   });
-  // grid + sumbu
-  doc.setFontSize(5.5).setTextColor(...MUTED);
-  for (let i = 0; i <= 4; i++) {
-    const gy = py + ph - (ph * i) / 4;
-    doc.setDrawColor(235, 238, 242).setLineWidth(0.2).line(px, gy, px + pw, gy);
-    doc.text(int((maxBar * i) / 4), px - 1, gy + 0.8, { align: "right" });
-    doc.text(int((maxCum * i) / 4), px + pw + 1, gy + 0.8);
-  }
-  const step = pw / d.length;
-  const bw = Math.min(step * 0.36, 2.4);
-  const pPts: [number, number][] = [];
-  const rPts: [number, number][] = [];
-  d.forEach((r, i) => {
-    const cx = px + step * i + step / 2;
-    if (r.plan > 0) doc.setFillColor(...PLAN).rect(cx - bw, py + ph - (ph * r.plan) / maxBar, bw, (ph * r.plan) / maxBar, "F");
-    if (r.total > 0) doc.setFillColor(...RESULT).rect(cx, py + ph - (ph * r.total) / maxBar, bw, (ph * r.total) / maxBar, "F");
-    pPts.push([cx, py + ph - (ph * r.cumPlan) / maxCum]);
-    rPts.push([cx, py + ph - (ph * r.cumResult) / maxCum]);
-    if (i % 2 === 0) {
-      doc.setFontSize(5.2).setTextColor(...(r.work ? MUTED : RED));
-      doc.text(String(r.day), cx, py + ph + 3, { align: "center" });
-    }
-  });
-  const poly = (pts: [number, number][], c: RGB, dash: boolean) => {
-    doc.setDrawColor(...c).setLineWidth(0.7);
-    if (dash) doc.setLineDashPattern([1.2, 0.9], 0);
-    for (let i = 1; i < pts.length; i++) doc.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
-    doc.setLineDashPattern([], 0);
-  };
-  if (s.hasPlan) poly(pPts, PLAN, true);
-  poly(rPts, RESULT, false);
-  // nilai akhir di kotak seperti di PPT
-  const last = d[d.length - 1];
-  const box = (v: number, c: RGB, by: number) => {
-    const t = int(v);
-    doc.setFont("helvetica", "bold").setFontSize(8);
-    const tw = doc.getTextWidth(t) + 5;
-    doc.setDrawColor(...c).setLineWidth(0.5).setFillColor(255, 255, 255).rect(px + 4, by, tw, 5.5, "FD");
-    doc.setTextColor(...INK).text(t, px + 6.5, by + 4);
-  };
-  if (s.hasPlan) box(last.cumPlan, PLAN, py + 1);
-  box(last.cumResult, RESULT, py + (s.hasPlan ? 8 : 1));
-  doc.setFont("helvetica", "normal").setFontSize(5.5).setTextColor(...MUTED);
-  doc.text("pcs/hari", x + 2, py - 2);
-  doc.text("kumulatif", x + w - 2, py - 2, { align: "right" });
 }
 
 function planResult(doc: jsPDF, r: MonthlyReport, s: SectionReport, x: number, y: number, w: number) {
