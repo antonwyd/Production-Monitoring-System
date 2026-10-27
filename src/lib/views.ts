@@ -22,7 +22,7 @@ import {
 } from "./reports";
 import { achievement, grade, ngRate } from "./rules";
 import { loadMaster } from "./service";
-import type { MasterData, Settings } from "./types";
+import { isQaMember, type MasterData, type Settings } from "./types";
 
 export type Trend = { text: string; good: boolean } | null;
 export type Tile = { label: string; value: string; sub: string; trend: Trend; target?: string; status?: "good" | "bad" };
@@ -163,7 +163,8 @@ export async function buildToday(date: string): Promise<TodayView> {
   for (const s of subs) sentToday.set(s.member, [...(sentToday.get(s.member) ?? []), s.status]);
   const active = new Set([...facts.map((f) => f.memberName), ...lost.map((l) => lostMember(l, master)), ...sentToday.keys()]);
   const doneToday = new Set([...today.map((f) => f.memberName), ...lost.filter((l) => l.workDate === date).map((l) => lostMember(l, master))]);
-  const expected = master.members.filter((m) => active.has(m.name));
+  // Section selain QA hanya dihitung kalau hari ini ikut lapor (perbantuan/lembur di QA).
+  const expected = master.members.filter((m) => active.has(m.name) && (isQaMember(m) || sentToday.has(m.name) || doneToday.has(m.name)));
   const missing = expected.filter((m) => !sentToday.has(m.name) && !doneToday.has(m.name)).map((m) => m.name);
   const rejected = openRejections(subs)
     .map((s) => ({ member: s.member, note: s.note }));

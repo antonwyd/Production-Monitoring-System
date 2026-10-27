@@ -41,7 +41,7 @@ export async function callBackend<T>(action: string, args: Record<string, unknow
 
 export type RawMaster = {
   today: string;
-  members: { nik: string; name: string }[];
+  members: { nik: string; name: string; section?: string }[];
   categories: { name: string; process: string; ngGroup: string; ng: string[] }[];
   parts: { category: string; name: string; type: string; stki: number }[];
   machines: { category: string; mc: string; line: string; main: string; alt: string }[];

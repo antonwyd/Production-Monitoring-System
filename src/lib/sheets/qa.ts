@@ -85,6 +85,8 @@ export type V1Master = {
 };
 type FullMaster = V1Master & {
   nik: Record<string, string>;
+  /** Section member (kolom E Master Data); kosong = QA. */
+  section: Record<string, string>;
   stki: Record<string, number>;
   stdMc: Record<string, number>;
   settings: Record<string, Cell>;
@@ -106,11 +108,13 @@ async function readMaster(): Promise<FullMaster> {
   ]);
   const members: string[] = [];
   const nik: Record<string, string> = {};
+  const section: Record<string, string> = {};
   for (let r = 6; r < F.length; r++) {
     const name = cell(F, r, 2).trim();
     if (name && aktif(cell(F, r, 3))) {
       members.push(name);
       nik[name] = cell(F, r, 1).trim();
+      section[name] = cell(F, r, 4).trim();
     }
   }
 
@@ -205,6 +209,7 @@ async function readMaster(): Promise<FullMaster> {
     otLimitHrs: setting("OT limit", 4),
     today: todayJakarta(),
     nik,
+    section,
     stki,
     stdMc,
     settings,
@@ -219,7 +224,7 @@ export function clearMasterCache() {
 
 /** Master Data untuk form member & leader (bentuk sama dengan Code.gs getMasterData). */
 export async function getMasterData(): Promise<V1Master> {
-  const { nik: _n, stki: _s, stdMc: _m, settings: _x, ...m } = await readMaster();
+  const { nik: _n, section: _c, stki: _s, stdMc: _m, settings: _x, ...m } = await readMaster();
   return { ...m, today: todayJakarta() };
 }
 
@@ -246,7 +251,7 @@ export async function apiMaster() {
   };
   return {
     today: todayJakarta(),
-    members: m.members.map((name) => ({ nik: m.nik[name] ?? "", name })),
+    members: m.members.map((name) => ({ nik: m.nik[name] ?? "", name, section: m.section[name] ?? "" })),
     categories: m.categories.map((c) => ({ name: c.name, process: c.process, ngGroup: c.ngGroup ?? "", ng: c.ng })),
     parts,
     machines,

@@ -33,7 +33,10 @@ export type MasterMachine = {
   canSwitchTo: string;
 };
 export type MasterLostTimeType = { id: number; name: string; group: "LOST_TIME" | "ANOTHER_JOB" };
+/** area = Section member (Master Data kolom E), kosong dianggap "QA". */
 export type MasterMember = { id: number; nik: string; name: string; area: string };
+/** Hanya member section QA yang wajib lapor; section lain tampil bila ada laporan (perbantuan/lembur). */
+export const isQaMember = (m: MasterMember) => !m.area.trim() || /\bqa\b/i.test(m.area);
 export type MasterNgGroup = { id: number; name: string; codes: string[] }; // codes[0] = NG1
 
 export type MasterData = {
