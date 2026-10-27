@@ -15,9 +15,9 @@ export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
   dashboard: "Dashboard",
-  daily: "Laporan Harian",
-  member: "Laporan per Member",
-  category: "Laporan per Kategori & Part",
+  daily: "Produktivitas Harian",
+  member: "Produktivitas Member",
+  category: "Produksi per Kategori & Part",
   machine: "Laporan Mesin",
   "ng-type": "Laporan Kualitas (NG)",
   "ng-lot": "Laporan NG per Lot",
@@ -425,6 +425,60 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
             { key: "ajMin", label: "Another Job (mnt)", format: "int" },
             { key: "util", label: "Total menit", format: "int" },
+          ],
+          rows,
+          total: t,
+        },
+      ],
+    };
+  }
+
+  if (kind === "member" && !p.memberId) {
+    // Semua member dalam periode: urut achievement terendah dulu supaya yang perlu dibina kelihatan.
+    const { facts, lost } = await loadFacts(master, from, to, p.categoryId);
+    const sectionOf = new Map(master.members.map((m) => [m.id, m.area]));
+    const daysOf = new Map<number, Set<string>>();
+    for (const f of facts) daysOf.set(f.memberId, (daysOf.get(f.memberId) ?? new Set()).add(f.workDate));
+    const rows: Row[] = [...groupBy(facts, (f) => f.memberId).entries()]
+      .map(([id, g]) => {
+        const { lt, aj } = lostSplit(lost.filter((l) => l.memberId === id));
+        return {
+          nik: g.first.nik,
+          member: g.first.memberName,
+          section: sectionOf.get(id) || "-",
+          days: daysOf.get(id)?.size ?? 0,
+          ...aggCols(g.agg, st),
+          lostMin: lt,
+          ajMin: aj,
+        } as Row;
+      })
+      .sort((a, b) => (a.ach == null ? 9 : Number(a.ach)) - (b.ach == null ? 9 : Number(b.ach)) || String(a.member).localeCompare(String(b.member)));
+    const t = totalRow(facts, st, { member: "TOTAL" });
+    const below = rows.filter((r) => r.ach != null && Number(r.ach) * 100 < st.target).length;
+    return {
+      ...base,
+      subtitle: `Semua member · ${period}`,
+      kpis: [
+        { label: "Member lapor", value: rows.length, format: "int" },
+        { label: "Achievement rata-rata", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
+        { label: "Di bawah target", value: below, format: "int", hint: `dari ${rows.length} member` },
+        { label: "Jam kerja/mesin", value: t.hours, format: "dec1", hint: "Baris mesin dihitung dengan jam mesin jalan" },
+      ],
+      charts: [
+        { type: "bar", title: "Achievement per member", xKey: "member", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: rows.filter((r) => r.ach != null).map((r) => ({ member: String(r.member).split(" ")[0], ach: r.ach })) },
+      ],
+      tables: [
+        {
+          title: "Semua member",
+          note: "Pilih nama di filter Member untuk detail per hari dan per part.",
+          columns: [
+            { key: "nik", label: "NIK" },
+            { key: "member", label: "Member" },
+            { key: "section", label: "Section" },
+            { key: "days", label: "Hari lapor", format: "int" },
+            ...AGG_COLUMNS,
+            { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
+            { key: "ajMin", label: "Another Job (mnt)", format: "int" },
           ],
           rows,
           total: t,

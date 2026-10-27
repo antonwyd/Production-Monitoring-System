@@ -7,6 +7,7 @@ export type NavGroup = { title?: string; items: NavItem[] };
 
 // Ikon garis sederhana (24x24), tanpa library tambahan.
 const ICONS: Record<string, string> = {
+  box: "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
   today: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 15l2 2 4-4",
   report: "M3 3v18h18M7 15l4-4 3 3 5-6",
   user: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
@@ -153,7 +154,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-slate-200 bg-white/95 px-2 pb-[calc(6px+env(safe-area-inset-bottom))] pt-1.5 backdrop-blur lg:hidden">
         {[
           { key: "hari-ini", href: "/hari-ini", label: "Home", icon: "dash" },
-          { key: "laporan", href: "/laporan", label: "Ringkasan", icon: "report" },
+          { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
           null,
           { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas", icon: "quality" },
         ].map((it, i) =>

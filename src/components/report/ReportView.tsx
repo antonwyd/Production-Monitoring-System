@@ -47,8 +47,8 @@ export default function ReportView({
     selects.push({
       name: "member",
       label: "Member",
-      value: String(params.memberId ?? master.members[0]?.id ?? ""),
-      options: master.members.map((m) => ({ value: String(m.id), label: `${m.name} (${m.nik})` })),
+      value: String(params.memberId ?? ""),
+      options: [{ value: "", label: "Semua member" }, ...master.members.map((m) => ({ value: String(m.id), label: `${m.name} (${m.nik})` }))],
     });
   if (k === "ng-lot" || k === "ng-type")
     selects.push({
