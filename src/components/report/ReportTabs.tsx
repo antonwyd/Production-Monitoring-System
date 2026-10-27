@@ -8,18 +8,22 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
     key: "report:ng-type",
     tabs: [
       { kind: "ng-type", label: "Per jenis NG", desc: "Jenis cacat terbanyak", color: "rose", icon: "alert" },
+      { kind: "ng-part", label: "Per part", desc: "NG per part & proses", color: "red", icon: "layers" },
       { kind: "ng-lot", label: "Per lot", desc: "NG per lot & oiban", color: "amber", icon: "box" },
     ],
   },
   {
+    // Produktivitas = khusus orang.
     key: "report:member",
     tabs: [
-      { kind: "member", label: "Per member", desc: "Hasil & achievement", color: "red", icon: "user" },
-      { kind: "category", label: "Per kategori & part", desc: "Hasil per part", color: "blue", icon: "layers" },
-      { kind: "daily", label: "Harian", desc: "Satu tanggal", color: "emerald", icon: "day" },
-      { kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan", color: "violet", icon: "month" },
+      { kind: "member", label: "Per periode", desc: "Semua atau satu member", color: "red", icon: "user" },
+      { kind: "daily", label: "Per tanggal", desc: "Status & hasil semua member", color: "emerald", icon: "day" },
     ],
   },
+  // Produksi = berapa pcs per kategori/part/hari.
+  { key: "report:category", tabs: [{ kind: "category", label: "Per kategori & part", desc: "Hasil per part", color: "blue", icon: "layers" }] },
+  // Rekap bulanan = laporan resmi, menu Laporan.
+  { key: "laporan", tabs: [{ kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan", color: "violet", icon: "month" }] },
 ];
 
 // Kelas Tailwind ditulis utuh supaya ikut ter-build.
@@ -45,8 +49,9 @@ export const navKeyOf = (kind: string) => REPORT_GROUPS.find((g) => g.tabs.some(
 
 export default function ReportTabs({ kind, query }: { kind: string; query: Record<string, string> }) {
   const g = REPORT_GROUPS.find((x) => x.tabs.some((t) => t.kind === kind));
-  if (!g) return null;
-  const keep = new URLSearchParams(Object.entries(query).filter(([k]) => ["from", "to", "category"].includes(k))).toString();
+  // Satu tab saja tidak perlu ditampilkan sebagai pilihan.
+  if (!g || g.tabs.length < 2) return null;
+  const keep = new URLSearchParams(Object.entries(query).filter(([k]) => ["from", "to", "category", "proc", "mc", "part"].includes(k))).toString();
   return (
     <nav className={`no-print grid grid-cols-2 gap-2 sm:gap-3 ${g.tabs.length > 2 ? "lg:grid-cols-4" : "sm:max-w-xl"}`} aria-label="Jenis report">
       {g.tabs.map((t) => {

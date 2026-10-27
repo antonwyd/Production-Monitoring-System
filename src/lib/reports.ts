@@ -10,16 +10,17 @@ import { loadMaster } from "./service";
 import { uraiOiban } from "./sheets/qa";
 import { isQaMember, type MasterData, type Settings } from "./types";
 
-export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-lot", "monthly", "waktu", "disiplin"] as const;
+export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-part", "ng-lot", "monthly", "waktu", "disiplin"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
   dashboard: "Dashboard",
-  daily: "Laporan Harian",
-  member: "Laporan per Member",
-  category: "Laporan per Kategori & Part",
+  daily: "Produktivitas Harian",
+  member: "Produktivitas Member",
+  category: "Produksi per Kategori & Part",
   machine: "Laporan Mesin",
   "ng-type": "Laporan Kualitas (NG)",
+  "ng-part": "Laporan NG per Part",
   "ng-lot": "Laporan NG per Lot",
   monthly: "Rekap Bulanan",
   waktu: "Laporan Waktu & Lost Time",
@@ -38,6 +39,8 @@ export type Table = {
   detail?: boolean;
   /** Catatan pendek di bawah judul tabel. */
   note?: string;
+  /** Hanya di Excel/PDF; di web sudah ada di tab lain. */
+  exportOnly?: boolean;
 };
 export type Chart = {
   /** pareto = batang urut terbesar + garis kumulatif (kolom "cum", 0..1). */
@@ -57,7 +60,28 @@ export type Kpi = {
   /** good = sesuai target (hijau), bad = di luar target (merah). */
   status?: "good" | "bad";
 };
-export type Report = { kind: ReportKind; title: string; subtitle: string; kpis: Kpi[]; charts: Chart[]; tables: Table[] };
+export type Report = { kind: ReportKind; title: string; subtitle: string; kpis: Kpi[]; charts: Chart[]; tables: Table[]; quality?: QualityExtra };
+
+/** Data tambahan untuk tampilan Kualitas (grafik kecil & panel part). Excel/PDF tetap memakai tables. */
+export type QualityExtra = {
+  days: string[];
+  ng: number;
+  qty: number;
+  rate: number | null;
+  /** Periode sebelumnya dengan panjang sama; null bila belum ada data. */
+  prev: { ng: number; rate: number | null; types: number } | null;
+  types: { name: string; qty: number; share: number; cum: number; spark: number[] }[];
+  parts: { partId: number; part: string; category: string; qty: number; ng: number; rate: number | null; dominant: string; spark: (number | null)[]; ngt: number }[];
+  partCount: number;
+  partsWithNg: number;
+  focus: {
+    partId: number;
+    part: string;
+    types: { name: string; qty: number; share: number }[];
+    trend: { date: string; rate: number | null }[];
+    lots: { lot: string; date: string; qty: number; ng: number; rate: number | null; dominant: string }[];
+  } | null;
+};
 
 export type ReportParams = {
   from?: string;
@@ -69,6 +93,15 @@ export type ReportParams = {
   partId?: number;
   /** Cari nomor lot atau oiban (report Kualitas). */
   q?: string;
+  /** Proses (kolom Process Master Data), mesin "Kategori|MC", jumlah baris Top (10/all), urutan part (ng/rate). */
+  proc?: string;
+  mc?: string;
+  top?: string;
+  sort?: string;
+  /** Jenis NG yang sedang dilihat dari tab Per jenis NG (urutkan part menurut jenis ini). */
+  ngt?: string;
+  /** Part yang dibuka di panel kanan tab Per part (tidak memfilter tabel). */
+  fp?: number;
 };
 
 export type Fact = {
@@ -310,6 +343,115 @@ export function dateRange(from: string, to: string) {
   return out;
 }
 
+/** Fakta untuk report Kualitas: filter kategori, proses, part, dan mesin sekaligus. */
+async function qualityFacts(master: MasterData, from: string, to: string, p: ReportParams) {
+  let cats: number[] | undefined;
+  if (p.proc) cats = master.categories.filter((c) => c.process === p.proc).map((c) => c.id);
+  if (p.categoryId) cats = cats ? cats.filter((c) => c === p.categoryId) : [p.categoryId];
+  const { facts } = await loadFacts(master, from, to, cats ?? undefined, undefined, p.partId);
+  return p.mc ? facts.filter((f) => `${f.categoryName}|${f.mcNo}` === p.mc) : facts;
+}
+
+/** Jumlah NG per jenis (nama jenis dari grup NG kategori). */
+function ngByType(facts: Fact[], label: (g: number | null, i: number) => string) {
+  const m = new Map<string, number>();
+  for (const f of facts)
+    f.ng.forEach((n, i) => {
+      if (n) m.set(label(f.ngGroupId, i), (m.get(label(f.ngGroupId, i)) ?? 0) + n);
+    });
+  return m;
+}
+
+/** Bagian tambahan tampilan Kualitas: tren per jenis, part teratas, dan panel satu part. */
+async function qualityExtra(master: MasterData, from: string, to: string, p: ReportParams, facts: Fact[], label: (g: number | null, i: number) => string): Promise<QualityExtra> {
+  const days = dateRange(from, to);
+  const len = days.length;
+  const prevFacts = await qualityFacts(master, addDays(from, -len), addDays(from, -1), p);
+  const sum = (fs: Fact[]) => fs.reduce((a, f) => ({ qty: a.qty + f.qty, ng: a.ng + f.ng.reduce((x, y) => x + y, 0) }), { qty: 0, ng: 0 });
+  const now = sum(facts);
+  const before = sum(prevFacts);
+  const byType = ngByType(facts, label);
+  const sorted = [...byType.entries()].sort((a, b) => b[1] - a[1]);
+  const byDay = groupBy(facts, (f) => f.workDate);
+  const dayType = new Map(days.map((d) => [d, ngByType(byDay.has(d) ? facts.filter((f) => f.workDate === d) : [], label)]));
+  let cum = 0;
+  const types = sorted.map(([name, qty]) => {
+    cum += qty;
+    return { name, qty, share: now.ng ? qty / now.ng : 0, cum: now.ng ? cum / now.ng : 0, spark: days.map((d) => dayType.get(d)?.get(name) ?? 0) };
+  });
+
+  const partGroups = [...groupBy(facts, (f) => f.partId).values()];
+  const dominantOf = (fs: Fact[]) => {
+    const m = [...ngByType(fs, label).entries()].sort((a, b) => b[1] - a[1])[0];
+    const total = fs.reduce((a, f) => a + f.ng.reduce((x, y) => x + y, 0), 0);
+    return m ? `${m[0]} (${Math.round((m[1] / total) * 100)}%)` : "-";
+  };
+  const factsOf = (pid: number) => facts.filter((f) => f.partId === pid);
+  const MIN = 500;
+  const parts = partGroups
+    .filter((g) => g.agg.ng > 0 && (p.sort !== "rate" || g.agg.qty >= MIN))
+    .map((g) => {
+      const fs = factsOf(g.first.partId);
+      return {
+        ngt: p.ngt ? ngByType(fs, label).get(p.ngt) ?? 0 : 0,
+        partId: g.first.partId,
+        part: g.first.part,
+        category: g.first.categoryName,
+        qty: g.agg.qty,
+        ng: g.agg.ng,
+        rate: ngRate(g.agg.ng, g.agg.qty),
+        dominant: dominantOf(fs),
+        spark: days.map((d) => {
+          const x = sum(fs.filter((f) => f.workDate === d));
+          return x.qty + x.ng ? ngRate(x.ng, x.qty) : null;
+        }),
+      };
+    })
+    .filter((x) => !p.ngt || x.ngt > 0)
+    .sort((a, b) => (p.ngt ? b.ngt - a.ngt : 0) || (p.sort === "rate" ? (b.rate ?? 0) - (a.rate ?? 0) : b.ng - a.ng));
+
+  const focusId = p.fp ?? p.partId ?? parts[0]?.partId;
+  let focus: QualityExtra["focus"] = null;
+  if (focusId) {
+    const fs = factsOf(focusId);
+    if (fs.length) {
+      const t = ngByType(fs, label);
+      const tot = [...t.values()].reduce((a, b) => a + b, 0);
+      // Semua jenis NG di grup part ini, termasuk yang 0, supaya terlihat jenis mana yang tidak muncul.
+      const codes = master.ngGroups.find((g) => g.id === fs[0].ngGroupId)?.codes ?? [];
+      const names = [...new Set([...codes.filter((c) => !/^NG\d+$/.test(c)), ...t.keys()])];
+      const lots = [...groupBy(fs, (f) => f.lot).values()]
+        .map((g) => {
+          const lf = fs.filter((f) => f.lot === g.first.lot);
+          return { lot: g.first.lot, date: lf.map((f) => f.workDate).sort()[0], qty: g.agg.qty, ng: g.agg.ng, rate: ngRate(g.agg.ng, g.agg.qty), dominant: g.agg.ng ? dominantOf(lf).replace(/ \(.*$/, "") : "-" };
+        })
+        .sort((a, b) => b.ng - a.ng);
+      focus = {
+        partId: focusId,
+        part: fs[0].part,
+        types: names.map((name) => ({ name, qty: t.get(name) ?? 0, share: tot ? (t.get(name) ?? 0) / tot : 0 })).sort((a, b) => b.qty - a.qty),
+        trend: days.map((d) => {
+          const x = sum(fs.filter((f) => f.workDate === d));
+          return { date: dayLabel(d), rate: x.qty + x.ng ? ngRate(x.ng, x.qty) : null };
+        }),
+        lots: lots.slice(0, 5),
+      };
+    }
+  }
+  return {
+    days: days.map(dayLabel),
+    ng: now.ng,
+    qty: now.qty,
+    rate: ngRate(now.ng, now.qty),
+    prev: prevFacts.length ? { ng: before.ng, rate: ngRate(before.ng, before.qty), types: [...ngByType(prevFacts, label).keys()].length } : null,
+    types,
+    parts,
+    partCount: partGroups.length,
+    partsWithNg: partGroups.filter((g) => g.agg.ng > 0).length,
+    focus,
+  };
+}
+
 export async function buildReport(kind: ReportKind, p: ReportParams, today: string): Promise<Report> {
   const master = await loadMaster();
   const st = master.settings;
@@ -425,6 +567,60 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
             { key: "ajMin", label: "Another Job (mnt)", format: "int" },
             { key: "util", label: "Total menit", format: "int" },
+          ],
+          rows,
+          total: t,
+        },
+      ],
+    };
+  }
+
+  if (kind === "member" && !p.memberId) {
+    // Semua member dalam periode: urut achievement terendah dulu supaya yang perlu dibina kelihatan.
+    const { facts, lost } = await loadFacts(master, from, to, p.categoryId);
+    const sectionOf = new Map(master.members.map((m) => [m.id, m.area]));
+    const daysOf = new Map<number, Set<string>>();
+    for (const f of facts) daysOf.set(f.memberId, (daysOf.get(f.memberId) ?? new Set()).add(f.workDate));
+    const rows: Row[] = [...groupBy(facts, (f) => f.memberId).entries()]
+      .map(([id, g]) => {
+        const { lt, aj } = lostSplit(lost.filter((l) => l.memberId === id));
+        return {
+          nik: g.first.nik,
+          member: g.first.memberName,
+          section: sectionOf.get(id) || "-",
+          days: daysOf.get(id)?.size ?? 0,
+          ...aggCols(g.agg, st),
+          lostMin: lt,
+          ajMin: aj,
+        } as Row;
+      })
+      .sort((a, b) => (a.ach == null ? 9 : Number(a.ach)) - (b.ach == null ? 9 : Number(b.ach)) || String(a.member).localeCompare(String(b.member)));
+    const t = totalRow(facts, st, { member: "TOTAL" });
+    const below = rows.filter((r) => r.ach != null && Number(r.ach) * 100 < st.target).length;
+    return {
+      ...base,
+      subtitle: `Semua member · ${period}`,
+      kpis: [
+        { label: "Member lapor", value: rows.length, format: "int" },
+        { label: "Achievement rata-rata", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(t.ach == null ? null : Number(t.ach) * 100, st.target) },
+        { label: "Di bawah target", value: below, format: "int", hint: `dari ${rows.length} member` },
+        { label: "Jam kerja/mesin", value: t.hours, format: "dec1", hint: "Baris mesin dihitung dengan jam mesin jalan" },
+      ],
+      charts: [
+        { type: "bar", title: "Achievement per member", xKey: "member", series: [{ key: "ach", label: "Achievement", format: "pct" }], data: rows.filter((r) => r.ach != null).map((r) => ({ member: String(r.member).split(" ")[0], ach: r.ach })) },
+      ],
+      tables: [
+        {
+          title: "Semua member",
+          note: "Pilih nama di filter Member untuk detail per hari dan per part.",
+          columns: [
+            { key: "nik", label: "NIK" },
+            { key: "member", label: "Member" },
+            { key: "section", label: "Section" },
+            { key: "days", label: "Hari lapor", format: "int" },
+            ...AGG_COLUMNS,
+            { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
+            { key: "ajMin", label: "Another Job (mnt)", format: "int" },
           ],
           rows,
           total: t,
@@ -653,8 +849,39 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     };
   }
 
-  if (kind === "ng-type") {
-    const { facts } = await loadFacts(master, from, to, p.categoryId);
+  if (kind === "ng-type" || kind === "ng-part") {
+    const facts = await qualityFacts(master, from, to, p);
+    const quality = await qualityExtra(master, from, to, p, facts, label);
+    if (kind === "ng-part") {
+      const n = p.top === "all" ? quality.parts.length : 10;
+      return {
+        ...base,
+        subtitle: period,
+        quality,
+        kpis: [
+          { label: "Part diproduksi", value: quality.partCount, format: "int" },
+          { label: "NG (pcs)", value: quality.ng, format: "int" },
+          { label: "NG rate", value: quality.rate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(quality.rate, ngMax(st), true) },
+          { label: "Part dengan NG", value: quality.partsWithNg, format: "int", hint: `dari ${quality.partCount} part` },
+        ],
+        charts: [],
+        tables: [
+          {
+            title: p.sort === "rate" ? "Part dengan NG rate tertinggi (produksi ≥ 500 pcs)" : "Part dengan NG terbanyak",
+            columns: [
+              { key: "part", label: "Part" },
+              { key: "category", label: "Kategori" },
+              { key: "qty", label: "Hasil (pcs)", format: "int" },
+              { key: "ng", label: "NG (pcs)", format: "int" },
+              { key: "rate", label: "NG rate", format: "pct" },
+              { key: "dominant", label: "NG dominan" },
+              ...(p.ngt ? [{ key: "ngt", label: `NG ${p.ngt}`, format: "int" as const }] : []),
+            ],
+            rows: quality.parts.slice(0, n).map(({ spark: _s, partId: _p, ...r }) => r as Row),
+          },
+        ],
+      };
+    }
     const map = new Map<string, { group: string; ng: string; qty: number }>();
     let total = 0;
     for (const f of facts)
@@ -733,6 +960,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     return {
       ...base,
       subtitle: period,
+      quality,
       kpis: [
         { label: "NG (pcs)", value: total, format: "int" },
         { label: "NG rate", value: all.ngRate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(all.ngRate as number | null, ngMax(st), true) },
@@ -746,6 +974,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         ...search,
         {
           title: "NG per jenis",
+          exportOnly: true,
           columns: [
             { key: "group", label: "Grup NG" },
             { key: "ng", label: "Jenis NG" },
@@ -754,8 +983,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           ],
           rows,
         },
-        matrixTable,
-        lotTable,
+        { ...matrixTable, exportOnly: true },
+        { ...lotTable, exportOnly: true },
         {
           title: "Catatan NG Lain-lain",
           detail: true,
@@ -1166,5 +1395,11 @@ export function parseReportParams(sp: URLSearchParams | Record<string, string | 
     memberId: int("member"),
     partId: int("part"),
     q: get("q")?.trim().slice(0, 40) || undefined,
+    proc: get("proc")?.slice(0, 40) || undefined,
+    mc: get("mc")?.slice(0, 80) || undefined,
+    top: get("top") === "all" ? "all" : undefined,
+    sort: get("sort") === "rate" ? "rate" : undefined,
+    ngt: get("ngt")?.slice(0, 60) || undefined,
+    fp: int("fp"),
   };
 }

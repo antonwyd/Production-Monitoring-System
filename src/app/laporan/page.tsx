@@ -9,7 +9,9 @@ import { buildLaporan } from "@/lib/views";
 import { withDataAge } from "@/lib/reports";
 import DataStatus from "@/components/DataStatus";
 
-export const metadata = { title: "Ringkasan Laporan · QA Production" };
+export const metadata = { title: "Laporan · QA Production" };
+
+const more = "text-sm font-semibold text-brand-600 hover:underline";
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
 const d1 = (v: number | null) => (v == null ? "-" : v.toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 }));
@@ -34,8 +36,8 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
     <AppShell session={session} active="laporan">
       <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Ringkasan Laporan</h1>
-          <p className="text-sm text-slate-500">{v.period} · hanya laporan yang sudah disetujui</p>
+          <h1 className="text-2xl font-bold sm:text-3xl">Laporan Produksi</h1>
+          <p className="text-sm text-slate-500">{v.period} · ringkasan untuk atasan dan cetak, hanya laporan yang sudah disetujui. Detail ada di menu Analisa.</p>
           <DataStatus asOf={asOf} className="mt-1" />
         </div>
 
@@ -99,10 +101,16 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
 
         {!categoryId && v.categories.length > 1 && (
           <section className="card overflow-x-auto px-2 py-3">
+            <div className="flex items-baseline justify-between gap-3 px-3 pb-1">
+              <h2 className="text-lg font-bold">Per kategori</h2>
+              <Link href={`/reports/category?from=${v.from}&to=${v.to}`} className={more}>
+                Detail di Produksi ›
+              </Link>
+            </div>
             <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left">
-                  <th className={TH}>Per kategori</th>
+                  <th className={TH}>Kategori</th>
                   <th className={`${TH} text-right`}>Hasil (pcs)</th>
                   <th className={`${TH} text-right`}>NG rate</th>
                   <th className={`${TH} text-right`}>Achievement</th>
@@ -127,9 +135,14 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
         )}
 
         <section className="card">
-          <div className="px-5 pt-4">
-            <h2 className="text-xl font-bold">1. Orang</h2>
-            <p className="text-sm text-slate-500">Urut dari achievement terendah supaya yang perlu dibina kelihatan dulu. Klik nama untuk detail per hari.</p>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4">
+            <div>
+              <h2 className="text-xl font-bold">1. Orang</h2>
+              <p className="text-sm text-slate-500">5 achievement terendah dari {v.people.length} member. Klik nama untuk detail.</p>
+            </div>
+            <Link href={`/reports/member?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className={more}>
+              Semua member di Produktivitas ›
+            </Link>
           </div>
           <div className="overflow-x-auto px-2 pb-3 pt-2">
             {v.people.length ? (
@@ -146,7 +159,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                   </tr>
                 </thead>
                 <tbody className="tabular-nums">
-                  {v.people.map((p) => (
+                  {v.people.slice(0, 5).map((p) => (
                     <tr key={p.name}>
                       <td className={`${TD} font-semibold`}>
                         <Link href={`/reports/member?member=${p.id}&from=${v.from}&to=${v.to}`} className="hover:text-brand-600 hover:underline">
@@ -173,48 +186,21 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
 
         <div className="flex flex-wrap items-start gap-5">
           <section className="card min-w-0 flex-[1_1_460px] p-5">
-            <h2 className="text-xl font-bold">2. Part &amp; NG</h2>
-            <p className="mb-4 text-sm text-slate-500">Jenis NG terbanyak, total {n0(v.totalNg)} pcs</p>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-xl font-bold">2. NG</h2>
+              <Link href={`/reports/ng-type?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className={more}>
+                Detail di Kualitas ›
+              </Link>
+            </div>
+            <p className="mb-4 text-sm text-slate-500">5 jenis NG terbanyak, total {n0(v.totalNg)} pcs. Lot, part, dan catatan NG ada di Kualitas.</p>
             {v.ngTypes.length ? (
               <div className="flex flex-col gap-3">
-                {v.ngTypes.map((n) => (
+                {v.ngTypes.slice(0, 5).map((n) => (
                   <BarRow key={n.name} name={n.name} right={`${n0(n.qty)} pcs · ${pc(n.share)}`} pct={n.bar} />
                 ))}
               </div>
             ) : (
               <Empty>Belum ada NG.</Empty>
-            )}
-            <h3 className="mb-1 mt-6 font-bold">Lot dengan NG rate tertinggi</h3>
-            {v.lots.length ? (
-              v.lots.map((l) => (
-                <div key={`${l.part}|${l.lot}`} className="flex justify-between gap-3 border-b border-slate-100 py-2.5 text-sm">
-                  <span>
-                    {l.part} · Lot {l.lot}
-                  </span>
-                  <span className="font-semibold text-orange-800">
-                    {pc(l.rate, 2)} <span className="font-normal text-slate-500">({n0(l.ng)} pcs)</span>
-                  </span>
-                </div>
-              ))
-            ) : (
-              <Empty>Belum ada lot dengan NG.</Empty>
-            )}
-            <h3 className="mb-1 mt-6 font-bold">Catatan NG Lain-lain</h3>
-            {v.notes.length ? (
-              <>
-                {v.notes.slice(0, 5).map((c, i) => (
-                  <div key={i} className="border-b border-slate-100 py-2.5 text-sm">
-                    <b>{c.what}</b> <span className="text-slate-500">· {c.who}</span>
-                  </div>
-                ))}
-                {v.notes.length > 5 && (
-                  <Link href={`/reports/ng-type?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className="mt-2 inline-block text-sm font-semibold text-brand-600 hover:underline">
-                    Lihat semua catatan ({v.notes.length}) ›
-                  </Link>
-                )}
-              </>
-            ) : (
-              <Empty>Tidak ada catatan.</Empty>
             )}
           </section>
 
@@ -222,10 +208,10 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-xl font-bold">3. Mesin</h2>
               <Link href={`/reports/machine?from=${v.from}&to=${v.to}${categoryId ? `&category=${categoryId}` : ""}`} className="text-sm font-semibold text-brand-600 hover:underline">
-                Semua mesin ›
+                Detail di Mesin ›
               </Link>
             </div>
-            <p className="mb-2 text-sm text-slate-500">Mesin yang jalan: jam jalan dibanding Standar MC</p>
+            <p className="mb-2 text-sm text-slate-500">5 mesin dengan jam jalan terbanyak, dibanding Standar MC</p>
             {v.machines.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[420px] text-sm">
@@ -238,7 +224,7 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
                     </tr>
                   </thead>
                   <tbody className="tabular-nums">
-                    {v.machines.map((r) => (
+                    {[...v.machines].sort((a, b) => b.hours - a.hours).slice(0, 5).map((r) => (
                       <tr key={`${r.category}|${r.mc}`}>
                         <td className={TD}>
                           <b>{r.mc}</b> <span className="text-slate-500">{r.category}</span>
@@ -258,17 +244,21 @@ export default async function LaporanPage({ searchParams }: { searchParams: Prom
         </div>
 
         <section className="no-print card px-5 py-4">
-          <h2 className="mb-3 font-bold">Analisa lebih detail</h2>
-          <div className="flex flex-wrap gap-2">
+          <h2 className="mb-1 font-bold">Detail per topik</h2>
+          <p className="mb-3 text-sm text-slate-500">Setiap halaman menjawab satu pertanyaan.</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {[
-              ["ng-type", "Kualitas (NG) & cari lot"],
-              ["member", "Produktivitas per member"],
-              ["waktu", "Waktu & Lost Time"],
-              ["machine", "Mesin"],
-              ["disiplin", "Disiplin Lapor"],
-            ].map(([k, l]) => (
-              <Link key={k} href={`/reports/${k}?from=${v.from}&to=${v.to}${categoryId && k !== "disiplin" ? `&category=${categoryId}` : ""}`} className="btn-secondary min-h-11">
-                {l}
+              ["category", "Produksi", "Berapa pcs per kategori, part, dan hari?"],
+              ["ng-type", "Kualitas (NG)", "NG apa, di part/lot mana, dan cari lot?"],
+              ["member", "Produktivitas", "Siapa yang di bawah target, achievement & grade per orang?"],
+              ["machine", "Mesin", "Mesin mana yang jalan, utilisasi & efisiensi MC?"],
+              ["waktu", "Waktu & Lost Time", "Ke mana waktu kerja hilang?"],
+              ["disiplin", "Disiplin Lapor", "Siapa yang telat atau belum lapor?"],
+              ["monthly", "Rekap bulanan", "Total sebulan untuk laporan tanggal 10"],
+            ].map(([k, l, d]) => (
+              <Link key={k} href={`/reports/${k}?${k === "monthly" ? `month=${v.to.slice(0, 7)}` : `from=${v.from}&to=${v.to}`}${categoryId && k !== "disiplin" ? `&category=${categoryId}` : ""}`} className="rounded-lg border border-slate-200 px-4 py-3 transition hover:border-brand-100 hover:bg-brand-50/40">
+                <div className="font-semibold">{l} ›</div>
+                <div className="text-sm text-slate-500">{d}</div>
               </Link>
             ))}
           </div>
