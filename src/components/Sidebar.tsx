@@ -57,7 +57,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   }
 
   const nav = (
-    <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+    <nav className="relative flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
       {groups.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
           {g.title && <div className="sb-hide px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{g.title}</div>}
@@ -82,7 +82,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   );
 
   const footer = (
-    <div className="sb-foot flex items-center gap-3 border-t border-white/10 px-4 py-4">
+    <div className="sb-foot relative flex items-center gap-3 border-t border-white/10 px-4 py-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-brand-600 ring-2 ring-brand-600">
         {user.name
           .split(" ")
@@ -110,7 +110,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   );
 
   const brand = (
-    <Link href="/hari-ini" className="sb-brand flex items-center px-5 pb-5 pt-6">
+    <Link href="/hari-ini" className="sb-brand relative flex items-center px-5 pb-5 pt-6">
       <img src="/logo-tki-dark.png" alt="PT. Takai Seiki Indonesia" className="h-auto w-full max-w-[11.5rem]" />
     </Link>
   );
@@ -118,7 +118,12 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   return (
     <>
       {/* Desktop: menu tetap di kiri */}
-      <aside className="sb-desk no-print fixed inset-y-0 left-0 z-30 hidden w-[var(--sb-w)] flex-col bg-[#1d2430] transition-[width] duration-200 ease-out lg:flex">
+      <aside className="sb-desk no-print fixed inset-y-0 left-0 z-30 hidden w-[var(--sb-w)] flex-col bg-[#141d33] transition-[width] duration-200 ease-out lg:flex">
+        {/* Foto bearing produk TKI di bawah menu, memudar ke warna sidebar. */}
+        <div className="sb-hide pointer-events-none absolute inset-x-0 bottom-0 h-72" aria-hidden>
+          <img src="/login-bearing-480.webp" alt="" className="h-full w-full object-cover opacity-50 grayscale-[25%]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#141d33] via-[#141d33]/70 to-[#141d33]/85" />
+        </div>
         <button
           onClick={toggleMini}
           aria-label={mini ? "Lebarkan menu" : "Lipat menu"}
@@ -178,7 +183,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
       {open && (
         <div className="no-print fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/40 anim-toast" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[#1d2430] shadow-xl animate-[slide-in_.25s_ease-out]">
+          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-[#141d33] shadow-xl animate-[slide-in_.25s_ease-out]">
             {brand}
             {nav}
             {footer}

@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const shift = (d: string, n: number) => {
   const t = new Date(`${d}T00:00:00Z`);
@@ -10,7 +10,14 @@ const shift = (d: string, n: number) => {
 /** Pilih tanggal dashboard: panah hari sebelum/sesudah dan kalender. */
 export default function DateNav({ date, max, label }: { date: string; max: string; label: string }) {
   const router = useRouter();
-  const go = (d: string) => d && router.push(`?date=${d}`);
+  const sp = useSearchParams();
+  // Filter lain (proses, rentang tren) tetap terbawa saat ganti tanggal.
+  const go = (d: string) => {
+    if (!d) return;
+    const q = new URLSearchParams(sp.toString());
+    q.set("date", d);
+    router.push(`?${q}`);
+  };
   const btn = "flex h-11 w-10 items-center justify-center text-lg text-slate-500 hover:text-slate-900 disabled:text-slate-300";
   return (
     <div className="flex items-center rounded-lg border border-slate-300 bg-white">

@@ -125,8 +125,11 @@ export function clearReportCache() {
   clearInputCache();
 }
 
-export async function loadFacts(master: MasterData, from: string, to: string, categoryId?: number, memberId?: number, partId?: number) {
+export async function loadFacts(master: MasterData, from: string, to: string, category?: number | number[], memberId?: number, partId?: number) {
   const raw = await fetchRows(from, to);
+  // Satu kategori atau beberapa (mis. semua kategori dalam satu proses).
+  const cats = category == null ? null : new Set(Array.isArray(category) ? category : [category]);
+  const inCat = (cid: number) => !cats || cats.has(cid);
   const nikOf = new Map(master.members.map((m) => [m.name, m.nik]));
   const catOf = new Map(master.categories.map((c) => [c.name, c]));
   const facts: Fact[] = [];
@@ -136,7 +139,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
     const cid = catId(category);
     const pid = partIdOf(category, part, type);
     const mid = memberIdOf(member);
-    if ((categoryId && cid !== categoryId) || (memberId && mid !== memberId) || (partId && pid !== partId)) continue;
+    if (!inCat(cid) || (memberId && mid !== memberId) || (partId && pid !== partId)) continue;
     const mcNo = mc && mc !== "-" ? mc : "-";
     facts.push({
       workDate,
@@ -166,13 +169,13 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
   // Lost time di Sheet tidak menyimpan kategori. Bila difilter satu kategori, menit lost time member di hari itu
   // dibagi sesuai porsi menit kerjanya di kategori tsb (normal + OT), supaya tidak terhitung penuh di tiap kategori.
   const share = new Map<string, { all: number; cat: number }>();
-  if (categoryId)
+  if (cats)
     for (const r of raw.prod) {
       const k = `${r[0]}|${r[1]}`;
       const e = share.get(k) ?? { all: 0, cat: 0 };
       const min = (Number(r[6]) || 0) + (Number(r[8]) || 0);
       e.all += min;
-      if (catId(String(r[2])) === categoryId) e.cat += min;
+      if (inCat(catId(String(r[2])))) e.cat += min;
       share.set(k, e);
     }
   const lost: LostFact[] = [];
@@ -180,7 +183,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
     const mid = memberIdOf(String(r[1]));
     if (memberId && mid !== memberId) continue;
     let factor = 1;
-    if (categoryId) {
+    if (cats) {
       const e = share.get(`${r[0]}|${r[1]}`);
       factor = e && e.all > 0 ? e.cat / e.all : 0;
       if (!factor) continue;

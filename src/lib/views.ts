@@ -80,6 +80,8 @@ export type QueueCard = {
   minutes: number;
   warnings: string[];
   sent: string;
+  mcs: string[];
+  procs: string[];
 };
 
 export type TodayView = {
@@ -119,9 +121,10 @@ export type TodayView = {
   kpis: Kpi[];
   detail: Row[];
   lostDetail: Row[];
+  dash: Dash;
 };
 
-function card(s: RawSubmission, normalMin: number): QueueCard {
+function card(s: RawSubmission, normalMin: number, procOf: Map<string, string> = new Map()): QueueCard {
   const items = s.items ?? [];
   const num = (v: unknown) => Number(v) || 0;
   const cats = [...new Set(items.map((i) => i.category).filter(Boolean))];
@@ -143,14 +146,28 @@ function card(s: RawSubmission, normalMin: number): QueueCard {
     minutes,
     warnings,
     sent: s.sent.slice(11, 16),
+    mcs,
+    procs: [...new Set(cats.map((c) => procOf.get(c) ?? c))],
   };
 }
 
-export async function buildToday(date: string): Promise<TodayView> {
+export type DashOpts = { proc?: string; days?: number; ngBy?: string };
+
+export async function buildToday(date: string, opts: DashOpts = {}): Promise<TodayView> {
   const master = await loadMaster();
   const st = master.settings;
-  // 14 hari ke belakang: untuk tren "vs kemarin" dan daftar member yang biasanya lapor.
-  const [{ facts, lost }, subs] = await Promise.all([loadFacts(master, addDays(date, -14), date), callBackend<RawSubmission[]>("queue", { date })]);
+  // Filter proses = semua kategori dengan Process yang sama di Master Data (mis. Senbetsu, Bowl PF).
+  const procs = [...new Set(master.categories.map((c) => c.process).filter(Boolean))];
+  const proc = opts.proc && procs.includes(opts.proc) ? opts.proc : "";
+  const procCats = proc ? master.categories.filter((c) => c.process === proc) : null;
+  const days = opts.days === 14 || opts.days === 30 ? opts.days : 7;
+  // Minimal 14 hari ke belakang: untuk tren "vs kemarin" dan daftar member yang biasanya lapor.
+  const [{ facts, lost }, allSubs] = await Promise.all([
+    loadFacts(master, addDays(date, -Math.max(14, days)), date, procCats?.map((c) => c.id)),
+    callBackend<RawSubmission[]>("queue", { date }),
+  ]);
+  const procNames = new Set(procCats?.map((c) => c.name));
+  const subs = procCats ? allSubs.filter((x) => (x.items ?? []).some((i) => procNames.has(i.category))) : allSubs;
   const today = facts.filter((f) => f.workDate === date);
   const prevDate = [...new Set(facts.map((f) => f.workDate).filter((d) => d < date))].sort().pop();
   const prev = prevDate ? facts.filter((f) => f.workDate === prevDate) : [];
@@ -171,7 +188,7 @@ export async function buildToday(date: string): Promise<TodayView> {
   const queue = subs
     .filter((s) => s.status === "Menunggu")
     .sort((a, b) => a.sent.localeCompare(b.sent))
-    .map((s) => card(s, st.normalMin));
+    .map((s) => card(s, st.normalMin, new Map(master.categories.map((c) => [c.name, c.process]))));
   const reported = expected.filter((m) => doneToday.has(m.name) || (sentToday.get(m.name) ?? []).some((x) => x !== "Ditolak")).length;
   // Hari berjalan yang belum lengkap jangan dibandingkan dengan hari penuh: angkanya pasti terlihat turun.
   const now = nowJakarta();
@@ -283,9 +300,192 @@ export async function buildToday(date: string): Promise<TodayView> {
         const c = aggCols(a, st);
         return { member: f.memberName, category: f.categoryName, part: f.part, mc: f.mcNo, lot: f.lot, oiban: f.oiban, qty: f.qty, ng: a.ng, ngRate: c.ngRate, min: f.minNormal + f.minOt, ach: c.ach, grade: String(c.grade) };
       }),
+    dash: buildDash({ master, date, facts, lost, today, prev, prevDate, queue, missing, procs, proc, days, ngBy: opts.ngBy === "qty" ? "qty" : "rate" }),
     lostDetail: lost
       .filter((l) => l.workDate === date)
       .map((l) => ({ member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.name, minutes: l.minutes, remarks: l.remarks })),
+  };
+}
+
+// ---------- Dashboard v2 ----------
+
+/** Produksi mesin di bawah ini tidak diranking NG rate-nya: angkanya belum bisa dipercaya. */
+export const NG_RANK_MIN_QTY = 500;
+
+export type Dash = {
+  procs: string[];
+  proc: string;
+  days: number;
+  ngBy: "rate" | "qty";
+  /** Lost Time (grup Lost Time) & Another Job dalam menit, plus menit kerja orang (normal + OT + lost + another job). */
+  lost: { lt: number; aj: number; work: number; pct: number | null; prevLt: number | null; vs: string };
+  prevQty: number | null;
+  prevRate: number | null;
+  prevAch: number | null;
+  /** Kiriman tertua yang masih menunggu, "HH:MM", dan berapa jam sudah menunggu (hari ini saja). */
+  oldest: { sent: string; hours: number | null } | null;
+  trend: { date: string; label: string; qty: number; ach: number | null; rate: number | null; lt: number }[];
+  byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number }[];
+  machines: { key: string; mc: string; category: string; categoryId: number; proc: string; line: string; status: "jalan" | "kosong"; qty: number; ng: number; rate: number | null; alert: boolean }[];
+  topNg: { mc: string; category: string; categoryId: number; proc: string; qty: number; ng: number; rate: number | null }[];
+  /** Mesin yang tidak ikut ranking NG rate karena produksinya di bawah NG_RANK_MIN_QTY. */
+  ngSkipped: number;
+  missing: { member: string; mcs: string; proc: string; status: "belum" | "lewat" | "terlambat" }[];
+  topLost: { name: string; minutes: number; members: string[] }[];
+};
+
+function buildDash(a: {
+  master: MasterData;
+  date: string;
+  facts: Fact[];
+  lost: LostFact[];
+  today: Fact[];
+  prev: Fact[];
+  prevDate: string | undefined;
+  queue: QueueCard[];
+  missing: string[];
+  procs: string[];
+  proc: string;
+  days: number;
+  ngBy: "rate" | "qty";
+}): Dash {
+  const { master, date, facts, lost, today, prev, prevDate } = a;
+  const st = master.settings;
+  const procOf = new Map(master.categories.map((c) => [c.id, c.process]));
+  const ltOf = (rows: LostFact[]) => lostSplit(rows);
+  const todayLost = lost.filter((l) => l.workDate === date);
+  const { lt, aj } = ltOf(todayLost);
+  const work = today.reduce((x, f) => x + f.minNormal + f.minOt, 0) + lt + aj;
+  const prevLt = prevDate ? ltOf(lost.filter((l) => l.workDate === prevDate)).lt : null;
+  const p = prev.length ? totals(prev, st) : null;
+  const now = nowJakarta();
+  const isToday = date === now.slice(0, 10);
+
+  // Lost time tidak menyimpan kategori: menit per member-hari dibagi ke proses sesuai porsi menit kerjanya.
+  const ltByProc = new Map<string, number>();
+  const minsBy = new Map<string, Map<string, number>>();
+  for (const f of today) {
+    const m = minsBy.get(f.memberName) ?? new Map<string, number>();
+    const pr = procOf.get(f.categoryId) ?? f.categoryName;
+    m.set(pr, (m.get(pr) ?? 0) + f.minNormal + f.minOt);
+    minsBy.set(f.memberName, m);
+  }
+  for (const l of todayLost) {
+    if (l.group === "ANOTHER_JOB") continue;
+    const m = minsBy.get(l.memberName);
+    const all = m ? [...m.values()].reduce((x, y) => x + y, 0) : 0;
+    if (!m || !all) continue;
+    for (const [pr, v] of m) ltByProc.set(pr, (ltByProc.get(pr) ?? 0) + (l.minutes * v) / all);
+  }
+  const byProc = (a.proc ? [a.proc] : a.procs).map((pr) => {
+    const rows = today.filter((f) => (procOf.get(f.categoryId) ?? "") === pr);
+    const x = totals(rows, st);
+    return { proc: pr, qty: x.qty, ng: x.ng, rate: x.rate, ach: x.ach, lt: Math.round(ltByProc.get(pr) ?? 0), members: new Set(rows.map((f) => f.memberName)).size };
+  });
+
+  // Mesin: status hanya dari laporan (bukan sinyal mesin).
+  const byMc = new Map<string, { qty: number; ng: number }>();
+  for (const f of today) {
+    if (f.mcNo === "-") continue;
+    const k = `${f.categoryId}|${f.mcNo}`;
+    const e = byMc.get(k) ?? { qty: 0, ng: 0 };
+    e.qty += f.qty;
+    e.ng += f.ng.reduce((x, y) => x + y, 0);
+    byMc.set(k, e);
+  }
+  const limit = ngMax(st);
+  const cats = new Map(master.categories.map((c) => [c.id, c]));
+  const machines = master.machines
+    .filter((m) => !a.proc || procOf.get(m.categoryId) === a.proc)
+    .map((m) => {
+      const key = `${m.categoryId}|${m.mcNo}`;
+      const e = byMc.get(key);
+      const rate = e ? ngRate(e.ng, e.qty) : null;
+      return {
+        key,
+        mc: m.mcNo,
+        category: cats.get(m.categoryId)?.name ?? "",
+        categoryId: m.categoryId,
+        proc: procOf.get(m.categoryId) ?? "",
+        line: m.line,
+        status: e ? ("jalan" as const) : ("kosong" as const),
+        qty: e?.qty ?? 0,
+        ng: e?.ng ?? 0,
+        rate,
+        alert: !!e && e.qty >= NG_RANK_MIN_QTY && rate != null && rate > limit,
+      };
+    });
+  const ran = machines.filter((m) => m.status === "jalan" && (m.ng > 0 || m.qty > 0));
+  const eligible = a.ngBy === "rate" ? ran.filter((m) => m.qty >= NG_RANK_MIN_QTY && m.ng > 0) : ran.filter((m) => m.ng > 0);
+  const topNg = eligible
+    .sort((x, y) => (a.ngBy === "rate" ? (y.rate ?? 0) - (x.rate ?? 0) || y.ng - x.ng : y.ng - x.ng || (y.rate ?? 0) - (x.rate ?? 0)))
+    .slice(0, 5)
+    .map(({ mc, category, categoryId, proc, qty, ng, rate }) => ({ mc, category, categoryId, proc, qty, ng, rate }));
+
+  // Belum kirim: mesin & proses yang biasa dipegang (laporan terakhir dalam 14 hari).
+  const lastOf = new Map<string, Fact[]>();
+  for (const f of facts) {
+    if (f.workDate >= date) continue;
+    const cur = lastOf.get(f.memberName);
+    if (!cur || cur[0].workDate < f.workDate) lastOf.set(f.memberName, [f]);
+    else if (cur[0].workDate === f.workDate) cur.push(f);
+  }
+  const hour = Number(now.slice(11, 13));
+  const missStatus = !isToday && date < now.slice(0, 10) ? "terlambat" : hour >= 15 ? "lewat" : "belum";
+  const missing = a.missing.map((m) => {
+    const rows = lastOf.get(m) ?? [];
+    return {
+      member: m,
+      mcs: [...new Set(rows.map((f) => f.mcNo).filter((x) => x !== "-"))].join(", "),
+      proc: [...new Set(rows.map((f) => procOf.get(f.categoryId) ?? f.categoryName))].join(", "),
+      status: missStatus as Dash["missing"][number]["status"],
+    };
+  });
+
+  const ltMap = new Map<string, { minutes: number; members: Set<string> }>();
+  for (const l of todayLost) {
+    if (l.group === "ANOTHER_JOB" || !l.minutes) continue;
+    const e = ltMap.get(l.name) ?? { minutes: 0, members: new Set<string>() };
+    e.minutes += l.minutes;
+    e.members.add(l.memberName);
+    ltMap.set(l.name, e);
+  }
+  const topLost = [...ltMap.entries()]
+    .sort((x, y) => y[1].minutes - x[1].minutes)
+    .slice(0, 5)
+    .map(([name, e]) => ({ name, minutes: Math.round(e.minutes), members: [...e.members] }));
+
+  const old = a.queue[0];
+  const hoursWaiting = old && isToday ? (Date.parse(`${date}T${now.slice(11, 16)}:00Z`) - Date.parse(`${date}T${old.sent}:00Z`)) / 36e5 : null;
+
+  return {
+    procs: a.procs,
+    proc: a.proc,
+    days: a.days,
+    ngBy: a.ngBy,
+    lost: {
+      lt: Math.round(lt),
+      aj: Math.round(aj),
+      work: Math.round(work),
+      pct: work > 0 ? lt / work : null,
+      prevLt: prevLt == null ? null : Math.round(prevLt),
+      vs: prevDate === addDays(date, -1) ? "vs kemarin" : prevDate ? `vs ${formatDateId(prevDate).slice(0, -5)}` : "",
+    },
+    prevQty: p ? p.qty : null,
+    prevRate: p ? p.rate : null,
+    prevAch: p ? p.ach : null,
+    oldest: old ? { sent: old.sent, hours: hoursWaiting } : null,
+    trend: Array.from({ length: a.days }, (_, i) => {
+      const d = addDays(date, i - a.days + 1);
+      const x = totals(facts.filter((f) => f.workDate === d), st);
+      return { date: d, label: formatDateId(d).split(" ").slice(0, 2).join(" "), qty: x.qty, ach: x.ach, rate: x.rate, lt: Math.round(ltOf(lost.filter((l) => l.workDate === d)).lt) };
+    }),
+    byProc,
+    machines,
+    topNg,
+    ngSkipped: a.ngBy === "rate" ? ran.filter((m) => m.ng > 0 && m.qty < NG_RANK_MIN_QTY).length : 0,
+    missing,
+    topLost,
   };
 }
 
