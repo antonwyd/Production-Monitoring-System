@@ -205,10 +205,15 @@ export const emptyAgg = (): Agg => ({ qty: 0, ng: 0, rated: 0, std: 0, minNormal
 export function add(a: Agg, f: Fact) {
   a.qty += f.qty;
   a.ng += f.ng.reduce((x, y) => x + y, 0);
-  const rated = (f.minNormal + f.minOt) / 60;
+  // Baris mesin (ada MC No): standar STKI/Std MC adalah pcs per jam per MESIN, sedangkan menit orang dibagi ke
+  // semua mesin yang dipegang. Achievement-nya dihitung terhadap jam mesin jalan, bukan jam orang, agar operator
+  // yang pegang beberapa mesin tidak terlihat 200-400%. Baris manual tetap pakai jam orang.
+  const mc = f.mcHours > 0;
+  const rated = mc ? f.mcHours : (f.minNormal + f.minOt) / 60;
+  const std = mc && f.mcStd > 0 ? f.mcStd : f.stki;
   a.rated += rated;
   // Std Hours hanya dihitung untuk baris yang punya jam kerja, agar achievement = std/rated konsisten.
-  if (rated > 0 && f.stki > 0) a.std += f.qty / f.stki;
+  if (rated > 0 && std > 0) a.std += f.qty / std;
   a.minNormal += f.minNormal;
   a.minOt += f.minOt;
   a.count++;
@@ -268,7 +273,7 @@ const AGG_COLUMNS: Column[] = [
   { key: "qty", label: "Hasil (pcs)", format: "int" },
   { key: "ng", label: "NG (pcs)", format: "int" },
   { key: "ngRate", label: "NG rate", format: "pct" },
-  { key: "hours", label: "Jam kerja", format: "dec1" },
+  { key: "hours", label: "Jam kerja/mesin", format: "dec1" },
   { key: "stdHours", label: "Jam standar", format: "dec1" },
   { key: "ach", label: "Achievement", format: "pct" },
   { key: "grade", label: "Grade", format: "grade" },
@@ -346,7 +351,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}`, target: `${st.target}%`, status: vsTarget(Number(t.ach) * 100, st.target) },
         { label: "NG rate", value: t.ngRate, format: "pct", hint: `${formatNum(Number(t.ng))} pcs NG`, target: `maks ${ngMaxText(st)}`, status: vsTarget(t.ngRate as number | null, ngMax(st), true) },
-        { label: "Jam kerja (rated)", value: t.hours, format: "dec1" },
+        { label: "Jam rated (orang/mesin)", value: t.hours, format: "dec1", hint: "Baris mesin dihitung dengan jam mesin jalan" },
         { label: "Lost Time (jam)", value: lt / 60, format: "dec1" },
         { label: "Another Job (jam)", value: aj / 60, format: "dec1" },
       ],
