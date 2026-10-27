@@ -3,6 +3,7 @@ import AppShell from "@/components/AppShell";
 import DataStatus from "@/components/DataStatus";
 import DownloadMenu from "@/components/report/DownloadMenu";
 import MonthlyChart from "@/components/monthly/MonthlyChart";
+import ReportTabs from "@/components/report/ReportTabs";
 import { requirePageRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
 import { buildMonthly, defaultMonth, isValidMonth, monthLabel, monthShort, nextMonthOf, prevMonthOf, type SectionReport } from "@/lib/monthly";
@@ -204,6 +205,8 @@ export default async function ProductionReportPage({ searchParams }: { searchPar
             />
           </div>
         </div>
+
+        <ReportTabs kind="production-report" query={{}} />
 
         {noPlan.length > 0 && (
           <div className="card border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">

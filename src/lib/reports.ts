@@ -17,7 +17,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   dashboard: "Dashboard",
   daily: "Produktivitas Harian",
   member: "Produktivitas Member",
-  category: "Produksi per Kategori & Part",
+  category: "Production Report · Detail per Part",
   machine: "Laporan Mesin",
   "ng-type": "Laporan Kualitas (NG)",
   "ng-part": "Laporan NG per Part",

@@ -25,7 +25,6 @@ function navFor(role: Session["role"]): NavGroup[] {
     {
       title: "Analisa",
       items: [
-        { key: "report:category", href: "/reports/category", label: "Produksi", icon: "box" },
         { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas (NG)", icon: "quality" },
         { key: "report:member", href: "/reports/member", label: "Produktivitas", icon: "user" },
         { key: "report:waktu", href: "/reports/waktu", label: "Waktu & Lost Time", icon: "clock" },
