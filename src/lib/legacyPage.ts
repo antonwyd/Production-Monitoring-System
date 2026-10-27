@@ -751,7 +751,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <div class="hero-in">
     <div class="logo"><img src="/logo-tki.png" alt="Takai"></div>
     <div class="t"><h1 id="hTitle">QA Production</h1><p id="hSub">Quality Assurance • Input harian</p><small class="ver">%%VERSI%%</small></div>
-    <div class="hero-r"><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
+    <div class="hero-r"><a class="mode" id="homeLink" href="/hari-ini" target="_top" style="display:none">&#8592; Dashboard</a><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
   </div>
   <div class="accent"></div>
 </header>
@@ -1553,6 +1553,7 @@ function route(page,base){
   BASE_URL=base||'';
   var ml=$('modeLink');
   if(BASE_URL){ml.style.display='inline-block';}
+  if(ME&&ME.home&&page!=='leader'){var hl=$('homeLink');hl.href=ME.home;hl.style.display='inline-block';} // admin/leader/manajemen: jalan pulang ke laporan
   if(page==='leader'){
     document.body.classList.add('ldr');
     ml.textContent='Halaman input';ml.href=BASE_URL;
