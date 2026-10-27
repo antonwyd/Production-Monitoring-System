@@ -107,3 +107,17 @@ describe("metrik", () => {
     expect(grade(0.79, master.settings)).toBe("D");
   });
 });
+
+describe("achievement member untuk baris mesin", () => {
+  it("baris MC dibagi jam mesin jalan, baris manual dibagi jam orang", async () => {
+    const { add, emptyAgg } = await import("@/lib/reports");
+    const base = { workDate: "2026-10-22", memberId: 1, memberName: "A", nik: "1", categoryId: 1, categoryName: "Drum PF", ngGroupId: null, partId: 1, part: "625-H", line: "", lot: "", oiban: "", qtyOt: 0, minOt: 0, ngNote: "", ng: Array(10).fill(0) };
+    // Suryaningsih 22 Okt MC 05: 60.500 pcs, Std 9.380/jam, menit orang 98, mesin jalan 460 menit -> 84%, bukan 396%.
+    const a = emptyAgg();
+    add(a, { ...base, mcNo: "MC 05", qty: 60500, minNormal: 98, stki: 9380, mcHours: 460 / 60, mcStd: 9380 });
+    expect(Math.round((a.std / a.rated) * 100)).toBe(84);
+    const b = emptyAgg();
+    add(b, { ...base, mcNo: "-", qty: 1200, minNormal: 60, stki: 1000, mcHours: 0, mcStd: 0 });
+    expect(Math.round((b.std / b.rated) * 100)).toBe(120);
+  });
+});
