@@ -27,9 +27,7 @@ function navFor(role: Session["role"]): NavGroup[] {
         { key: "report:ng-type", href: "/reports/ng-type", label: "Kualitas (NG)", icon: "quality" },
         { key: "report:member", href: "/reports/member", label: "Produktivitas", icon: "user" },
         { key: "report:waktu", href: "/reports/waktu", label: "Waktu & Lost Time", icon: "clock" },
-        { key: "report:machine", href: "/reports/machine", label: "Mesin", icon: "machine" },
-        { key: "report:disiplin", href: "/reports/disiplin", label: "Disiplin Lapor", icon: "check" },
-      ],
+        { key: "report:machine", href: "/reports/machine", label: "Mesin", icon: "machine" },      ],
     },
   ];
   if (role === "admin") {
