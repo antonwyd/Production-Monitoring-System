@@ -136,7 +136,7 @@ export default function QueueList({ cards, canDecide }: { cards: QueueCard[]; ca
 }
 
 // Pop-up konfirmasi sendiri, pengganti confirm()/prompt() bawaan browser yang menampilkan nama domain.
-function ConfirmDialog({ title, text, okLabel, danger, inputLabel, onOk, onCancel }: { title: string; text?: string; okLabel: string; danger?: boolean; inputLabel?: string; onOk: (note: string) => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, text, okLabel, danger, inputLabel, onOk, onCancel }: { title: string; text?: string; okLabel: string; danger?: boolean; inputLabel?: string; onOk: (note: string) => void; onCancel: () => void }) {
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const ok = () => {

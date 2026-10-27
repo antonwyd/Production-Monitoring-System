@@ -10,11 +10,15 @@ const ROLE_LABEL: Record<Session["role"], string> = {
 
 /** Menu samping per peran: admin semua, leader & manajemen tanpa Master Data / Sheet. */
 function navFor(role: Session["role"]): NavGroup[] {
+  const canValidate = role === "leader" || role === "admin";
   const groups: NavGroup[] = [
     {
+      title: "Main",
       items: [
         { key: "hari-ini", href: "/hari-ini", label: "Dashboard", icon: "dash" },
-        { key: "laporan", href: "/laporan", label: "Ringkasan Laporan", icon: "report" },
+        { key: "form", href: "/", label: "Input Produksi", icon: "form", external: true },
+        ...(canValidate ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
+        { key: "laporan", href: "/laporan", label: "Laporan", icon: "report" },
       ],
     },
     {
@@ -28,22 +32,17 @@ function navFor(role: Session["role"]): NavGroup[] {
       ],
     },
   ];
-  if (role === "admin")
+  if (role === "admin") {
     groups.push({
       title: "Master Data",
       items: [
         { key: "master", href: "/master", label: "Master Data", icon: "data" },
         { key: "akses", href: "/master?t=users", label: "Akun & Hak Akses", icon: "lock" },
-        ...(process.env.SHEET_URL ? [{ key: "sheet", href: process.env.SHEET_URL, label: "Google Sheet", icon: "sheet", external: true }] : []),
       ],
     });
-  groups.push({
-    title: "Tools",
-    items: [
-      { key: "form", href: "/", label: "Form Member", icon: "form", external: true },
-      ...(role === "leader" || role === "admin" ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
-    ],
-  });
+    if (process.env.SHEET_URL)
+      groups.push({ title: "Tools", items: [{ key: "sheet", href: process.env.SHEET_URL, label: "Google Sheet", icon: "sheet", external: true }] });
+  }
   return groups;
 }
 
