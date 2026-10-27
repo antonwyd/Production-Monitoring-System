@@ -60,7 +60,44 @@ export type Kpi = {
   /** good = sesuai target (hijau), bad = di luar target (merah). */
   status?: "good" | "bad";
 };
-export type Report = { kind: ReportKind; title: string; subtitle: string; kpis: Kpi[]; charts: Chart[]; tables: Table[]; quality?: QualityExtra };
+export type Report = { kind: ReportKind; title: string; subtitle: string; kpis: Kpi[]; charts: Chart[]; tables: Table[]; quality?: QualityExtra; machine?: MachineExtra };
+
+export type MachineRow = {
+  key: string;
+  category: string;
+  mcNo: string;
+  line: string;
+  status: string;
+  days: number;
+  mcHours: number;
+  util: number | null;
+  qty: number;
+  pcsHr: number | null;
+  stdHours: number | null;
+  eff: number | null;
+  ng: number;
+  ngRate: number | null;
+  oee: number | null;
+};
+
+/** Data tampilan Laporan Mesin (kartu, grafik, peta panas, panel satu mesin). Excel/PDF tetap memakai tables. */
+export type MachineExtra = {
+  running: number;
+  total: number;
+  runUtil: number | null;
+  avgUtil: number | null;
+  eff: number | null;
+  rate: number | null;
+  utilTarget: number;
+  effTarget: number;
+  ngMax: number;
+  workDays: number;
+  hrsNote: string;
+  rows: MachineRow[];
+  days: string[];
+  heat: (number | null)[][];
+  focus: (MachineRow & { from: string; availHrs: number; trend: { date: string; util: number | null; eff: number | null }[] }) | null;
+};
 
 /** Data tambahan untuk tampilan Kualitas (grafik kecil & panel part). Excel/PDF tetap memakai tables. */
 export type QualityExtra = {
@@ -102,6 +139,10 @@ export type ReportParams = {
   ngt?: string;
   /** Part yang dibuka di panel kanan tab Per part (tidak memfilter tabel). */
   fp?: number;
+  /** Laporan Mesin: mesin di panel detail ("Kategori|MC"), rentang panel (1/7/30 hari), tampilan (tabel/grafik/heatmap). */
+  fm?: string;
+  fr?: number;
+  view?: string;
 };
 
 export type Fact = {
@@ -452,6 +493,89 @@ async function qualityExtra(master: MasterData, from: string, to: string, p: Rep
   };
 }
 
+/** Angka per mesin untuk satu kumpulan fakta (Laporan Mesin dan panel satu mesin). */
+function machineStats(master: MasterData, facts: Fact[], categoryId?: number) {
+  const st = master.settings;
+  const workDays = new Set(facts.map((f) => f.workDate)).size;
+  // Jam tersedia per hari bisa beda per kategori (Setting "Machine available hrs / day - <Kategori>").
+  const hrsOf = (category: string) => st.mcHrsCat?.[category] ?? st.mcHrsDay;
+  const key = (c: number, mc: string) => `${c}|${mc}`;
+  const used = groupBy(
+    facts.filter((f) => f.mcNo !== "-"),
+    (f) => key(f.categoryId, f.mcNo),
+  );
+  const list = new Map<string, { categoryId: number; category: string; mcNo: string; line: string }>();
+  for (const m of master.machines)
+    if (!categoryId || m.categoryId === categoryId)
+      list.set(key(m.categoryId, m.mcNo), { categoryId: m.categoryId, category: master.categories.find((c) => c.id === m.categoryId)?.name ?? "", mcNo: m.mcNo, line: m.line });
+  for (const [k, g] of used) if (!list.has(k)) list.set(k, { categoryId: g.first.categoryId, category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line });
+  let sumHours = 0,
+    sumStd = 0,
+    sumRated = 0,
+    sumAvail = 0,
+    runHours = 0,
+    runAvail = 0;
+  const rows: MachineRow[] = [...list.entries()]
+    .map(([k, m]) => {
+      const g = used.get(k);
+      let mcHours = 0,
+        stdHours = 0,
+        ratedHours = 0;
+      for (const f of facts) {
+        if (f.categoryId !== m.categoryId || f.mcNo !== m.mcNo) continue;
+        mcHours += f.mcHours;
+        if (f.mcStd > 0) {
+          stdHours += f.qty / f.mcStd;
+          ratedHours += f.mcHours;
+        }
+      }
+      const availHrs = workDays * hrsOf(m.category);
+      sumHours += mcHours;
+      sumStd += stdHours;
+      sumRated += ratedHours;
+      sumAvail += availHrs;
+      if (g) {
+        runHours += mcHours;
+        runAvail += availHrs;
+      }
+      const qty = g?.agg.qty ?? 0;
+      const ng = g?.agg.ng ?? 0;
+      const util = availHrs > 0 ? mcHours / availHrs : null;
+      const eff = ratedHours > 0 ? stdHours / ratedHours : null;
+      const rate = ngRate(ng, qty);
+      return {
+        key: `${m.category}|${m.mcNo}`,
+        category: m.category,
+        mcNo: m.mcNo,
+        line: m.line,
+        status: !g ? "Tidak jalan" : util != null && util * 100 >= st.utilTarget ? "OK" : "Di bawah target",
+        days: g ? new Set(facts.filter((f) => f.categoryId === m.categoryId && f.mcNo === m.mcNo).map((f) => f.workDate)).size : 0,
+        mcHours,
+        util,
+        qty,
+        pcsHr: mcHours > 0 ? qty / mcHours : null,
+        stdHours: ratedHours > 0 ? stdHours : null,
+        eff,
+        ng,
+        ngRate: rate,
+        oee: util != null && eff != null && g ? Math.min(util, 1) * eff * (1 - (rate ?? 0)) : null,
+      };
+    })
+    .sort((a, b) => a.category.localeCompare(b.category) || a.mcNo.localeCompare(b.mcNo, "id", { numeric: true }));
+  const tq = rows.reduce((a, r) => a + r.qty, 0);
+  const tng = rows.reduce((a, r) => a + r.ng, 0);
+  return {
+    rows,
+    workDays,
+    hrsOf,
+    running: rows.filter((r) => r.status !== "Tidak jalan").length,
+    avgUtil: sumAvail > 0 ? sumHours / sumAvail : null,
+    runUtil: runAvail > 0 ? runHours / runAvail : null,
+    eff: sumRated > 0 ? sumStd / sumRated : null,
+    rate: ngRate(tng, tq),
+  };
+}
+
 export async function buildReport(kind: ReportKind, p: ReportParams, today: string): Promise<Report> {
   const master = await loadMaster();
   const st = master.settings;
@@ -736,84 +860,73 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     // Semua mesin di Master Data (PF dan Drum), termasuk yang tidak jalan di periode ini.
     // Utilisasi = jam mesin jalan ÷ (hari kerja x jam tersedia per hari, Setting). Efisiensi = jam standar MC ÷ jam jalan.
     const { facts } = await loadFacts(master, from, to, p.categoryId);
-    const workDays = new Set(facts.map((f) => f.workDate)).size;
-    // Jam tersedia per hari bisa beda per kategori (Setting "Machine available hrs / day - <Kategori>").
-    const hrsOf = (category: string) => st.mcHrsCat?.[category] ?? st.mcHrsDay;
-    const key = (c: number, mc: string) => `${c}|${mc}`;
-    const used = groupBy(
-      facts.filter((f) => f.mcNo !== "-"),
-      (f) => key(f.categoryId, f.mcNo),
-    );
-    const list = new Map<string, { categoryId: number; category: string; mcNo: string; line: string }>();
-    for (const m of master.machines)
-      if (!p.categoryId || m.categoryId === p.categoryId)
-        list.set(key(m.categoryId, m.mcNo), { categoryId: m.categoryId, category: master.categories.find((c) => c.id === m.categoryId)?.name ?? "", mcNo: m.mcNo, line: m.line });
-    for (const [k, g] of used) if (!list.has(k)) list.set(k, { categoryId: g.first.categoryId, category: g.first.categoryName, mcNo: g.first.mcNo, line: g.first.line });
-    let sumHours = 0,
-      sumStd = 0,
-      sumRated = 0,
-      sumAvail = 0,
-      runHours = 0,
-      runAvail = 0;
-    const rows = [...list.entries()]
-      .map(([k, m]) => {
-        const g = used.get(k);
-        let mcHours = 0,
-          stdHours = 0,
-          ratedHours = 0;
-        for (const f of facts) {
-          if (f.categoryId !== m.categoryId || f.mcNo !== m.mcNo) continue;
-          mcHours += f.mcHours;
-          if (f.mcStd > 0) {
-            stdHours += f.qty / f.mcStd;
-            ratedHours += f.mcHours;
-          }
-        }
-        const availHrs = workDays * hrsOf(m.category);
-        sumHours += mcHours;
-        sumStd += stdHours;
-        sumRated += ratedHours;
-        sumAvail += availHrs;
-        if (g) {
-          runHours += mcHours;
-          runAvail += availHrs;
-        }
-        const qty = g?.agg.qty ?? 0;
-        const ng = g?.agg.ng ?? 0;
-        const util = availHrs > 0 ? mcHours / availHrs : null;
-        const eff = ratedHours > 0 ? stdHours / ratedHours : null;
-        const rate = ngRate(ng, qty);
-        return {
-          category: m.category,
-          mcNo: m.mcNo,
-          line: m.line,
-          status: !g ? "Tidak jalan" : util != null && util * 100 >= st.utilTarget ? "OK" : "Di bawah target",
-          days: g ? new Set(facts.filter((f) => f.categoryId === m.categoryId && f.mcNo === m.mcNo).map((f) => f.workDate)).size : 0,
-          mcHours,
-          util,
-          qty,
-          pcsHr: mcHours > 0 ? qty / mcHours : null,
-          stdHours: ratedHours > 0 ? stdHours : null,
-          eff,
-          ng,
-          ngRate: rate,
-          oee: util != null && eff != null && g ? Math.min(util, 1) * eff * (1 - (rate ?? 0)) : null,
+    const m = machineStats(master, facts, p.categoryId);
+    const { rows, workDays, hrsOf } = m;
+    // Peta panas: utilisasi per mesin per hari kerja (hari tanpa laporan sama sekali tidak ditampilkan).
+    const days = [...new Set(facts.map((f) => f.workDate))].sort();
+    const cell = new Map<string, number>();
+    for (const f of facts) if (f.mcNo !== "-") cell.set(`${f.categoryName}|${f.mcNo}|${f.workDate}`, (cell.get(`${f.categoryName}|${f.mcNo}|${f.workDate}`) ?? 0) + f.mcHours);
+    const q = p.q?.toLowerCase();
+    const shown = q ? rows.filter((r) => `${r.category} ${r.mcNo} ${r.line}`.toLowerCase().includes(q)) : rows;
+    // Panel satu mesin: periode laporan, atau 1/7/30 hari terakhir sampai tanggal akhir.
+    const fkey = p.fm && rows.some((r) => r.key === p.fm) ? p.fm : shown.find((r) => r.status !== "Tidak jalan")?.key;
+    let focus: MachineExtra["focus"] = null;
+    if (fkey) {
+      const ffrom = p.fr ? addDays(to, -(p.fr - 1)) : from;
+      const ff = ffrom === from ? facts : (await loadFacts(master, ffrom, to, p.categoryId)).facts;
+      const fm = machineStats(master, ff, p.categoryId);
+      const r = fm.rows.find((x) => x.key === fkey);
+      if (r) {
+        const mine = ff.filter((f) => `${f.categoryName}|${f.mcNo}` === fkey);
+        focus = {
+          ...r,
+          from: ffrom,
+          availHrs: fm.workDays * hrsOf(r.category),
+          trend: dateRange(ffrom, to).map((d) => {
+            const fs = mine.filter((f) => f.workDate === d);
+            const h = fs.reduce((a, f) => a + f.mcHours, 0);
+            let sh = 0,
+              rh = 0;
+            for (const f of fs)
+              if (f.mcStd > 0) {
+                sh += f.qty / f.mcStd;
+                rh += f.mcHours;
+              }
+            return { date: dayLabel(d), util: h ? h / hrsOf(r.category) : null, eff: rh ? sh / rh : null };
+          }),
         };
-      })
-      .sort((a, b) => a.category.localeCompare(b.category) || a.mcNo.localeCompare(b.mcNo, "id", { numeric: true }));
-    const running = rows.filter((r) => r.status !== "Tidak jalan").length;
-    const avgUtil = sumAvail > 0 ? sumHours / sumAvail : null;
-    const runUtil = runAvail > 0 ? runHours / runAvail : null;
-    const tq = rows.reduce((a, r) => a + r.qty, 0);
-    const tng = rows.reduce((a, r) => a + r.ng, 0);
+      }
+    }
     return {
       ...base,
       subtitle: `${period} · ${workDays} hari kerja`,
+      machine: {
+        running: m.running,
+        total: rows.length,
+        runUtil: m.runUtil,
+        avgUtil: m.avgUtil,
+        eff: m.eff,
+        rate: m.rate,
+        utilTarget: st.utilTarget / 100,
+        effTarget: st.target / 100,
+        ngMax: ngMax(st),
+        workDays,
+        hrsNote: [...new Set(rows.map((r) => r.category))].map((c) => `${c} ${fmt(hrsOf(c), 0)} jam`).join(", "),
+        rows: shown,
+        days: days.map(dayLabel),
+        heat: shown.map((r) =>
+          days.map((d) => {
+            const h = cell.get(`${r.category}|${r.mcNo}|${d}`);
+            return h ? h / hrsOf(r.category) : null;
+          }),
+        ),
+        focus,
+      },
       kpis: [
-        { label: "Mesin jalan", value: `${running} dari ${rows.length}`, hint: `${rows.length - running} mesin tidak jalan di periode ini` },
-        { label: "Utilisasi mesin yang jalan", value: runUtil, format: "pct", hint: `semua mesin ${avgUtil == null ? "-" : `${Math.round(avgUtil * 100)}%`}`, target: `${st.utilTarget}%`, status: vsTarget(runUtil == null ? null : runUtil * 100, st.utilTarget) },
-        { label: "Efisiensi vs Std MC", value: sumRated > 0 ? sumStd / sumRated : null, format: "pct", target: `${st.target}%`, status: vsTarget(sumRated > 0 ? (sumStd / sumRated) * 100 : null, st.target) },
-        { label: "NG rate", value: ngRate(tng, tq), format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(ngRate(tng, tq), ngMax(st), true) },
+        { label: "Mesin jalan", value: `${m.running} dari ${rows.length}`, hint: `${rows.length - m.running} mesin tidak jalan di periode ini` },
+        { label: "Utilisasi mesin yang jalan", value: m.runUtil, format: "pct", hint: `semua mesin ${m.avgUtil == null ? "-" : `${Math.round(m.avgUtil * 100)}%`}`, target: `${st.utilTarget}%`, status: vsTarget(m.runUtil == null ? null : m.runUtil * 100, st.utilTarget) },
+        { label: "Efisiensi vs Std MC", value: m.eff, format: "pct", target: `${st.target}%`, status: vsTarget(m.eff == null ? null : m.eff * 100, st.target) },
+        { label: "NG rate", value: m.rate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(m.rate, ngMax(st), true) },
       ],
       charts: [
         {
@@ -1401,5 +1514,8 @@ export function parseReportParams(sp: URLSearchParams | Record<string, string | 
     sort: get("sort") === "rate" ? "rate" : undefined,
     ngt: get("ngt")?.slice(0, 60) || undefined,
     fp: int("fp"),
+    fm: get("fm")?.slice(0, 80) || undefined,
+    fr: [1, 7, 30].includes(Number(get("fr"))) ? Number(get("fr")) : undefined,
+    view: get("view") === "grafik" || get("view") === "heatmap" ? get("view") : undefined,
   };
 }

@@ -6,6 +6,7 @@ import Charts from "./Charts";
 import { Grade } from "@/components/ui";
 import FilterBar, { type FilterSelect } from "./FilterBar";
 import KpiCards from "./KpiCards";
+import MachineView from "./MachineView";
 import QualityView from "./QualityView";
 import ReportTabs from "./ReportTabs";
 import ShowAll from "./ShowAll";
@@ -120,7 +121,9 @@ export default function ReportView({
         ]}
       />
 
-      {report.quality ? (
+      {report.machine ? (
+        <MachineView report={report} query={query} />
+      ) : report.quality ? (
         <QualityView report={report} query={query} ngLimit={master.settings.ngPpmMax / 1e6} />
       ) : (
         <>
@@ -129,7 +132,7 @@ export default function ReportView({
         </>
       )}
 
-      {report.tables.filter((t) => !t.exportOnly && k !== "ng-part").map((t) => {
+      {report.tables.filter((t) => !t.exportOnly && k !== "ng-part" && !report.machine).map((t) => {
         const fold = t.detail && t.rows.length > FOLD + 2;
         return (
           <section key={t.title} className="group card overflow-hidden" data-open="false">

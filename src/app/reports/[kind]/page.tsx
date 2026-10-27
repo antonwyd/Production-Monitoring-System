@@ -14,7 +14,8 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function ReportPage({ params, searchParams }: Props) {
   const { kind } = await params;
-  // Produksi dan Rekap bulanan sudah dipindah ke Production Report.
+  // Produksi dan Rekap bulanan sudah dipindah ke Production Report. Disiplin Lapor dihapus (siapa yang belum lapor ada di Dashboard).
+  if (kind === "disiplin") redirect("/hari-ini");
   const moved: Record<string, string> = { category: "/production-report/detail", monthly: "/production-report/rekap" };
   if (moved[kind]) {
     const q = new URLSearchParams(Object.entries(await searchParams).filter((e): e is [string, string] => typeof e[1] === "string")).toString();
