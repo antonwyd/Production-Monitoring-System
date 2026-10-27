@@ -24,12 +24,11 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
   {
     key: "production-report",
     tabs: [
-      { kind: "production-report", label: "Laporan bulanan", desc: "Plan vs result per section", color: "red", icon: "month", href: "/production-report" },
+      { kind: "production-report", label: "Laporan Presdir", desc: "Plan vs result per section", color: "red", icon: "month", href: "/production-report" },
+      { kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan per kategori & member", color: "violet", icon: "day", href: "/production-report/rekap" },
       { kind: "category", label: "Detail per part", desc: "Pcs per kategori & part, periode bebas", color: "blue", icon: "layers", href: "/production-report/detail" },
     ],
   },
-  // Rekap bulanan = laporan resmi, menu Laporan.
-  { key: "laporan", tabs: [{ kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan", color: "violet", icon: "month" }] },
 ];
 
 // Kelas Tailwind ditulis utuh supaya ikut ter-build.
@@ -59,7 +58,7 @@ export default function ReportTabs({ kind, query }: { kind: string; query: Recor
   if (!g || g.tabs.length < 2) return null;
   const keep = new URLSearchParams(Object.entries(query).filter(([k]) => ["from", "to", "category", "proc", "mc", "part"].includes(k))).toString();
   return (
-    <nav className={`no-print grid grid-cols-2 gap-2 sm:gap-3 ${g.tabs.length > 2 ? "lg:grid-cols-4" : "sm:max-w-xl"}`} aria-label="Jenis report">
+    <nav className={`no-print grid grid-cols-2 gap-2 sm:gap-3 ${g.tabs.length > 3 ? "lg:grid-cols-4" : g.tabs.length > 2 ? "sm:grid-cols-3 lg:max-w-4xl" : "sm:max-w-xl"}`} aria-label="Jenis report">
       {g.tabs.map((t) => {
         const on = t.kind === kind;
         const c = COLORS[t.color];

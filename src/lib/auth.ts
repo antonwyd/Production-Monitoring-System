@@ -65,7 +65,7 @@ export async function getSession(): Promise<Session | null> {
 export const HOME_BY_ROLE: Record<Role, string> = {
   operator: "/",
   leader: "/hari-ini",
-  manager: "/laporan",
+  manager: "/production-report",
   admin: "/hari-ini",
 };
 
