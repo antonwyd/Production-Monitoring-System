@@ -121,3 +121,14 @@ describe("achievement member untuk baris mesin", () => {
     expect(Math.round((b.std / b.rated) * 100)).toBe(120);
   });
 });
+
+describe("section member", () => {
+  it("kosong atau QA dihitung wajib lapor, section lain tidak", async () => {
+    const { isQaMember } = await import("@/lib/types");
+    const m = (area: string) => ({ id: 1, nik: "", name: "x", area });
+    expect(isQaMember(m(""))).toBe(true);
+    expect(isQaMember(m("QA"))).toBe(true);
+    expect(isQaMember(m("qa inspeksi"))).toBe(true);
+    expect(isQaMember(m("Produksi"))).toBe(false);
+  });
+});

@@ -39,7 +39,7 @@ export function masterFromRaw(raw: RawMaster): MasterData {
       canSwitchTo: m.alt.replace(/[;\n]/g, ","),
     })),
     lostTimeTypes: raw.lostTypes.map((t) => ({ id: ltId(t.name), name: t.name, group: /another/i.test(t.group) ? "ANOTHER_JOB" : "LOST_TIME" })),
-    members: raw.members.map((m) => ({ id: memberId(m.name), nik: m.nik, name: m.name, area: "" })),
+    members: raw.members.map((m) => ({ id: memberId(m.name), nik: m.nik, name: m.name, area: m.section?.trim() || "QA" })),
     ngGroups: [...groups.entries()].map(([name, codes]) => ({
       id: ngGroupId(name),
       name,

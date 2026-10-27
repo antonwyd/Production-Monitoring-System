@@ -31,7 +31,7 @@ export const MASTER_TABLES: MasterTable[] = [
   {
     id: "member",
     title: "Member",
-    desc: "Nama member di form. Member yang keluar cukup diubah ke Inactive supaya riwayatnya tetap ada.",
+    desc: "Nama member di form. Member yang keluar cukup diubah ke Inactive supaya riwayatnya tetap ada. Section selain QA tidak dihitung belum lapor, tapi tetap tampil di report bila membantu di QA.",
     sheet: MD,
     col: "B",
     firstRow: 7,
@@ -40,6 +40,7 @@ export const MASTER_TABLES: MasterTable[] = [
       { key: "nik", label: "NIK", kind: "text", width: 110 },
       { key: "name", label: "Nama member", kind: "text", required: true, width: 240 },
       { key: "status", label: "Status", kind: "status", options: STATUS_MD, width: 110 },
+      { key: "section", label: "Section", kind: "text", width: 130, hint: "QA, atau nama section lain" },
     ],
     unique: [["name"], ["nik"]],
   },

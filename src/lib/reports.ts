@@ -8,7 +8,7 @@ import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
 import { uraiOiban } from "./sheets/qa";
-import type { MasterData, Settings } from "./types";
+import { isQaMember, type MasterData, type Settings } from "./types";
 
 export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-lot", "monthly", "waktu", "disiplin"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
@@ -374,11 +374,13 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     const subs = await callBackend<RawSubmission[]>("queue", { date });
     const byMember = groupBy(facts, (f) => f.memberId);
     const rejectedOpen = new Set(openRejections(subs).map((r) => r.member));
-    const rows: Row[] = master.members.map((m) => {
+    const rows: Row[] = master.members.flatMap((m) => {
       const g = byMember.get(m.id);
       const ml = lost.filter((l) => l.memberId === m.id);
       const { lt, aj } = lostSplit(ml);
       const statuses = subs.filter((r) => r.member === m.name).map((r) => r.status);
+      // Member section lain hanya tampil kalau membantu di QA hari itu, jadi tidak dihitung belum lapor.
+      if (!isQaMember(m) && !g && !ml.length && !statuses.length) return [];
       const openRej = rejectedOpen.has(m.name);
       // Baris yang diisi langsung di sheet juga dihitung sudah lapor.
       const approved = statuses.includes("Disetujui") || !!g || ml.length > 0;
@@ -414,7 +416,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           columns: [
             { key: "nik", label: "NIK" },
             { key: "member", label: "Member" },
-            { key: "area", label: "Area" },
+            { key: "area", label: "Section" },
             { key: "status", label: "Status" },
             ...AGG_COLUMNS,
             { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
