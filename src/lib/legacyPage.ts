@@ -903,6 +903,15 @@ function freshState(keepMember){
 // Part di mesin (bagian PF): menit yang diisi adalah menit MC jalan, waktu operator diisi sekali per laporan.
 function isMc(it){var c=cat(it.category);return !!(c&&c.machines.length&&it.mc&&it.mc!=='-'&&it.mcMin!==undefined);}
 function mcItems(){return S.items.filter(isMc);}
+// Satu MC hanya bisa jalan maksimal waktu kerja per hari. Bila 2 lot di MC yang sama, menit MC harus dibagi per lot.
+function mcOver(items){
+  var t={},out=[];
+  (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc,e=t[k]||(t[k]={mc:it.mc,n:0,o:0,rows:0});e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.rows++;});
+  Object.keys(t).forEach(function(k){var e=t[k];
+    if(e.n>M.normalMin)out.push({mc:e.mc,msg:e.mc+' jalan normal total '+fmt(e.n)+' menit di '+e.rows+' baris (maks '+M.normalMin+'). Bila beberapa lot di MC yang sama, bagi menit MC per lot.'});
+    if(e.o>M.otLimitHrs*60)out.push({mc:e.mc,msg:e.mc+' jalan OT total '+fmt(e.o)+' menit di '+e.rows+' baris (maks '+fmt(M.otLimitHrs*60)+'). Bagi menit MC OT per lot.'});});
+  return out;
+}
 // Menit operator untuk part tanpa mesin (normal / OT).
 function nonMcMin(k){var t=0;S.items.forEach(function(i){if(!isMc(i))t+=n(i[k]);});return t;}
 // Waktu jaga mesin otomatis: sisa 480 setelah lost time dan part tanpa mesin; OT = menit MC OT terlama.
@@ -1457,6 +1466,7 @@ function validate(){
     if(mcF.some(function(i){return n(i.normalQty);})&&!n(S.op.min))mark(null,'opMin','Waktu kerja operator di mesin (normal) belum diisi');
     if(mcF.some(function(i){return n(i.otQty);})&&!n(S.op.ot))mark(null,'opOt','Waktu kerja operator di mesin (OT) belum diisi');
   }
+  mcOver(filledItems).forEach(function(x){var ix=-1;filledItems.forEach(function(it){if(ix<0&&it.mc===x.mc)ix=S.items.indexOf(it);});if(ix>=0)mark(ix,'mcMin',x.msg,ix);else errs.push(x.msg);});
   var ltFirst=null;
   S.lost.forEach(function(l,ix){
     if((!l.type||!n(l.minutes))&&ltFirst==null)ltFirst=ix;
@@ -1655,6 +1665,7 @@ function renderQueue(){
       var t=subTotals(s),w=[],id=esc(s.id),tot=t.mn+t.lt;
       if(t.mn+t.lt>M.normalMin)w.push('Menit normal + lost time '+fmt(t.mn+t.lt)+' lebih dari '+M.normalMin);
       if(t.ot/60>M.otLimitHrs)w.push('OT '+fmt(t.ot/60)+' jam lewat batas '+M.otLimitHrs+' jam');
+      w=w.concat(mcOver(s.items).map(function(x){return x.msg;}));
       var hp=helperOf(s.member),info=[];if(hp)info.push('Perbantuan dari section '+hp+': menit tidak harus '+M.normalMin);else if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
       var cats={};s.items.forEach(function(it){cats[it.category]=1;});
       var bdg=pend?(w.length?'<span class="bdg w">Perlu dicek</span>':'<span class="bdg">Lengkap</span>'):(s.status==='Disetujui'?'<span class="bdg">Disetujui</span>':'<span class="bdg no">Ditolak</span>');
@@ -1694,7 +1705,7 @@ function loadBelum(){
 }
 function approveAllOk(){L.sel={};L.data.list.forEach(function(s){if(!perluCek(s))L.sel[s.id]=true;});approveSel();}
 function toggleSc(id){L.open[id]=!L.open[id];renderQueue();}
-function perluCek(s){var t=subTotals(s);return t.mn+t.lt>M.normalMin||t.ot/60>M.otLimitHrs;}
+function perluCek(s){var t=subTotals(s);return t.mn+t.lt>M.normalMin||t.ot/60>M.otLimitHrs||mcOver(s.items).length>0;}
 function selAll(v){L.sel={};if(v)L.data.list.forEach(function(s){if(!perluCek(s))L.sel[s.id]=true;});renderQueue();}
 function approveSel(){
   var ids=Object.keys(L.sel).filter(function(k){return L.sel[k];});
