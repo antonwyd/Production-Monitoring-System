@@ -1451,6 +1451,8 @@ function validate(){
     else if(p&&p.types.length&&!it.type)mark(ix,'type',L+'type belum dipilih',ix);
     if(c&&c.machines.length&&it.part&&(!it.mc||it.mc==='-'))mark(ix,'mc',L+'MC No belum dipilih',ix);
     if(!n(it.normalQty)&&!n(it.otQty))mark(ix,'normalQty',L+'qty normal atau OT belum diisi',ix);
+    // Qty dalam pcs harus bilangan bulat. "12.600" terbaca 12,6 pcs, jadi ditolak.
+    ['normalQty','otQty'].forEach(function(k){var v=String(it[k]||'').trim();if(v&&!/^\d+$/.test(v))mark(ix,k,L+'qty "'+v+'" harus angka bulat tanpa titik/koma (contoh 12600)',ix);});
     if(isMc(it)){
       if(n(it.normalQty)&&!n(it.mcMin))mark(ix,'mcMin',L+'menit MC jalan (normal) belum diisi',ix);
       if(n(it.otQty)&&!n(it.mcOtMin))mark(ix,'mcOtMin',L+'menit MC jalan (OT) belum diisi',ix);
