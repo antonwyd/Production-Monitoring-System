@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth";
+import { getSession, HOME_BY_ROLE } from "@/lib/auth";
 import { renderLegacyPage } from "@/lib/legacy";
 import { getMasterData } from "@/lib/sheets/qa";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   if (page && (!s || (s.role !== "leader" && s.role !== "admin"))) return Response.redirect(new URL(s ? "/" : "/login?next=leader", url), 303);
   // Master Data ditanam di halaman supaya form langsung tampil. Bila gagal, halaman memuatnya sendiri.
   const m = await getMasterData().catch(() => null);
-  const user = s ? { name: s.name, nik: s.nik ?? "", lock: s.role === "operator", leader: !!page } : null;
+  const user = s ? { name: s.name, nik: s.nik ?? "", lock: s.role === "operator", leader: !!page, home: s.role === "operator" ? undefined : HOME_BY_ROLE[s.role] } : null;
   return new Response(renderLegacyPage({ page, m, user }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
