@@ -303,7 +303,7 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
     dash: buildDash({ master, date, facts, lost, today, prev, prevDate, queue, missing, procs, proc, days, ngBy: opts.ngBy === "qty" ? "qty" : "rate" }),
     lostDetail: lost
       .filter((l) => l.workDate === date)
-      .map((l) => ({ member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.name, minutes: l.minutes, remarks: l.remarks })),
+      .map((l) => ({ member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.ot ? `${l.name} (OT)` : l.name, minutes: l.minutes, remarks: l.remarks })),
   };
 }
 

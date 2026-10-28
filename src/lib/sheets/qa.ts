@@ -18,6 +18,7 @@ const SHEET_USERS = "Users";
 const FIRST_DATA_ROW = 7;
 const PROD_WIDTH = 22; // B..W
 const LT_WIDTH = 5; // B..F
+const LT_OT = "J"; // "OT" bila lost time dikerjakan saat lembur, kosong = jam normal
 const PROD_EXTRA = "AM"; // AM..AP: MC Min Normal, MC Min OT, Oiban List, Jml Oiban
 const PROD_EXTRA_END = "AP";
 const PROD_NOTE = "AW"; // Catatan NG Lain-lain
@@ -425,6 +426,9 @@ function cekLotQty(items: Item[]) {
   });
 }
 
+/** Lost time saat lembur: form mengirim ot=true, edit leader mengirim "OT"/"Normal". */
+export const isOtLt = (l: Item) => l?.ot === true || l?.ot === 1 || l?.ot === "1" || l?.ot === "OT";
+
 function bangunBaris(payload: Payload, m: V1Master) {
   const p = s(payload.date).split("-").map(Number);
   if (p.length !== 3 || !p[0]) throw new QaError("Tanggal belum diisi.");
@@ -455,7 +459,8 @@ function bangunBaris(payload: Payload, m: V1Master) {
     if (!m.lostTypes.includes(s(l.type))) throw new QaError(`Lost time #${i + 1}: jenis tidak dikenal.`);
     return [dateFormula, asText(payload.member), asText(l.type), num(l.minutes), asText(txt(l.remarks))];
   });
-  return { prodRows, ltRows, extraRows, noteRows, items };
+  const ltOtRows: Cell[][] = lost.map((l) => [isOtLt(l) ? "OT" : ""]);
+  return { prodRows, ltRows, ltOtRows, extraRows, noteRows, items };
 }
 
 const colLetter = (n: number) => {
@@ -665,7 +670,10 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
             if (rows.noteRows.some((r) => r[0])) data.push({ range: `${q(SHEET_PROD)}!${PROD_NOTE}${start}:${PROD_NOTE}${endRow}`, values: rows.noteRows });
             await io.update(data);
           }
-          if (rows.ltRows.length) await tulis(SHEET_LT, rows.ltRows, LT_WIDTH);
+          if (rows.ltRows.length) {
+            const start = await tulis(SHEET_LT, rows.ltRows, LT_WIDTH, [`${LT_OT}:${LT_OT}`]);
+            if (rows.ltOtRows.some((r) => r[0])) await io.update([{ range: `${q(SHEET_LT)}!${LT_OT}${start}:${LT_OT}${start + rows.ltOtRows.length - 1}`, values: rows.ltOtRows }]);
+          }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           hasil.errors.push(`${x.member}: ${msg}`);
@@ -754,7 +762,7 @@ const INPUT_TTL = 60_000;
 let inputCache: { at: number; data: Promise<Cell[][][]> } | null = null;
 function inputGrid(): { at: number; data: Promise<Cell[][][]> } {
   if (inputCache && Date.now() - inputCache.at < INPUT_TTL) return inputCache;
-  const data = io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:I`], "UNFORMATTED_VALUE");
+  const data = io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:AW`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:${LT_OT}`], "UNFORMATTED_VALUE");
   const entry = { at: Date.now(), data };
   data.catch(() => {
     if (inputCache === entry) inputCache = null;
@@ -769,7 +777,7 @@ export function clearInputCache() {
 export async function apiRows(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from || "") || !/^\d{4}-\d{2}-\d{2}$/.test(to || "")) throw new QaError("Rentang tanggal tidak valid.");
   // B..AN: B tanggal input, C..W isi, AA STKI, AH/AI/AJ tanggal/member/kategori, AM/AN menit MC.
-  // B..I: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis.
+  // B..J: B tanggal input, C member, D jenis, E menit, F keterangan, H/I tanggal/member otomatis, J "OT".
   const grid = inputGrid();
   const [[prodG, ltG], m] = await Promise.all([grid.data, readMaster()]);
   const n = (v: unknown) => Number(v) || 0;
@@ -788,7 +796,7 @@ export async function apiRows(from: string, to: string) {
   for (const r of ltG) {
     const d = dayOf(r[6]) || dayOf(r[0]);
     if (!d || d < from || d > to || !s(r[2])) continue;
-    lost.push([d, s(r[7]) || s(r[1]), s(r[2]), n(r[3]), s(r[4])]);
+    lost.push([d, s(r[7]) || s(r[1]), s(r[2]), n(r[3]), s(r[4]), s(r[8]) === "OT" ? 1 : 0]);
   }
   return { cols: [], prod, lost, at: grid.at };
 }

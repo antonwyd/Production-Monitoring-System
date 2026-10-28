@@ -167,6 +167,15 @@ describe("form member → leader → report", () => {
     expect(fs.data["Antrian Validasi"]).toHaveLength(1);
   });
 
+  it("lost time OT ditulis ke kolom J dan terbaca sebagai OT", async () => {
+    const r = await qa.submitReport({ ...payload(), lostTimes: [{ type: "5S", minutes: "30", remarks: "pagi" }, { type: "5S", minutes: "120", remarks: "ganti pole", ot: true }] });
+    await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
+    const L = fs.data["Input - Lost Time"];
+    expect([L[6][9] ?? "", L[7][9]]).toEqual(["", "OT"]);
+    const rows = await qa.apiRows(DATE, DATE);
+    expect(rows.lost.map((x) => x[5])).toEqual([0, 1]);
+  });
+
   it("ditolak dengan alasan tidak menulis ke Input", async () => {
     const r = await qa.submitReport(payload());
     await qa.putuskan("Dian Kartika", "4139", [r.id], "no", "Qty salah");

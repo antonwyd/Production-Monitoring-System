@@ -173,7 +173,8 @@ export type Fact = {
   ng: number[];
 };
 
-export type LostFact = { workDate: string; memberId: number; memberName: string; name: string; group: string; minutes: number; remarks: string };
+/** ot = dikerjakan saat lembur (Input - Lost Time kolom J), tidak dihitung ke 480 menit normal. */
+export type LostFact = { workDate: string; memberId: number; memberName: string; name: string; group: string; minutes: number; remarks: string; ot?: boolean };
 
 const ageStore = new AsyncLocalStorage<{ at: number }>();
 
@@ -271,6 +272,7 @@ export async function loadFacts(master: MasterData, from: string, to: string, ca
       group: master.lostTimeTypes.find((t) => t.name === name)?.group ?? "LOST_TIME",
       minutes: (Number(r[3]) || 0) * factor,
       remarks: String(r[4] ?? ""),
+      ot: Number(r[5]) === 1,
     });
   }
   return { facts, lost };
@@ -664,7 +666,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         ...ag,
         lostMin: lt,
         ajMin: aj,
-        util: (g?.agg.minNormal ?? 0) + lt + aj,
+        util: (g?.agg.minNormal ?? 0) + ml.filter((l) => !l.ot).reduce((a, l) => a + l.minutes, 0),
       };
     });
     const reported = rows.filter((r) => r.status === "Disetujui").length;
@@ -690,7 +692,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
             ...AGG_COLUMNS,
             { key: "lostMin", label: "Lost Time (mnt)", format: "int" },
             { key: "ajMin", label: "Another Job (mnt)", format: "int" },
-            { key: "util", label: "Total menit", format: "int" },
+            { key: "util", label: "Total menit normal", format: "int" },
           ],
           rows,
           total: t,
@@ -1304,7 +1306,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
           ],
           rows: [...lost]
             .sort((a, b) => b.workDate.localeCompare(a.workDate) || a.memberName.localeCompare(b.memberName))
-            .map((l) => ({ date: l.workDate, member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.name, minutes: l.minutes, remarks: l.remarks })),
+            .map((l) => ({ date: l.workDate, member: l.memberName, group: l.group === "ANOTHER_JOB" ? "Another Job" : "Lost Time", name: l.ot ? `${l.name} (OT)` : l.name, minutes: l.minutes, remarks: l.remarks })),
         },
       ],
     };
