@@ -82,6 +82,8 @@ export type V1Master = {
   normalMin: number;
   otLimitHrs: number;
   today: string;
+  /** Member section lain (perbantuan): nama -> section. Tidak wajib 480 menit di form. */
+  helpers?: Record<string, string>;
 };
 type FullMaster = V1Master & {
   nik: Record<string, string>;
@@ -224,8 +226,10 @@ export function clearMasterCache() {
 
 /** Master Data untuk form member & leader (bentuk sama dengan Code.gs getMasterData). */
 export async function getMasterData(): Promise<V1Master> {
-  const { nik: _n, section: _c, stki: _s, stdMc: _m, settings: _x, ...m } = await readMaster();
-  return { ...m, today: todayJakarta() };
+  const { nik: _n, section, stki: _s, stdMc: _m, settings: _x, ...m } = await readMaster();
+  const helpers: Record<string, string> = {};
+  for (const [name, sec] of Object.entries(section)) if (sec && !/\bqa\b/i.test(sec)) helpers[name] = sec;
+  return { ...m, today: todayJakarta(), helpers };
 }
 
 /** Master Data untuk report di Vercel (NIK, STKI, grup lost time, setting grade). */

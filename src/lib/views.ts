@@ -332,6 +332,8 @@ export type Dash = {
   ngSkipped: number;
   missing: { member: string; mcs: string; proc: string; status: "belum" | "lewat" | "terlambat" }[];
   topLost: { name: string; minutes: number; members: string[] }[];
+  /** Perbantuan dari section lain (member bukan QA) di tanggal ini, per section. */
+  helpers: { section: string; people: string[]; normal: number; ot: number; qty: number }[];
 };
 
 function buildDash(a: {
@@ -455,6 +457,22 @@ function buildDash(a: {
     .slice(0, 5)
     .map(([name, e]) => ({ name, minutes: Math.round(e.minutes), members: [...e.members] }));
 
+  const helpMap = new Map<string, { people: Set<string>; normal: number; ot: number; qty: number }>();
+  const memberOf = new Map(master.members.map((m) => [m.id, m]));
+  for (const f of today) {
+    const m = memberOf.get(f.memberId);
+    if (!m || isQaMember(m)) continue;
+    const e = helpMap.get(m.area) ?? { people: new Set<string>(), normal: 0, ot: 0, qty: 0 };
+    e.people.add(f.memberName);
+    e.normal += f.minNormal;
+    e.ot += f.minOt;
+    e.qty += f.qty;
+    helpMap.set(m.area, e);
+  }
+  const helpers = [...helpMap.entries()]
+    .sort((x, y) => y[1].normal + y[1].ot - (x[1].normal + x[1].ot))
+    .map(([section, e]) => ({ section, people: [...e.people], normal: Math.round(e.normal), ot: Math.round(e.ot), qty: e.qty }));
+
   const old = a.queue[0];
   const hoursWaiting = old && isToday ? (Date.parse(`${date}T${now.slice(11, 16)}:00Z`) - Date.parse(`${date}T${old.sent}:00Z`)) / 36e5 : null;
 
@@ -486,6 +504,7 @@ function buildDash(a: {
     ngSkipped: a.ngBy === "rate" ? ran.filter((m) => m.ng > 0 && m.qty < NG_RANK_MIN_QTY).length : 0,
     missing,
     topLost,
+    helpers,
   };
 }
 

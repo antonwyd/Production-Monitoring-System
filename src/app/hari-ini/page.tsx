@@ -16,6 +16,7 @@ import DataStatus from "@/components/DataStatus";
 export const metadata = { title: "Dashboard · QA Production" };
 
 const n0 = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: 0 });
+const jam = (min: number) => (min / 60).toLocaleString("id-ID", { maximumFractionDigits: 1 });
 const pct = (v: number | null, d = 1) => (v == null ? "-" : `${(v * 100).toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d })}%`);
 
 // Ikon garis 24x24.
@@ -226,6 +227,18 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             </a>
           </Kpi>
         </section>
+
+        {/* Perbantuan dari section lain */}
+        {d.helpers.length > 0 && (
+          <section className="card flex flex-col gap-2 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
+            <b className="text-sm">Perbantuan section lain ({hari})</b>
+            {d.helpers.map((h) => (
+              <span key={h.section} className="text-sm text-slate-600" title={h.people.join(", ")}>
+                <b className="text-slate-900">{h.section}</b>: {h.people.length} orang · {jam(h.normal)} jam normal{h.ot ? ` + ${jam(h.ot)} jam OT` : ""} · {n0(h.qty)} pcs
+              </span>
+            ))}
+          </section>
+        )}
 
         {/* Tren & per proses */}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
