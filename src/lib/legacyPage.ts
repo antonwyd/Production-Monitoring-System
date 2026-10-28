@@ -1697,10 +1697,10 @@ function renderQueue(){
       h+='<div class="lc-d">';
       s.items.forEach(function(it){
         var mc=it.mcMin!==undefined&&it.mc&&it.mc!=='-',ob=uraiOiban(it.oiban).list.length,iq=n(it.normalQty)+n(it.otQty),nt=ngText(it);
-        var bits=[it.category,it.mc&&it.mc!=='-'?it.mc:'',mc?'MC jalan '+fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):'')+' mnt':'',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):'')+' mnt kerja',it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
+        var bits=[it.category,it.mc&&it.mc!=='-'?it.mc:'',mc?'MC jalan '+fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):'')+' mnt':fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):'')+' mnt kerja',it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
         h+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><span><b>'+fmt(iq)+'</b> pcs'+(n(it.otQty)?' <small style="color:var(--muted)">(OT '+fmt(n(it.otQty))+')</small>':'')+'</span></div><div class="in2">'+esc(bits)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
-      if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (menit kerja per part = bagian per MC)</div>';
+      if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
       if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit: '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
       h+='</div>';
