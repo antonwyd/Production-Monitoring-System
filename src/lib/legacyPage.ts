@@ -1700,7 +1700,7 @@ function rejectOne(id){
 var E=null;
 function editOne(id){
   var s=L.data.list.filter(function(x){return x.id===id;})[0];if(!s)return;
-  E={id:id,member:s.member,date:s.date,items:JSON.parse(JSON.stringify(s.items)),lost:JSON.parse(JSON.stringify(s.lostTimes)),op:s.op?{min:s.op.min,ot:s.op.ot}:null};
+  E={id:id,member:s.member,date:s.date,date0:s.date,items:JSON.parse(JSON.stringify(s.items)),lost:JSON.parse(JSON.stringify(s.lostTimes)),op:s.op?{min:s.op.min,ot:s.op.ot}:null};
   E.items.forEach(function(it){it.ng=(it.ng||[]).concat(['','','','','','','','','','']).slice(0,10);});
   renderEdit();$('edOv').classList.add('open');
 }
@@ -1715,7 +1715,9 @@ function edSel(label,list,val,path,rerender){
     +o.map(function(x){return '<option value="'+esc(x)+'"'+(x===val?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select></label>';
 }
 function renderEdit(){
-  var h='<div class="meta"><span><b>'+esc(E.member)+'</b></span><span>'+esc(fmtDate(E.date))+'</span></div>';
+  var h='<div class="meta"><span><b>'+esc(E.member)+'</b></span><span>'+esc(fmtDate(E.date))+'</span></div>'
+    +'<div class="ed-it"><div class="ed-g"><label class="f"><span class="lb">Tanggal laporan</span><input class="in" type="date" max="'+esc(M.today)+'" value="'+esc(E.date)+'" onchange="if(this.value){E.date=this.value;renderEdit();}"></label></div>'
+    +(E.date!==E.date0?'<p class="hint" style="margin:8px 0 0">Tanggal diubah dari '+esc(fmtDate(E.date0))+' ke '+esc(fmtDate(E.date))+'.</p>':'')+'</div>';
   E.items.forEach(function(it,ix){
     var c=cat(it.category),p=partOf(c,it.part),P='E.items['+ix+']';
     h+='<div class="ed-it"><div class="ed-h"><div class="grow"><b>'+esc(it.part)+'</b><small>'+esc(it.category)+'</small></div>'
@@ -1746,7 +1748,7 @@ function saveEdit(andApprove){
   if(!E.items.length&&!E.lost.length){toast('Laporan tidak boleh kosong');return;}
   for(var i=0;i<E.lost.length;i++){if(!E.lost[i].type||!n(E.lost[i].minutes)){toast('Lost time #'+(i+1)+': jenis dan menit wajib diisi');return;}}
   var id=E.id,b1=$('btnEdSave'),b2=$('btnEdOk');b1.disabled=b2.disabled=true;
-  var d={items:E.items,lostTimes:E.lost};if(E.op)d.op=E.op;
+  var d={items:E.items,lostTimes:E.lost};if(E.op)d.op=E.op;if(E.date!==E.date0)d.date=E.date;
   call('editKiriman',[L.name,L.pin,id,d],function(){
     b1.disabled=b2.disabled=false;closeEdit();
     if(andApprove)decide([id],'ok','');else{toast('Perubahan disimpan');loadQueue(true);}

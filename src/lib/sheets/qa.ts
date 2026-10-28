@@ -666,8 +666,11 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
 }
 
 /** Leader memperbaiki isi kiriman yang masih Menunggu. Data asli disimpan di JSON (original). */
-export async function editKiriman(name: string, pin: string, id: string, data: { items?: Item[]; lostTimes?: Item[]; op?: Op | null }) {
+export async function editKiriman(name: string, pin: string, id: string, data: { items?: Item[]; lostTimes?: Item[]; op?: Op | null; date?: string }) {
   await cekLeader(name, pin);
+  // Leader boleh membetulkan tanggal yang salah pilih (mis. laporan tgl 26 terkirim sebagai tgl 27).
+  const newDate = s(data?.date).trim();
+  if (newDate && (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || newDate > todayJakarta())) throw new QaError("Tanggal laporan tidak valid.");
   const m = await getMasterData();
   const lost = data?.lostTimes || [],
     op = data?.op || undefined;
@@ -675,25 +678,28 @@ export async function editKiriman(name: string, pin: string, id: string, data: {
     const x = (await readQueue()).find((y) => y.id === id);
     if (!x) throw new QaError("Kiriman tidak ditemukan.");
     if (x.status !== ST_WAIT) throw new QaError(`Kiriman ini sudah ${x.status.toLowerCase()}.`);
-    const items = bangunBaris({ date: x.date, member: x.member, items: data?.items || [], lostTimes: lost, op }, m).items;
+    const date = newDate || x.date;
+    const items = bangunBaris({ date, member: x.member, items: data?.items || [], lostTimes: lost, op }, m).items;
     const n = (v: unknown) => Number(v) || 0;
     const totalQty = items.reduce((a, it) => a + n(it.normalQty) + n(it.otQty), 0);
     const ltMin = lost.reduce((a, l) => a + n(l.minutes), 0);
     const old = x.raw;
     const rec = {
       ...(old.meta ? { meta: old.meta } : {}),
-      date: x.date,
+      date,
       member: x.member,
       items,
       lostTimes: lost,
       ...(op ? { op } : {}),
+      ...(date !== x.date ? { dateBefore: old.dateBefore || x.date } : {}),
       original: old.original || { items: old.items || [], lostTimes: old.lostTimes || [], op: old.op },
       editedBy: name,
       editedAt: nowJakarta().slice(0, 16),
     };
     await io.update([
+      { range: `${q(SHEET_QUEUE)}!C${x.row}`, values: [[date]] },
       { range: `${q(SHEET_QUEUE)}!E${x.row}:G${x.row}`, values: [[items.length, totalQty, ltMin]] },
-      { range: `${q(SHEET_QUEUE)}!K${x.row}:L${x.row}`, values: [[asText(`Diedit oleh ${name}`), asText(JSON.stringify(rec))]] },
+      { range: `${q(SHEET_QUEUE)}!K${x.row}:L${x.row}`, values: [[asText(`Diedit oleh ${name}${date !== x.date ? ` (tanggal ${x.date} → ${date})` : ""}`), asText(JSON.stringify(rec))]] },
     ]);
     return { ok: true };
   });
