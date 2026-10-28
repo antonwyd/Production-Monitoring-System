@@ -292,6 +292,8 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .bdg.w{background:#FFEDD5;color:#9A3412}.bdg.no{background:var(--red-soft);color:var(--red-d)}.bdg.e{background:#E0E7FF;color:#3730A3}
 .st3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 14px 12px}
 .st3 small{display:block;font-size:12px;color:var(--muted)}.st3 b{font-size:17px;font-variant-numeric:tabular-nums}.st3 b em{font-style:normal;font-size:12px;font-weight:500;color:var(--muted)}
+.lerr{margin:0 14px 12px;padding:10px 12px;border-radius:10px;background:var(--red-soft);color:var(--red-d);font-size:13px;border:1px solid #F3B4B4}.lerr b{display:block;margin-bottom:4px;font-size:14px}.lerr li{margin:2px 0 0 16px}
+.kvs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.kv{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:3px 8px;font-size:12.5px;color:var(--ink)}.kv small{color:var(--muted);margin-right:4px;font-size:11px}.kv.bad{background:var(--red-soft);border-color:#F3B4B4;color:var(--red-d);font-weight:700}
 .lwarn{margin:0 14px 12px;padding:8px 10px;border-radius:10px;background:var(--warn-soft);color:#9A3412;font-size:13px;font-weight:500}
 .lc-d{border-top:1px solid var(--line2);background:#FAFBFC}
 .lc-d .prow{background:transparent}
@@ -793,7 +795,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 
 <div class="ov" id="revOv" onclick="if(event.target===this)closeReview()">
   <div class="sheet">
-    <div class="sheet-h"><h3>Periksa sebelum kirim</h3></div>
+    <div class="sheet-h"><h3 id="rvTitle">Periksa sebelum kirim</h3></div>
     <div class="rv" id="rvBody"></div>
     <div class="sheet-f">
       <button class="btn ghost" onclick="closeReview()">Ubah</button>
@@ -892,13 +894,26 @@ function lainIdx(c){if(!c)return -1;for(var k=0;k<c.ng.length;k++)if(/^lain/i.te
 function newLt(){return {id:++uid,type:'',minutes:'',remarks:''};}
 // Lost time harian yang langsung terisi di form baru (masih bisa diubah atau dihapus).
 var DEF_LT=[['5S',10],['Briefing Pagi',5],['Input Laporan',5]];
-function defLost(){return DEF_LT.filter(function(d){return M.lostTypes.indexOf(d[0])>=0;}).map(function(d){var l=newLt();l.type=d[0];l.minutes=String(d[1]);l.auto=true;return l;});}
+// Member section lain (perbantuan) tidak diisi lost time otomatis dan tidak wajib 480 menit.
+function helperOf(mb){return (M.helpers&&M.helpers[mb])||'';}
+function helperSec(){return S?helperOf(S.member):'';}
+function defLost(mb){if(helperOf(mb===undefined?(S&&S.member):mb))return [];return DEF_LT.filter(function(d){return M.lostTypes.indexOf(d[0])>=0;}).map(function(d){var l=newLt();l.type=d[0];l.minutes=String(d[1]);l.auto=true;return l;});}
 function freshState(keepMember){
-  return {date:M.today,member:keepMember&&S?S.member:savedMember(),items:[newItem()],lost:defLost(),op:{min:'',ot:'',auto:true}};
+  var mb=keepMember&&S?S.member:savedMember();
+  return {date:M.today,member:mb,items:[newItem()],lost:defLost(mb),op:{min:'',ot:'',auto:true}};
 }
 // Part di mesin (bagian PF): menit yang diisi adalah menit MC jalan, waktu operator diisi sekali per laporan.
 function isMc(it){var c=cat(it.category);return !!(c&&c.machines.length&&it.mc&&it.mc!=='-'&&it.mcMin!==undefined);}
 function mcItems(){return S.items.filter(isMc);}
+// Satu MC hanya bisa jalan maksimal waktu kerja per hari. Bila 2 lot di MC yang sama, menit MC harus dibagi per lot.
+function mcOver(items){
+  var t={},out=[];
+  (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc,e=t[k]||(t[k]={mc:it.mc,n:0,o:0,rows:0});e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.rows++;});
+  Object.keys(t).forEach(function(k){var e=t[k];
+    if(e.n>M.normalMin)out.push({mc:e.mc,msg:e.mc+' jalan normal total '+fmt(e.n)+' menit di '+e.rows+' baris (maks '+M.normalMin+'). Bila beberapa lot di MC yang sama, bagi menit MC per lot.'});
+    if(e.o>M.otLimitHrs*60)out.push({mc:e.mc,msg:e.mc+' jalan OT total '+fmt(e.o)+' menit di '+e.rows+' baris (maks '+fmt(M.otLimitHrs*60)+'). Bagi menit MC OT per lot.'});});
+  return out;
+}
 // Menit operator untuk part tanpa mesin (normal / OT).
 function nonMcMin(k){var t=0;S.items.forEach(function(i){if(!isMc(i))t+=n(i[k]);});return t;}
 // Waktu jaga mesin otomatis: sisa 480 setelah lost time dan part tanpa mesin; OT = menit MC OT terlama.
@@ -908,7 +923,8 @@ function autoOp(){
   var mc=mcItems();
   if(!mc.length){S.op.min='';S.op.ot='';return;}
   var lt=0;S.lost.forEach(function(l){lt+=n(l.minutes);});
-  S.op.min=String(Math.max(0,M.normalMin-nonMcMin('normalMin')-lt));
+  if(helperSec()){var mx=0;mc.forEach(function(i){mx=Math.max(mx,n(i.mcMin));});S.op.min=mx?String(mx):'';}
+  else S.op.min=String(Math.max(0,M.normalMin-nonMcMin('normalMin')-lt));
   var ot=0;mc.forEach(function(i){ot=Math.max(ot,n(i.mcOtMin));});S.op.ot=ot?String(ot):'';
 }
 function opMin(k){return mcItems().length&&S.op?n(S.op[k]):0;}
@@ -928,6 +944,19 @@ function uraiOiban(text){
     for(var x=a;x<=b;x++){var v=String(x);while(w&&v.length<w)v='0'+v;list.push(v);}
   });
   return {list:list,err:err};
+}
+// Lot selalu 9 angka.
+function lotInfo(v){v=String(v||'');if(!v)return '';return /^\d{9}$/.test(v)?'':'<span style="color:var(--red-d)">'+v.length+' dari 9 angka</span>';}
+// Peringatan Lot & Oiban yang sering salah (tetap bisa dikirim bila memang benar).
+function lotOibanWarn(items){
+  var w=[],seen={};
+  items.forEach(function(it){
+    var nm=it.part+(it.mc&&it.mc!=='-'?' '+it.mc:'');
+    uraiOiban(it.oiban).list.forEach(function(o){if(/^\d{4,}$/.test(o))w.push(nm+': oiban "'+o+'" terlalu panjang. Mungkin 2 nomor tergabung, pisahkan dengan koma.');});
+    var key=uraiOiban(it.oiban).list.slice().sort().join(',');
+    if(key&&it.mc&&it.mc!=='-'){if(seen[key]&&seen[key]!==it.mc)w.push('Oiban '+it.oiban+' sama persis di '+seen[key]+' dan '+it.mc+'. Pastikan tidak salah salin.');else seen[key]=it.mc;}
+  });
+  return w;
 }
 function oibanInfo(text){
   var o=uraiOiban(text);
@@ -960,7 +989,7 @@ function render(){
     autoOp();
     h+='<div class="sec-h"><h2>Waktu kerja operator di mesin</h2><span class="cnt">'+mcItems().length+' MC</span></div>';
     h+='<div class="card"><p class="hint" style="margin:0 0 12px;font-size:13px;color:var(--muted)">Isi sekali saja, berapa menit Anda menjaga mesin hari ini (bukan dijumlah per MC). '
-      +(S.op.auto?'Terisi otomatis dari '+M.normalMin+' menit dikurangi lost time dan part tanpa mesin.':'<a href="#" onclick="S.op.auto=true;changed();render();return false">Hitung otomatis lagi</a>')+'</p><div class="grid g2">'
+      +(S.op.auto?(helperSec()?'Terisi otomatis dari menit MC jalan terlama.':'Terisi otomatis dari '+M.normalMin+' menit dikurangi lost time dan part tanpa mesin.'):'<a href="#" onclick="S.op.auto=true;changed();render();return false">Hitung otomatis lagi</a>')+'</p><div class="grid g2">'
       +'<label class="f" data-k="opMin"><span class="lb">Normal (menit)</span><input class="in num" id="opMin" inputmode="decimal" value="'+esc(S.op.min)+'" oninput="S.op.min=this.value;S.op.auto=false;changed()"></label>'
       +'<label class="f" data-k="opOt"><span class="lb">Lembur / OT (menit)</span><input class="in num" id="opOt" inputmode="decimal" value="'+esc(S.op.ot)+'" oninput="S.op.ot=this.value;S.op.auto=false;changed()"></label>'
       +'</div></div>';
@@ -968,9 +997,9 @@ function render(){
 
   h+='<div class="sec-h" id="ltSec"><h2>Lost time / Another job</h2><span class="cnt">'+(S.lost.length?S.lost.length+' catatan':'0 catatan')+'</span></div>';
   h+='<div class="card ltcard">'+(EDL==null?'<div id="ltGap" style="padding-top:8px"></div>':'');
-  if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.</div>';
+  if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">'+(helperSec()?'Belum ada lost time. Tidak wajib untuk perbantuan.':'Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.')+'</div>';
   if(S.lost.some(function(l){return l.auto;}))h+='<p class="hint" style="margin:8px 0 0">5S, Briefing Pagi, dan Input Laporan sudah terisi otomatis. Ubah menitnya bila berbeda.</p>';
-  else if(DROPPED===S.date+'|'+S.member&&!S.lost.some(function(l){return DEF_LT.some(function(d){return d[0]===l.type;});}))
+  else if(!helperSec()&&DROPPED===S.date+'|'+S.member&&!S.lost.some(function(l){return DEF_LT.some(function(d){return d[0]===l.type;});}))
     h+='<div class="notice ok" style="margin:10px 0 4px"><div style="flex:1">5S, Briefing Pagi, dan Input Laporan sudah tercatat di kiriman sebelumnya hari ini, jadi tidak diisi lagi agar tidak dobel.<br><button class="btn ghost sm-btn" onclick="tambahDefLt()">'+IC.plus+' Tetap tambahkan</button></div></div>';
   S.lost.forEach(function(l,ix){
     var grp=(M.lostGroups||{})[l.type]||'';
@@ -1108,7 +1137,7 @@ function itemHtml(it,ix){
   h+=pairHtml(ix,IC.clk+'Lembur (OT)','otQty',mc?'mcOtMin':'otMin',it,mc);
   h+='</div>';
   h+='<div class="grid g2" style="margin-top:12px">'
-    +'<label class="f"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Contoh: 312608097" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
+    +'<label class="f" data-k="lot"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" placeholder="9 angka, contoh 312608097" value="'+esc(it.lot)+'" oninput="var v=this.value.replace(/\D/g,\'\').slice(0,9);if(v!==this.value)this.value=v;setF('+ix+',\'lot\',v);var e=$(\'lc'+it.id+'\');if(e)e.innerHTML=lotInfo(v)"><small class="ob-i" id="lc'+it.id+'">'+lotInfo(it.lot)+'</small></label>'
     +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
   var ngN=c?c.ng:[];
   h+='<button type="button" class="ng-t" onclick="S.items['+ix+'].ngOpen=!S.items['+ix+'].ngOpen;changed();render()"><span>Jumlah NG'+(c&&c.ngGroup?' <span style="color:var(--muted);font-weight:500">• '+esc(c.ngGroup)+'</span>':'')+'</span><span class="tot'+(ngTot?' has':'')+'" id="ngt'+it.id+'">'+(ngTot?fmt(ngTot)+' pcs':'Tidak ada')+'</span></button>';
@@ -1213,12 +1242,15 @@ function updateBar(){
   var np=S.items.filter(function(i){return i.part;}).length,overOt=o/60>M.otLimitHrs;
   $('sSum').textContent=np+' part · '+fmt(q)+' pcs · NG '+fmt(ng)+(o?' · OT '+fmt(o/60)+' jam':'');
   var st=$('sSt');
+  var hp=helperSec();
   if(!hasWork){st.textContent='Isi part atau lost time';st.className='';}
+  else if(hp){st.textContent=fmt(m+lt)+' menit'+(o?' + OT '+fmt(o)+' menit':'')+' perbantuan'+(rest<0?' · lebih dari '+M.normalMin:'')+(overOt?' · OT lewat batas':'');st.className=rest>=0&&!overOt?'okc':'wc';}
   else{st.textContent=(rest===0?fmt(m+lt)+' menit, siap dikirim':rest>0?'Kurang '+fmt(rest)+' menit dari '+M.normalMin:'Lebih '+fmt(-rest)+' menit dari '+M.normalMin)+(overOt?' · OT lewat batas':'');st.className=rest===0&&!overOt?'okc':'wc';}
-  var sf=$('sFill');if(sf){var tt=m+lt;sf.style.width=(hasWork?Math.min(100,tt/M.normalMin*100):0)+'%';sf.className=hasWork&&rest===0&&!overOt?'ok':rest<0?'ov':'';}
+  var sf=$('sFill');if(sf){var tt=m+lt;sf.style.width=(hasWork?Math.min(100,tt/M.normalMin*100):0)+'%';sf.className=hasWork&&(rest===0||hp&&rest>0)&&!overOt?'ok':rest<0?'ov':'';}
   drawMeter(m,lt,o,hasWork);
   var g=$('ltGap');if(!g)return;
   if(!hasWork){g.innerHTML='';return;}
+  if(hp){g.innerHTML='<div class="notice ok" style="margin:0 0 14px"><div>Perbantuan dari section <b>'+esc(hp)+'</b>: isi menit yang benar-benar membantu saja (normal dan/atau OT). Tidak perlu '+M.normalMin+' menit dan lost time tidak wajib.</div></div>';return;}
   if(rest>0)g.innerHTML='<div class="notice" style="margin:0 0 14px">'+IC.warn+'<div style="flex:1">Waktu tercatat '+fmt(m)+' menit kerja + '+fmt(lt)+' menit lost time dari '+M.normalMin+' menit. <b>Isi lost time untuk sisa '+fmt(rest)+' menit.</b><br><button class="btn ghost" style="height:36px;margin-top:8px;font-size:13px" onclick="fillGap('+rest+')">'+IC.plus+' Tambah lost time '+fmt(rest)+' menit</button></div></div>';
   else if(rest===0)g.innerHTML='<div class="notice ok" style="margin:0 0 14px"><div>Waktu kerja lengkap: '+M.normalMin+' menit tercatat.</div></div>';
   else g.innerHTML='';
@@ -1236,6 +1268,7 @@ function drawMeter(m,lt,o,hasWork){
   $('rgTot').textContent=fmt(tot);
   var st=$('rgSt');
   if(!hasWork){st.textContent='Belum diisi';st.className='';}
+  else if(helperSec()&&rest>=0){st.innerHTML=IC.ck+' Perbantuan';st.className='ok';}
   else if(rest===0){st.innerHTML=IC.ck+' Lengkap';st.className='ok';}
   else if(rest>0){st.textContent='Kurang '+fmt(rest)+' menit';st.className='kr';}
   else{st.textContent='Lebih '+fmt(-rest)+' menit';st.className='lb2';}
@@ -1376,7 +1409,7 @@ $('pickQ').addEventListener('keydown',function(e){
   else if(e.key==='Escape')closePick();
 });
 function opts(arr){return arr.map(function(v){return {value:v,label:v};});}
-function pickMember(){if(LOCK)return;openPick('Nama member',opts(M.members),S.member,function(v){S.member=v;saveMember(v);if(!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost();changed(true);render();});}
+function pickMember(){if(LOCK)return;openPick('Nama member',opts(M.members),S.member,function(v){S.member=v;saveMember(v);if(helperOf(v))S.lost=S.lost.filter(function(l){return !l.auto;});else if(!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost(v);changed(true);render();});}
 function pickCat(ix){
   openPick('Kategori',M.categories.map(function(c){return {value:c.name,label:c.name,sub:c.process};}),S.items[ix].category,function(v){
     var it=S.items[ix];if(it.category!==v){it.category=v;it.part='';it.type='';it.mc='';}changed();render();});
@@ -1433,6 +1466,9 @@ function validate(){
     else if(p&&p.types.length&&!it.type)mark(ix,'type',L+'type belum dipilih',ix);
     if(c&&c.machines.length&&it.part&&(!it.mc||it.mc==='-'))mark(ix,'mc',L+'MC No belum dipilih',ix);
     if(!n(it.normalQty)&&!n(it.otQty))mark(ix,'normalQty',L+'qty normal atau OT belum diisi',ix);
+    var lt9=String(it.lot||'').trim();if(!/^\d{9}$/.test(lt9))mark(ix,'lot',L+(lt9?'Lot harus 9 angka (sekarang '+lt9.length+' angka)':'Lot belum diisi (9 angka)'),ix);
+    // Qty dalam pcs harus bilangan bulat. "12.600" terbaca 12,6 pcs, jadi ditolak.
+    ['normalQty','otQty'].forEach(function(k){var v=String(it[k]||'').trim();if(v&&!/^\d+$/.test(v))mark(ix,k,L+'qty "'+v+'" harus angka bulat tanpa titik/koma (contoh 12600)',ix);});
     if(isMc(it)){
       if(n(it.normalQty)&&!n(it.mcMin))mark(ix,'mcMin',L+'menit MC jalan (normal) belum diisi',ix);
       if(n(it.otQty)&&!n(it.mcOtMin))mark(ix,'mcOtMin',L+'menit MC jalan (OT) belum diisi',ix);
@@ -1448,6 +1484,7 @@ function validate(){
     if(mcF.some(function(i){return n(i.normalQty);})&&!n(S.op.min))mark(null,'opMin','Waktu kerja operator di mesin (normal) belum diisi');
     if(mcF.some(function(i){return n(i.otQty);})&&!n(S.op.ot))mark(null,'opOt','Waktu kerja operator di mesin (OT) belum diisi');
   }
+  mcOver(filledItems).forEach(function(x){var ix=-1;filledItems.forEach(function(it){if(ix<0&&it.mc===x.mc)ix=S.items.indexOf(it);});if(ix>=0)mark(ix,'mcMin',x.msg,ix);else errs.push(x.msg);});
   var ltFirst=null;
   S.lost.forEach(function(l,ix){
     if((!l.type||!n(l.minutes))&&ltFirst==null)ltFirst=ix;
@@ -1455,7 +1492,7 @@ function validate(){
     if(!n(l.minutes))errs.push('Lost time #'+(ix+1)+': menit belum diisi');
   });
   var rest=gapMinutes();
-  if(!errs.length&&rest>0){
+  if(!errs.length&&rest>0&&!helperSec()){
     if(!S.lost.length)S.lost.push(newLt());
     render();
     var sec=$('ltSec');sec&&sec.scrollIntoView({behavior:'smooth',block:'start'});
@@ -1494,14 +1531,16 @@ function openReview(){
   S.lost.forEach(function(l){lt+=n(l.minutes);});
   if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
   var tot=m+lt;
-  var h='<div class="meta"><span><b>'+esc(S.member)+'</b></span><span>'+esc(new Date(S.date+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</span></div>';
-  h+='<div class="tiles"><div class="tile"><small>Hasil</small><b>'+fmt(q)+'</b></div><div class="tile"><small>NG</small><b>'+fmt(ng)+'</b></div><div class="tile '+(tot===M.normalMin?'ok':'w')+'"><small>Menit</small><b>'+fmt(tot)+'</b></div></div>';
+  var h='<div class="meta"><span><b>'+esc(S.member)+'</b>'+(helperSec()?' · Perbantuan ('+esc(helperSec())+')':'')+'</span><span>'+esc(new Date(S.date+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</span></div>';
+  h+='<div class="tiles"><div class="tile"><small>Hasil</small><b>'+fmt(q)+'</b></div><div class="tile"><small>NG</small><b>'+fmt(ng)+'</b></div><div class="tile '+(tot===M.normalMin||helperSec()&&tot<M.normalMin?'ok':'w')+'"><small>Menit</small><b>'+fmt(tot)+'</b></div></div>';
   if(rows)h+='<div class="plist">'+rows+'</div>';
   var w=[];
   if(tot>M.normalMin)w.push('Menit normal + lost time ('+fmt(tot)+') melebihi waktu kerja normal '+M.normalMin+' menit.');
   if(o/60>M.otLimitHrs)w.push('Jam OT ('+fmt(o/60)+') melebihi batas '+M.otLimitHrs+' jam per hari.');
+  w=w.concat(lotOibanWarn(items));
+  h='<div class="notice" style="margin:0 0 12px">'+IC.warn+'<div><b>Pastikan oiban, lot, serta menit sudah benar.</b> Kamu sering salah loh ya. Hati-hati, periksa kembali. Jika kamu sudah yakin, silakan kirim.</div></div>'+h;
   if(w.length)h+='<div class="warns">'+w.map(function(x){return '<div class="notice">'+IC.warn+'<div>'+esc(x)+' Tetap bisa dikirim bila memang benar.</div></div>';}).join('')+'</div>';
-  $('rvBody').innerHTML=h;$('btnConfirm').textContent=S.editId?'Simpan perubahan':'Kirim laporan';$('revOv').classList.add('open');
+  $('rvTitle').textContent='Hey '+S.member+'!';$('rvBody').innerHTML=h;$('btnConfirm').textContent=S.editId?'Simpan perubahan':'Kirim laporan';$('revOv').classList.add('open');
 }
 function closeReview(){$('revOv').classList.remove('open');}
 var SENDING=false;
@@ -1643,31 +1682,37 @@ function renderQueue(){
       h+='<div class="lrow"><button class="btn green" '+(nok?'':'disabled')+' onclick="approveAllOk()">Setujui semua yang lengkap ('+nok+')</button></div>';
     } else h+='<div style="height:14px"></div>';
     list.forEach(function(s){
-      var t=subTotals(s),w=[],id=esc(s.id),tot=t.mn+t.lt;
-      if(t.mn+t.lt>M.normalMin)w.push('Menit normal + lost time '+fmt(t.mn+t.lt)+' lebih dari '+M.normalMin);
-      if(t.ot/60>M.otLimitHrs)w.push('OT '+fmt(t.ot/60)+' jam lewat batas '+M.otLimitHrs+' jam');
-      var info=[];if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
+      var t=subTotals(s),ms=masalah(s),w=ms.list,id=esc(s.id),tot=t.mn+t.lt,open=L.open[s.id]!==undefined?L.open[s.id]:pend;
+      var hp=helperOf(s.member),info=[];if(hp)info.push('Perbantuan dari section '+hp+': menit tidak harus '+M.normalMin);else if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
       var cats={};s.items.forEach(function(it){cats[it.category]=1;});
-      var bdg=pend?(w.length?'<span class="bdg w">Perlu dicek</span>':'<span class="bdg">Lengkap</span>'):(s.status==='Disetujui'?'<span class="bdg">Disetujui</span>':'<span class="bdg no">Ditolak</span>');
+      var bdg=pend?(w.length?'<span class="bdg no">'+w.length+' kesalahan</span>':'<span class="bdg">Lengkap</span>'):(s.status==='Disetujui'?'<span class="bdg">Disetujui</span>':'<span class="bdg no">Ditolak</span>');
       var sub=(L.date?'':fmtDate(s.date)+' · ')+'Kirim '+esc(s.sent.slice(11,16).replace(':','.'))+(Object.keys(cats).length?' · '+esc(Object.keys(cats).join(', ')):'')+' · '+(s.items.length?s.items.length+' part':'hanya lost time');
       var pct=t.q+t.ng>0&&t.ng?(t.ng/(t.q+t.ng)*100).toLocaleString('id-ID',{maximumFractionDigits:2})+'%':'';
-      h+='<div class="lc'+(L.open[s.id]?' open':'')+'" id="sc'+id+'"><div class="lc-h" onclick="toggleSc(\''+id+'\')"><span class="av">'+esc(inisial(s.member))+'</span><div class="grow"><b>'+esc(s.member)+'</b><small>'+sub+'</small></div>'+bdg+'</div>';
-      h+='<div class="st3"><div><small>Hasil</small><b>'+fmt(t.q)+'</b></div><div><small>NG</small><b>'+fmt(t.ng)+(pct?' <em>'+pct+'</em>':'')+'</b></div><div><small>Menit</small><b'+(Math.abs(tot-M.normalMin)>=1?' class="wc"':'')+'>'+fmt(tot)+(t.ot?' <em>+OT '+fmt(t.ot)+'</em>':'')+'</b></div></div>';
-      w.concat(info).forEach(function(x){h+='<div class="lwarn">'+esc(x)+'</div>';});
+      h+='<div class="lc'+(open?' open':'')+'" id="sc'+id+'"><div class="lc-h" onclick="toggleSc(\''+id+'\')"><span class="av">'+esc(inisial(s.member))+'</span><div class="grow"><b>'+esc(s.member)+'</b><small>'+sub+'</small></div>'+bdg+'</div>';
+      h+='<div class="st3"><div><small>Hasil</small><b>'+fmt(t.q)+'</b></div><div><small>NG</small><b>'+fmt(t.ng)+(pct?' <em>'+pct+'</em>':'')+'</b></div><div><small>Menit</small><b'+(Math.abs(tot-M.normalMin)>=1&&!(hp&&tot<M.normalMin)?' class="wc"':'')+'>'+fmt(tot)+(t.ot?' <em>+OT '+fmt(t.ot)+'</em>':'')+'</b></div></div>';
+      if(w.length)h+='<div class="lerr"><b>'+w.length+' kesalahan, cek dulu sebelum disetujui</b><ul style="margin:0;padding:0">'+w.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
+      info.forEach(function(x){h+='<div class="lwarn">'+esc(x)+'</div>';});
       if(s.edited)h+='<div class="ldec">Diedit '+esc(s.edited)+'</div>';
       if(!pend)h+='<div class="ldec">'+esc(s.status)+' oleh '+esc(s.leader)+' · '+esc(String(s.decided||'').slice(5,16).replace('-','/'))+(s.note?' · '+esc(s.note):'')+'</div>';
       h+='<div class="lc-d">';
-      s.items.forEach(function(it){
-        var mc=it.mcMin!==undefined&&it.mc&&it.mc!=='-',ob=uraiOiban(it.oiban).list.length,iq=n(it.normalQty)+n(it.otQty),nt=ngText(it);
-        var bits=[it.category,it.mc&&it.mc!=='-'?it.mc:'',mc?'MC jalan '+fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):'')+' mnt':'',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):'')+' mnt kerja',it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
-        h+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><span><b>'+fmt(iq)+'</b> pcs'+(n(it.otQty)?' <small style="color:var(--muted)">(OT '+fmt(n(it.otQty))+')</small>':'')+'</span></div><div class="in2">'+esc(bits)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
+      s.items.forEach(function(it,i){
+        var mc=it.mcMin!==undefined&&it.mc&&it.mc!=='-',ob=uraiOiban(it.oiban).list.length,iq=n(it.normalQty)+n(it.otQty),nt=ngText(it),b=ms.bad[i]||{};
+        var kv=function(lb,v,isBad){return '<span class="kv'+(isBad?' bad':'')+'"><small>'+lb+'</small>'+esc(v)+'</span>';};
+        var qty=(n(it.normalQty)?String(it.normalQty):'')+(n(it.otQty)?(n(it.normalQty)?' + OT ':'OT ')+it.otQty:'');
+        h+='<div class="prow"><div class="tp"><b>#'+(i+1)+' '+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><span><b>'+fmt(iq)+'</b> pcs</span></div><div class="in2">'+esc(it.category)+'</div><div class="kvs">'
+          +(it.mc&&it.mc!=='-'?kv('Mesin',it.mc,b.mc):'')
+          +kv('Lot',it.lot||'(kosong)',b.lot)
+          +kv('Oiban',(it.oiban||'-')+(ob>1?' ('+ob+')':''),b.oiban)
+          +kv('Qty',qty||'-',b.qty)
+          +(mc?kv('Menit MC',fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):''),b.mc):kv('Menit',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):''),false))
+          +'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
-      if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (menit kerja per part = bagian per MC)</div>';
+      if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
       if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit: '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
       h+='</div>';
-      if(pend)h+='<div class="lacts"><button class="btn main '+(w.length?'grey':'green')+'" onclick="decide([\''+id+'\'],\'ok\',\'\')">Setujui</button><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(L.open[s.id]?'Tutup':'Detail')+'</button><button class="btn soft" onclick="rejectOne(\''+id+'\')">Tolak</button></div>';
-      else h+='<div class="lacts" style="padding-top:0"><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(L.open[s.id]?'Tutup detail':'Lihat detail')+'</button></div>';
+      if(pend)h+='<div class="lacts"><button class="btn main '+(w.length?'grey':'green')+'" onclick="approveOne(\''+id+'\')">Setujui</button><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup':'Detail')+'</button><button class="btn soft" onclick="rejectOne(\''+id+'\')">Tolak</button></div>';
+      else h+='<div class="lacts" style="padding-top:0"><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup detail':'Lihat detail')+'</button></div>';
       h+='</div>';
     });
   }
@@ -1684,8 +1729,32 @@ function loadBelum(){
   call('belumKirim',[L.name,L.pin,d],function(r){BELUM[d]=r||[];setTimeout(function(){delete BELUM[d];},60000);draw(BELUM[d]);},function(){});
 }
 function approveAllOk(){L.sel={};L.data.list.forEach(function(s){if(!perluCek(s))L.sel[s.id]=true;});approveSel();}
-function toggleSc(id){L.open[id]=!L.open[id];renderQueue();}
-function perluCek(s){var t=subTotals(s);return t.mn+t.lt>M.normalMin||t.ot/60>M.otLimitHrs;}
+function toggleSc(id){var e=$('sc'+id);L.open[id]=!(e&&e.classList.contains('open'));renderQueue();}
+// Semua kesalahan satu kiriman: daftar pesan + tanda per baris (lot/qty/oiban/mc) untuk diwarnai merah.
+function masalah(s){
+  var t=subTotals(s),list=[],bad={},hp=helperOf(s.member),seen={};
+  var tandai=function(i,k){(bad[i]=bad[i]||{})[k]=true;};
+  s.items.forEach(function(it,i){
+    var nm='#'+(i+1)+' '+it.part+(it.mc&&it.mc!=='-'?' '+it.mc:''),lot=String(it.lot||'').trim();
+    if(!/^\d{9}$/.test(lot)){tandai(i,'lot');list.push(nm+': Lot "'+lot+'" bukan 9 angka');}
+    ['normalQty','otQty'].forEach(function(k){var v=String(it[k]||'').trim();if(v&&!/^\d+$/.test(v)){tandai(i,'qty');list.push(nm+': qty "'+v+'" bukan angka bulat');}});
+    var ob=uraiOiban(it.oiban);
+    if(ob.err){tandai(i,'oiban');list.push(nm+': '+ob.err);}
+    ob.list.forEach(function(o){if(/^\d{4,}$/.test(o)){tandai(i,'oiban');list.push(nm+': oiban "'+o+'" terlalu panjang (2 nomor tergabung?)');}});
+    var key=ob.list.slice().sort().join(',');
+    if(key&&it.mc&&it.mc!=='-'){if(seen[key]&&seen[key].mc!==it.mc){tandai(i,'oiban');tandai(seen[key].i,'oiban');list.push('Oiban '+it.oiban+' sama persis di '+seen[key].mc+' dan '+it.mc);}else seen[key]={mc:it.mc,i:i};}
+  });
+  mcOver(s.items).forEach(function(x){s.items.forEach(function(it,i){if(it.mc===x.mc)tandai(i,'mc');});list.push(x.msg);});
+  if(!hp&&t.mn+t.lt>M.normalMin)list.push('Menit normal + lost time '+fmt(t.mn+t.lt)+', lebih dari '+M.normalMin);
+  if(t.ot/60>M.otLimitHrs)list.push('OT '+fmt(t.ot/60)+' jam, lewat batas '+M.otLimitHrs+' jam');
+  return {list:list,bad:bad};
+}
+function perluCek(s){return masalah(s).list.length>0;}
+function approveOne(id){
+  var s=L.data.list.filter(function(x){return x.id===id;})[0],m=s?masalah(s).list:[];
+  if(m.length&&!confirm('Kiriman '+s.member+' masih ada '+m.length+' kesalahan:\n- '+m.slice(0,6).join('\n- ')+(m.length>6?'\n...':'')+'\n\nTetap setujui? Lebih baik Edit atau Tolak dulu.'))return;
+  decide([id],'ok','');
+}
 function selAll(v){L.sel={};if(v)L.data.list.forEach(function(s){if(!perluCek(s))L.sel[s.id]=true;});renderQueue();}
 function approveSel(){
   var ids=Object.keys(L.sel).filter(function(k){return L.sel[k];});

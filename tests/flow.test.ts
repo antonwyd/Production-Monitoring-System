@@ -49,7 +49,7 @@ function seed() {
 const payload = () => ({
   date: DATE,
   member: "Harjuki",
-  items: [{ category: "PF Iron Cage", part: "6902-J", type: "D1", mc: "MC 01", normalQty: "7920", normalMin: "450", otQty: "", otMin: "", lot: "0123", oiban: "509", ng: ["", "5", "3", "", "", "", "", "", "", ""] }],
+  items: [{ category: "PF Iron Cage", part: "6902-J", type: "D1", mc: "MC 01", normalQty: "7920", normalMin: "450", otQty: "", otMin: "", lot: "012300001", oiban: "509", ng: ["", "5", "3", "", "", "", "", "", "", ""] }],
   lostTimes: [{ type: "5S", minutes: "30", remarks: "pagi" }],
 });
 
@@ -86,7 +86,7 @@ describe("form member → leader → report", () => {
     expect(r.id).toMatch(/^QA\d{14}$/);
     const q = fs.data["Antrian Validasi"][1];
     expect(q.slice(3, 8)).toEqual(["Harjuki", 1, 7920, 30, "Menunggu"]);
-    expect(JSON.parse(String(q[11])).items[0].lot).toBe("0123");
+    expect(JSON.parse(String(q[11])).items[0].lot).toBe("012300001");
 
     const cek = await qa.cekLaporan(DATE, "Harjuki");
     expect(cek).toMatchObject({ prod: 0, lt: 0, subs: [{ id: r.id, status: "Menunggu" }] });
@@ -117,7 +117,7 @@ describe("form member → leader → report", () => {
     expect(ok).toMatchObject({ ok: 1, skip: 0 });
     expect(fs.grown).toEqual([]);
     const row = fs.data["Input - Production"][6];
-    expect(row.slice(1, 14)).toEqual([46315, "Harjuki", "PF Iron Cage", "6902-J", "D1", 7000, 450, "", "", "0123", "509", "MC 01", ""]);
+    expect(row.slice(1, 14)).toEqual([46315, "Harjuki", "PF Iron Cage", "6902-J", "D1", 7000, 450, "", "", "012300001", "509", "MC 01", ""]);
     expect(fs.data["Input - Lost Time"][6].slice(1, 6)).toEqual([46315, "Harjuki", "5S", 30, "pagi"]);
     expect(fs.data["Antrian Validasi"][1].slice(7, 9)).toEqual(["Disetujui", "Dian Kartika"]);
 
@@ -160,6 +160,10 @@ describe("form member → leader → report", () => {
   it("menolak isian yang tidak ada di Master Data", async () => {
     await expect(qa.submitReport({ ...payload(), member: "Orang Lain" })).rejects.toThrow(/member/);
     await expect(qa.submitReport({ ...payload(), lostTimes: [{ type: "Tidur", minutes: "30" }] })).rejects.toThrow(/jenis tidak dikenal/);
+    const withItem = (o: Record<string, string>) => ({ ...payload(), items: [{ ...payload().items[0], ...o }] });
+    await expect(qa.submitReport(withItem({ lot: "3126060626" }))).rejects.toThrow(/Lot harus 9 angka/);
+    await expect(qa.submitReport(withItem({ lot: ",31260802" }))).rejects.toThrow(/Lot harus 9 angka/);
+    await expect(qa.submitReport(withItem({ normalQty: "12.600" }))).rejects.toThrow(/angka bulat/);
     expect(fs.data["Antrian Validasi"]).toHaveLength(1);
   });
 
@@ -194,7 +198,7 @@ describe("v1.7: menit MC per mesin, waktu operator, oiban rentang", () => {
 
   it("waktu operator dibagi ke part mesin, menit MC ke AM:AP, report mesin pakai Standar MC", async () => {
     const mc = (part: string, mcNo: string, qty: string, mcMin: string, oiban: string) => ({
-      category: "PF Iron Cage", part, type: "D1", mc: mcNo, normalQty: qty, normalMin: "", otQty: "", otMin: "", mcMin, mcOtMin: "", lot: "L1", oiban, ng: ["", "", "", "", "", "", "", "", "", ""],
+      category: "PF Iron Cage", part, type: "D1", mc: mcNo, normalQty: qty, normalMin: "", otQty: "", otMin: "", mcMin, mcOtMin: "", lot: "312600001", oiban, ng: ["", "", "", "", "", "", "", "", "", ""],
     });
     const p17 = {
       date: DATE,
@@ -285,7 +289,7 @@ describe("report baru dan Excel", () => {
     expect(dis.tables[1].rows).toEqual([expect.objectContaining({ member: "Suharyanto", note: "menit kurang" })]);
 
     const byOiban = await buildReport("ng-type", { from: DATE, to: DATE, q: "509" }, DATE);
-    expect(byOiban.tables[0].rows).toEqual([expect.objectContaining({ member: "Harjuki", lot: "0123", detail: "Kizu 5, Lain-Lain 3" })]);
+    expect(byOiban.tables[0].rows).toEqual([expect.objectContaining({ member: "Harjuki", lot: "012300001", detail: "Kizu 5, Lain-Lain 3" })]);
     const byLot = await buildReport("ng-type", { from: DATE, to: DATE, q: "012" }, DATE);
     expect(byLot.tables[0].rows).toHaveLength(1);
     expect(byLot.tables.find((t) => t.title === "Part x jenis NG")!.rows[0]).toMatchObject({ part: "6902-J D1", ng: 8 });
@@ -407,7 +411,7 @@ describe("Tahap 1: keandalan", () => {
   });
 
   it("lost time dibagi per kategori sesuai porsi menit kerja", async () => {
-    const it2 = { category: "Seiretsu Iron Cage", part: "608JCL-1-J", type: "D1", mc: "", normalQty: "1000", normalMin: "225", otQty: "", otMin: "", lot: "1", oiban: "", ng: ["", "", "", "", "", "", "", "", "", ""] };
+    const it2 = { category: "Seiretsu Iron Cage", part: "608JCL-1-J", type: "D1", mc: "", normalQty: "1000", normalMin: "225", otQty: "", otMin: "", lot: "312600002", oiban: "", ng: ["", "", "", "", "", "", "", "", "", ""] };
     const r = await qa.submitReport({ ...payload(), items: [{ ...payload().items[0], normalMin: "225" }, it2] });
     await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
     const master = await loadMaster();
