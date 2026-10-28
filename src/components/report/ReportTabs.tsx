@@ -24,7 +24,7 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
   {
     key: "production-report",
     tabs: [
-      { kind: "production-report", label: "Laporan Presdir", desc: "Plan vs result per section", color: "red", icon: "month", href: "/production-report" },
+      { kind: "production-report", label: "Plan vs Actual", desc: "Pencapaian plan per section (laporan Presdir)", color: "red", icon: "month", href: "/production-report" },
       { kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan per kategori & member", color: "violet", icon: "day", href: "/production-report/rekap" },
       { kind: "category", label: "Detail per part", desc: "Pcs per kategori & part, periode bebas", color: "blue", icon: "layers", href: "/production-report/detail" },
     ],

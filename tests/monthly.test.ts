@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { buildSection, defaultWorkDays, nextMonthOf, SECTIONS, type MonthlyReport } from "@/lib/monthly";
+import { buildSection, defaultWorkDays, nextMonthOf, progressOf, SECTIONS, type MonthlyReport } from "@/lib/monthly";
 import { monthlyToPdf } from "@/lib/monthlyPdf";
 import { monthlyToXlsx } from "@/lib/monthlyExcel";
 import { parseDays, type MonthPlan } from "@/lib/sheets/plan";
@@ -65,6 +65,20 @@ describe("Production Report bulanan", () => {
     expect(s.daily[0].plan).toBe(0);
   });
 
+  it("pencapaian dibandingkan dengan plan s/d hari ini, plus proyeksi dan kebutuhan per hari", () => {
+    const def = SECTIONS.find((s) => s.key === "senbetsu-iron")!;
+    // Sep 2026: 22 hari kerja, plan 22.000 = 1.000/hari. Sampai Jumat 4 Sep = 4 hari kerja.
+    const rows = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"].map((d) => row(d, "A", "Senbetsu Iron Cage", "627-J", "D1", 900, 480));
+    const s = buildSection(def, "2026-09", rows, plan("senbetsu-iron", "2026-09", 22000, 2, 10), null, 480, ["Senbetsu Iron Cage"]);
+    const p = progressOf(s, "2026-09-05");
+    expect(p).toMatchObject({ result: 3600, planToDate: 4000, workDone: 4, workTotal: 22, status: "behind" });
+    expect(p.pctToDate).toBeCloseTo(0.9);
+    expect(p.forecast).toBeCloseTo(900 * 22);
+    expect(p.needPerDay).toBeCloseTo((22000 - 3600) / 18);
+    expect(progressOf(s, "2026-09-30").forecast).toBe(3600);
+    expect(progressOf(buildSection(def, "2026-09", rows, null, null, 480, []), "2026-09-05").status).toBe("noplan");
+  });
+
   it("hari kerja dibaca dari teks tanggal", () => {
     expect(parseDays("1,2, 3,3,40,0")).toEqual([1, 2, 3]);
     expect(nextMonthOf("2026-12")).toBe("2027-01");
@@ -98,6 +112,7 @@ describe("Production Report bulanan", () => {
     const known = Object.keys(parts);
     const r: MonthlyReport = {
       month,
+      asOf: "2026-09-30",
       nextMonth: "2026-10",
       label: "September 2026",
       nextLabel: "Oktober 2026",

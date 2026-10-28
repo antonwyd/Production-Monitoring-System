@@ -1,5 +1,5 @@
 "use client";
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { DailyRow } from "@/lib/monthly";
 
 // Dua panel: atas = kumulatif Result vs Plan (sudah on-track atau belum), bawah = result harian,
@@ -37,26 +37,11 @@ function Legend({ items }: { items: { label: string; color: string; kind: "bar" 
   );
 }
 
-export default function MonthlyChart({ daily, hasPlan }: { daily: DailyRow[]; hasPlan: boolean }) {
-  const data = daily.map((d) => ({ day: d.day, work: d.work, plan: d.plan || null, result: d.total, cumPlan: hasPlan ? d.cumPlan : null, cumResult: d.cumResult }));
-  const last = daily[daily.length - 1];
-  const pct = hasPlan && last.cumPlan ? last.cumResult / last.cumPlan : null;
+export default function MonthlyChart({ daily, hasPlan, asOf }: { daily: DailyRow[]; hasPlan: boolean; asOf?: string }) {
+  const data = daily.map((d) => ({ day: d.day, work: d.work, plan: d.plan || null, result: d.total, cumPlan: hasPlan ? d.cumPlan : null, cumResult: asOf && d.date > asOf ? null : d.cumResult }));
+  const today = asOf && asOf.slice(0, 7) === daily[0]?.date.slice(0, 7) && asOf < daily[daily.length - 1].date ? Number(asOf.slice(8)) : null;
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          ["Result", fmt(last.cumResult)],
-          ["Plan", hasPlan ? fmt(last.cumPlan) : "-"],
-          ["Pencapaian", pct == null ? "-" : `${(pct * 100).toFixed(1).replace(".", ",")}%`],
-          ["Selisih", hasPlan ? `${last.cumResult - last.cumPlan < 0 ? "−" : "+"}${fmt(Math.abs(last.cumResult - last.cumPlan))}` : "-"],
-        ].map(([k, v], i) => (
-          <div key={k} className="rounded-lg bg-slate-50 px-3 py-2">
-            <div className="text-xs text-slate-500">{k}</div>
-            <div className={`text-lg font-bold tabular-nums ${i >= 2 && pct != null ? (pct >= 1 ? "text-emerald-700" : "text-red-700") : ""}`}>{v}</div>
-          </div>
-        ))}
-      </div>
-
       <div>
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-xs font-semibold text-slate-600">Kumulatif</span>
@@ -67,9 +52,9 @@ export default function MonthlyChart({ daily, hasPlan }: { daily: DailyRow[]; ha
             ]}
           />
         </div>
-        <div className="h-52">
+        <div className="h-60">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+            <ComposedChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="cumFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={BRAND} stopOpacity={0.22} />
@@ -81,6 +66,7 @@ export default function MonthlyChart({ daily, hasPlan }: { daily: DailyRow[]; ha
               <YAxis tick={AX} tickFormatter={short} width={48} tickLine={false} axisLine={false} />
               <Tooltip {...TIP} formatter={(v, n) => [fmt(Number(v)), String(n)]} labelFormatter={(l) => `Sampai tanggal ${l}`} />
               <Area dataKey="cumResult" name="Result kumulatif" stroke={BRAND} strokeWidth={2.5} fill="url(#cumFill)" dot={false} activeDot={{ r: 4 }} />
+              {today && <ReferenceLine x={today} stroke="#94a3b8" strokeDasharray="2 3" label={{ value: "hari ini", position: "top", fontSize: 10, fill: "#64748b" }} />}
               {hasPlan && <Line dataKey="cumPlan" name="Plan kumulatif" stroke={PLAN} strokeWidth={2} strokeDasharray="6 4" dot={false} />}
             </ComposedChart>
           </ResponsiveContainer>

@@ -1,7 +1,7 @@
 // Production Report bulanan per section (pengganti PPT akhir bulan untuk Presdir).
 // Result dari Input - Production (laporan yang sudah disetujui), Plan dari tab "Plan Bulanan" yang diisi leader.
 import { callBackend, type RawRows } from "./backend";
-import { addDays, monthEnd } from "./dates";
+import { addDays, monthEnd, todayJakarta } from "./dates";
 import { loadMaster } from "./service";
 import { readPlans, type MonthPlan } from "./sheets/plan";
 
@@ -66,12 +66,33 @@ export type SectionReport = {
   /** Rincian per part (urut qty terbesar): share = porsi dari total section. */
   parts: PartLine[];
   quality: { qty: number; ng: number; rate: number | null; top: { name: string; qty: number; share: number }[] };
+  progress?: Progress;
 };
 
 export type PartLine = { part: string; category: string; qty: number; qtyOt: number; share: number; ng: number; rate: number | null; topNg: string };
 
+/** Posisi bulan berjalan: dibandingkan dengan plan s/d hari ini, bukan plan sebulan penuh. */
+export type Progress = {
+  /** Tanggal terakhir yang dihitung (hari ini, atau akhir bulan untuk bulan yang sudah lewat). */
+  asOf: string;
+  result: number;
+  planToDate: number | null;
+  planMonth: number | null;
+  /** result / plan s/d hari ini. */
+  pctToDate: number | null;
+  pctMonth: number | null;
+  workDone: number;
+  workTotal: number;
+  /** Perkiraan akhir bulan dengan kecepatan rata-rata per hari kerja sejauh ini. */
+  forecast: number | null;
+  /** pcs per hari kerja yang masih perlu agar plan bulan ini tercapai. */
+  needPerDay: number | null;
+  status: "ahead" | "near" | "behind" | "noplan" | "nodata";
+};
+
 export type MonthlyReport = {
   month: string;
+  asOf: string;
   nextMonth: string;
   label: string;
   nextLabel: string;
@@ -295,7 +316,36 @@ export function buildSection(
   };
 }
 
-export async function buildMonthly(month: string): Promise<MonthlyReport> {
+/** Pencapaian s/d tanggal asOf, proyeksi akhir bulan, dan kebutuhan per hari kerja tersisa. */
+export function progressOf(s: Pick<SectionReport, "daily" | "hasPlan" | "total">, asOf: string): Progress {
+  const upto = s.daily.filter((d) => d.date <= asOf);
+  const last = upto[upto.length - 1];
+  const result = last?.cumResult ?? 0;
+  const workTotal = s.daily.filter((d) => d.work).length;
+  const workDone = upto.filter((d) => d.work).length;
+  const planMonth = s.hasPlan ? s.total.plan : null;
+  const planToDate = s.hasPlan ? (last?.cumPlan ?? 0) : null;
+  const finished = upto.length === s.daily.length;
+  const forecast = finished ? result : workDone > 0 ? (result / workDone) * workTotal : null;
+  const left = workTotal - workDone;
+  const pctToDate = planToDate ? result / planToDate : null;
+  const status: Progress["status"] = !s.hasPlan ? "noplan" : pctToDate == null ? "nodata" : pctToDate >= 1 ? "ahead" : pctToDate >= 0.95 ? "near" : "behind";
+  return {
+    asOf: last?.date ?? asOf,
+    result,
+    planToDate,
+    planMonth,
+    pctToDate,
+    pctMonth: planMonth ? result / planMonth : null,
+    workDone,
+    workTotal,
+    forecast,
+    needPerDay: planMonth != null && left > 0 ? Math.max(0, planMonth - result) / left : null,
+    status,
+  };
+}
+
+export async function buildMonthly(month: string, today = todayJakarta()): Promise<MonthlyReport> {
   const next = nextMonthOf(month);
   const [raw, master, plans] = await Promise.all([
     callBackend<RawRows>("rows", { from: `${month}-01`, to: monthEnd(`${month}-01`) }),
@@ -306,12 +356,16 @@ export async function buildMonthly(month: string): Promise<MonthlyReport> {
   const ngNames: Record<string, string[]> = {};
   for (const c of master.categories) ngNames[c.name] = master.ngGroups.find((g) => g.id === c.ngGroupId)?.codes ?? [];
   const find = (m: string, key: string) => plans.find((p) => p.month === m && p.section === key) ?? null;
+  const asOf = today < `${month}-01` ? `${month}-00` : today > monthEnd(`${month}-01`) ? monthEnd(`${month}-01`) : today;
+  const sections = SECTIONS.map((d) => buildSection(d, month, raw.prod, find(month, d.key), find(next, d.key), master.settings.normalMin, known, ngNames));
+  for (const s of sections) s.progress = progressOf(s, asOf);
   return {
     month,
+    asOf,
     nextMonth: next,
     label: monthLabel(month),
     nextLabel: monthLabel(next),
-    sections: SECTIONS.map((d) => buildSection(d, month, raw.prod, find(month, d.key), find(next, d.key), master.settings.normalMin, known, ngNames)),
+    sections,
   };
 }
 
