@@ -78,7 +78,8 @@ export default function FilterBar({
           { label: "Kemarin", patch: { from: y, to: y }, on: from === y && to === y },
           { label: "Minggu ini", patch: { from: mon, to: today }, on: from === mon && to === today && mon !== today },
           { label: "7 hari", patch: { from: add(today, -6), to: today }, on: from === add(today, -6) && to === today },
-          { label: "Bulan ini", patch: { from: monthStart(today), to: today }, on: from === monthStart(today) && to === today },
+          // Default halaman = awal bulan s/d kemarin, tetap ditandai "Bulan ini".
+          { label: "Bulan ini", patch: { from: monthStart(today), to: today }, on: from === monthStart(today) && (to === today || to === y) && y >= from },
           { label: "Bulan lalu", patch: { from: monthStart(lm), to: monthEnd(lm) }, on: from === monthStart(lm) && to === monthEnd(lm) },
         ]
       : mode === "date"
