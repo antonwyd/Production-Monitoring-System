@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { openRejections, setTransport, type RawSubmission } from "@/lib/backend";
 import { buildReport, clearReportCache, loadFacts } from "@/lib/reports";
 import { invalidateMaster, loadMaster } from "@/lib/service";
@@ -7,6 +7,13 @@ import { FakeSheet } from "./fakeSheet";
 
 const DATE = "2026-10-20";
 let fs: FakeSheet;
+
+// Riwayat member hanya 7 hari terakhir, jadi "hari ini" dikunci sehari setelah DATE.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T03:00:00Z"));
+});
+afterAll(() => vi.useRealTimers());
 
 /** Isi Google Sheet palsu dengan tata letak yang sama seperti sheet asli. */
 function seed() {
@@ -97,6 +104,13 @@ describe("form member → leader → report", () => {
     expect(rec.items[0].normalQty).toBe("7000");
     expect(rec.original.items[0].normalQty).toBe("7920");
     expect(fs.data["Antrian Validasi"][1][10]).toBe("Diedit oleh Dian Kartika");
+
+    // Leader membetulkan tanggal yang salah pilih; tanggal masa depan ditolak.
+    await expect(qa.editKiriman("Dian Kartika", "4139", r.id, { ...edited, date: "2026-10-25" })).rejects.toThrow(/Tanggal/);
+    await qa.editKiriman("Dian Kartika", "4139", r.id, { ...edited, date: "2026-10-19" });
+    expect(fs.data["Antrian Validasi"][1][10]).toBe("Diedit oleh Dian Kartika (tanggal 2026-10-20 → 2026-10-19)");
+    expect(JSON.parse(String(fs.data["Antrian Validasi"][1][11]))).toMatchObject({ date: "2026-10-19", dateBefore: DATE });
+    await qa.editKiriman("Dian Kartika", "4139", r.id, { ...edited, date: DATE });
 
     await expect(qa.putuskan("Dian Kartika", "4139", [r.id], "no", "")).rejects.toThrow(/alasan/);
     const ok = await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
