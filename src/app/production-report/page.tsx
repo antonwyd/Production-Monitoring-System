@@ -5,7 +5,7 @@ import DownloadMenu from "@/components/report/DownloadMenu";
 import PresdirView from "@/components/monthly/PresdirView";
 import ReportTabs from "@/components/report/ReportTabs";
 import { requirePageRole } from "@/lib/auth";
-import { todayJakarta } from "@/lib/dates";
+import { addDays, todayJakarta } from "@/lib/dates";
 import { buildMonthly, defaultMonth, isValidMonth, monthLabel, nextMonthOf, prevMonthOf } from "@/lib/monthly";
 import { withDataAge } from "@/lib/reports";
 
@@ -14,9 +14,10 @@ export const metadata = { title: "Plan vs Actual · QA Production" };
 export default async function ProductionReportPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const q = await searchParams;
-  const today = todayJakarta();
+  // Data hari ini baru lengkap sore, jadi pencapaian dihitung s/d kemarin.
+  const today = addDays(todayJakarta(), -1);
   const month = isValidMonth(q.month) ? q.month : defaultMonth(today);
-  const { value: r, asOf } = await withDataAge(() => buildMonthly(month));
+  const { value: r, asOf } = await withDataAge(() => buildMonthly(month, today));
   const canPlan = session.role === "leader" || session.role === "admin";
   const noPlan = r.sections.filter((s) => !s.hasPlan);
   const nav = "btn-secondary h-10 px-3";

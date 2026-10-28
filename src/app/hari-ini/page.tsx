@@ -8,7 +8,7 @@ import TrendStack from "@/components/dashboard/TrendStack";
 import ValidationTable from "@/components/dashboard/ValidationTable";
 import { ProcSelect, Segmented } from "@/components/dashboard/DashFilters";
 import { requirePageRole } from "@/lib/auth";
-import { isValidDate, todayJakarta } from "@/lib/dates";
+import { addDays, isValidDate, todayJakarta } from "@/lib/dates";
 import { buildToday, NG_RANK_MIN_QTY } from "@/lib/views";
 import { withDataAge } from "@/lib/reports";
 import DataStatus from "@/components/DataStatus";
@@ -109,13 +109,14 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const q = await searchParams;
   const today = todayJakarta();
-  const date = isValidDate(q.date) ? q.date : today;
+  // Laporan hari ini baru diinput sore, jadi Dashboard dibuka di tanggal kemarin.
+  const date = isValidDate(q.date) ? q.date : addDays(today, -1);
   const { value: v, asOf } = await withDataAge(() => buildToday(date, { proc: q.proc, days: Number(q.days) || 7, ngBy: q.ngBy }));
   const s = v.stats;
   const d = v.dash;
   const canDecide = session.role === "leader" || session.role === "admin";
   const isToday = date === today;
-  const hari = isToday ? "Hari Ini" : v.dateLabel.split(",")[0];
+  const hari = isToday ? "Hari Ini" : date === addDays(today, -1) ? "Kemarin" : v.dateLabel.split(",")[0];
   const vs = d.lost.vs;
   const ngLimit = s.ppmMax / 1e6;
   const range = `from=${date}&to=${date}`;

@@ -37,7 +37,7 @@ function Meter({ p, tall }: { p: Progress; tall?: boolean }) {
   return (
     <div className={`relative w-full rounded-full bg-slate-100 ${tall ? "h-3" : "h-2"}`}>
       <div className={`h-full rounded-full ${STATUS[p.status].bar}`} style={{ width: `${fill * 100}%` }} />
-      {mark != null && mark < 1 && <div className="absolute -top-1 bottom-[-4px] w-0.5 rounded bg-slate-700" style={{ left: `calc(${mark * 100}% - 1px)` }} title="Plan s/d hari ini" />}
+      {mark != null && mark < 1 && <div className="absolute -top-1 bottom-[-4px] w-0.5 rounded bg-slate-700" style={{ left: `calc(${mark * 100}% - 1px)` }} title="Plan s/d kemarin" />}
     </div>
   );
 }
@@ -81,7 +81,7 @@ function Overview({ r, live }: { r: MonthlyReport; live: boolean }) {
           <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
             <div className={`text-5xl font-bold tabular-nums tracking-tight ${STATUS[status].text}`}>{pc(pct)}</div>
             <div className="pb-1.5 text-sm text-slate-600">
-              <b className="text-slate-900">{n0(result)}</b> pcs dari plan {n0(toDate)} {live ? "s/d hari ini" : ""}
+              <b className="text-slate-900">{n0(result)}</b> pcs dari plan {n0(toDate)} {live ? "s/d kemarin" : ""}
             </div>
           </div>
           <div>
@@ -137,7 +137,7 @@ function Scorecard({ s, on, pick, live }: { s: SectionReport; on: boolean; pick:
             <>
               {big(p.result)} / {big(p.planToDate)}
               <br />
-              {live ? "s/d hari ini" : "bulan ini"}
+              {live ? "s/d kemarin" : "bulan ini"}
             </>
           ) : (
             "pcs bulan ini"
@@ -196,7 +196,7 @@ function PlanResult({ s, r, live }: { s: SectionReport; r: MonthlyReport; live: 
           })}
         </tbody>
       </table>
-      {live && <p className="mt-2 text-xs text-slate-500">Bulan masih berjalan: Result = s/d hari ini, % dibanding plan sebulan penuh.</p>}
+      {live && <p className="mt-2 text-xs text-slate-500">Bulan masih berjalan: Result = s/d kemarin, % dibanding plan sebulan penuh.</p>}
     </div>
   );
 }
@@ -370,7 +370,7 @@ export default function PresdirView({ report, canPlan, live }: { report: Monthly
         <div className="mb-2 flex items-baseline justify-between gap-3">
           <h2 className="font-bold">Per section</h2>
           <span className="hidden text-xs text-slate-500 sm:inline">
-            Garis tegak di batang = posisi plan {live ? "s/d hari ini" : ""} · klik kartu untuk detail
+            Garis tegak di batang = posisi plan {live ? "s/d kemarin" : ""} · klik kartu untuk detail
           </span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
