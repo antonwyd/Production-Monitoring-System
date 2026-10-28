@@ -793,7 +793,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 
 <div class="ov" id="revOv" onclick="if(event.target===this)closeReview()">
   <div class="sheet">
-    <div class="sheet-h"><h3>Periksa sebelum kirim</h3></div>
+    <div class="sheet-h"><h3 id="rvTitle">Periksa sebelum kirim</h3></div>
     <div class="rv" id="rvBody"></div>
     <div class="sheet-f">
       <button class="btn ghost" onclick="closeReview()">Ubah</button>
@@ -942,6 +942,19 @@ function uraiOiban(text){
     for(var x=a;x<=b;x++){var v=String(x);while(w&&v.length<w)v='0'+v;list.push(v);}
   });
   return {list:list,err:err};
+}
+// Lot selalu 9 angka.
+function lotInfo(v){v=String(v||'');if(!v)return '';return /^\d{9}$/.test(v)?'':'<span style="color:var(--red-d)">'+v.length+' dari 9 angka</span>';}
+// Peringatan Lot & Oiban yang sering salah (tetap bisa dikirim bila memang benar).
+function lotOibanWarn(items){
+  var w=[],seen={};
+  items.forEach(function(it){
+    var nm=it.part+(it.mc&&it.mc!=='-'?' '+it.mc:'');
+    uraiOiban(it.oiban).list.forEach(function(o){if(/^\d{4,}$/.test(o))w.push(nm+': oiban "'+o+'" terlalu panjang. Mungkin 2 nomor tergabung, pisahkan dengan koma.');});
+    var key=uraiOiban(it.oiban).list.slice().sort().join(',');
+    if(key&&it.mc&&it.mc!=='-'){if(seen[key]&&seen[key]!==it.mc)w.push('Oiban '+it.oiban+' sama persis di '+seen[key]+' dan '+it.mc+'. Pastikan tidak salah salin.');else seen[key]=it.mc;}
+  });
+  return w;
 }
 function oibanInfo(text){
   var o=uraiOiban(text);
@@ -1122,7 +1135,7 @@ function itemHtml(it,ix){
   h+=pairHtml(ix,IC.clk+'Lembur (OT)','otQty',mc?'mcOtMin':'otMin',it,mc);
   h+='</div>';
   h+='<div class="grid g2" style="margin-top:12px">'
-    +'<label class="f"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Contoh: 312608097" value="'+esc(it.lot)+'" oninput="setF('+ix+',\'lot\',this.value)"></label>'
+    +'<label class="f" data-k="lot"><span class="lb">Lot</span><input class="in" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" placeholder="9 angka, contoh 312608097" value="'+esc(it.lot)+'" oninput="var v=this.value.replace(/\D/g,\'\').slice(0,9);if(v!==this.value)this.value=v;setF('+ix+',\'lot\',v);var e=$(\'lc'+it.id+'\');if(e)e.innerHTML=lotInfo(v)"><small class="ob-i" id="lc'+it.id+'">'+lotInfo(it.lot)+'</small></label>'
     +'<label class="f" data-k="oiban"><span class="lb">Oiban</span><input class="in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Contoh: 1-6, 8" value="'+esc(it.oiban)+'" oninput="setF('+ix+',\'oiban\',this.value);var e=$(\'ob'+it.id+'\');if(e)e.innerHTML=oibanInfo(this.value)"><small class="ob-i" id="ob'+it.id+'">'+oibanInfo(it.oiban)+'</small></label></div>';
   var ngN=c?c.ng:[];
   h+='<button type="button" class="ng-t" onclick="S.items['+ix+'].ngOpen=!S.items['+ix+'].ngOpen;changed();render()"><span>Jumlah NG'+(c&&c.ngGroup?' <span style="color:var(--muted);font-weight:500">• '+esc(c.ngGroup)+'</span>':'')+'</span><span class="tot'+(ngTot?' has':'')+'" id="ngt'+it.id+'">'+(ngTot?fmt(ngTot)+' pcs':'Tidak ada')+'</span></button>';
@@ -1451,6 +1464,7 @@ function validate(){
     else if(p&&p.types.length&&!it.type)mark(ix,'type',L+'type belum dipilih',ix);
     if(c&&c.machines.length&&it.part&&(!it.mc||it.mc==='-'))mark(ix,'mc',L+'MC No belum dipilih',ix);
     if(!n(it.normalQty)&&!n(it.otQty))mark(ix,'normalQty',L+'qty normal atau OT belum diisi',ix);
+    var lt9=String(it.lot||'').trim();if(!/^\d{9}$/.test(lt9))mark(ix,'lot',L+(lt9?'Lot harus 9 angka (sekarang '+lt9.length+' angka)':'Lot belum diisi (9 angka)'),ix);
     // Qty dalam pcs harus bilangan bulat. "12.600" terbaca 12,6 pcs, jadi ditolak.
     ['normalQty','otQty'].forEach(function(k){var v=String(it[k]||'').trim();if(v&&!/^\d+$/.test(v))mark(ix,k,L+'qty "'+v+'" harus angka bulat tanpa titik/koma (contoh 12600)',ix);});
     if(isMc(it)){
@@ -1521,8 +1535,10 @@ function openReview(){
   var w=[];
   if(tot>M.normalMin)w.push('Menit normal + lost time ('+fmt(tot)+') melebihi waktu kerja normal '+M.normalMin+' menit.');
   if(o/60>M.otLimitHrs)w.push('Jam OT ('+fmt(o/60)+') melebihi batas '+M.otLimitHrs+' jam per hari.');
+  w=w.concat(lotOibanWarn(items));
+  h='<div class="notice" style="margin:0 0 12px">'+IC.warn+'<div><b>Pastikan oiban, lot, serta menit sudah benar.</b> Kamu sering salah loh ya. Hati-hati, periksa kembali. Jika kamu sudah yakin, silakan kirim.</div></div>'+h;
   if(w.length)h+='<div class="warns">'+w.map(function(x){return '<div class="notice">'+IC.warn+'<div>'+esc(x)+' Tetap bisa dikirim bila memang benar.</div></div>';}).join('')+'</div>';
-  $('rvBody').innerHTML=h;$('btnConfirm').textContent=S.editId?'Simpan perubahan':'Kirim laporan';$('revOv').classList.add('open');
+  $('rvTitle').textContent='Hey '+S.member+'!';$('rvBody').innerHTML=h;$('btnConfirm').textContent=S.editId?'Simpan perubahan':'Kirim laporan';$('revOv').classList.add('open');
 }
 function closeReview(){$('revOv').classList.remove('open');}
 var SENDING=false;

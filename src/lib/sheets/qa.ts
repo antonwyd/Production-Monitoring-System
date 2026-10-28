@@ -413,6 +413,18 @@ export function uraiOiban(text: unknown): { list: string[]; err: string } {
   return { list, err };
 }
 
+/** Lot wajib 9 angka dan qty harus bilangan bulat. Dicek saat kirim & edit (bukan saat approve, supaya kiriman lama tetap bisa disetujui). */
+function cekLotQty(items: Item[]) {
+  (items || []).forEach((it, i) => {
+    const lot = s(it.lot).trim();
+    if (!/^\d{9}$/.test(lot)) throw new QaError(`Part #${i + 1}: Lot harus 9 angka${lot ? ` (sekarang "${lot}")` : ""}.`);
+    for (const k of ["normalQty", "otQty"] as const) {
+      const v = s(it[k]).trim();
+      if (v && !/^\d+$/.test(v)) throw new QaError(`Part #${i + 1}: qty "${v}" harus angka bulat tanpa titik/koma.`);
+    }
+  });
+}
+
 function bangunBaris(payload: Payload, m: V1Master) {
   const p = s(payload.date).split("-").map(Number);
   if (p.length !== 3 || !p[0]) throw new QaError("Tanggal belum diisi.");
@@ -544,6 +556,7 @@ export async function cekLaporan(dateStr: string, member: string) {
 
 export async function submitReport(payload: Payload) {
   const m = await getMasterData();
+  cekLotQty(payload.items || []);
   const rows = bangunBaris(payload, m); // validasi sekarang, tulis ke Input setelah disetujui
   const items = rows.items,
     lost = payload.lostTimes || [];
@@ -683,6 +696,7 @@ export async function editKiriman(name: string, pin: string, id: string, data: {
     if (!x) throw new QaError("Kiriman tidak ditemukan.");
     if (x.status !== ST_WAIT) throw new QaError(`Kiriman ini sudah ${x.status.toLowerCase()}.`);
     const date = newDate || x.date;
+    cekLotQty(data?.items || []);
     const items = bangunBaris({ date, member: x.member, items: data?.items || [], lostTimes: lost, op }, m).items;
     const n = (v: unknown) => Number(v) || 0;
     const totalQty = items.reduce((a, it) => a + n(it.normalQty) + n(it.otQty), 0);
