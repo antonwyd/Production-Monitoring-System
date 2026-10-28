@@ -3,7 +3,7 @@
 // (src/lib/sheets/qa.ts) langsung ke Google Sheet.
 import { PAGE_HTML } from "./legacyPage";
 
-export const APP_VERSION = "v5.7"; // v5.7: member section lain (perbantuan) tidak wajib 480 menit
+export const APP_VERSION = "v5.8"; // v5.8: lost time bisa ditandai Lembur (OT)
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){

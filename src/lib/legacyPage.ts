@@ -891,7 +891,10 @@ function showErr(m){toast(m);}
 function newItem(category){return {id:++uid,category:category||'',part:'',type:'',mc:'',normalQty:'',normalMin:'',otQty:'',otMin:'',mcMin:'',mcOtMin:'',lot:'',oiban:'',ng:['','','','','','','','','',''],ngNote:'',open:true,ngOpen:true};}
 // Posisi NG "Lain-lain" di grup NG kategori itu (-1 bila tidak ada). Isinya wajib diberi catatan jenis NG.
 function lainIdx(c){if(!c)return -1;for(var k=0;k<c.ng.length;k++)if(/^lain/i.test(c.ng[k]||''))return k;return -1;}
-function newLt(){return {id:++uid,type:'',minutes:'',remarks:''};}
+function newLt(){return {id:++uid,type:'',minutes:'',remarks:'',ot:false};}
+// Lost time saat lembur (OT) tidak dihitung ke 480 menit normal, tapi ke jam OT.
+function isOtLt(l){return !!l&&(l.ot===true||l.ot===1||l.ot==='1'||l.ot==='OT');}
+function ltSum(list,ot){var t=0;(list||[]).forEach(function(l){if(isOtLt(l)===!!ot)t+=n(l.minutes);});return t;}
 // Lost time harian yang langsung terisi di form baru (masih bisa diubah atau dihapus).
 var DEF_LT=[['5S',10],['Briefing Pagi',5],['Input Laporan',5]];
 // Member section lain (perbantuan) tidak diisi lost time otomatis dan tidak wajib 480 menit.
@@ -922,7 +925,7 @@ function autoOp(){
   if(!S.op.auto)return;
   var mc=mcItems();
   if(!mc.length){S.op.min='';S.op.ot='';return;}
-  var lt=0;S.lost.forEach(function(l){lt+=n(l.minutes);});
+  var lt=ltSum(S.lost,false);
   if(helperSec()){var mx=0;mc.forEach(function(i){mx=Math.max(mx,n(i.mcMin));});S.op.min=mx?String(mx):'';}
   else S.op.min=String(Math.max(0,M.normalMin-nonMcMin('normalMin')-lt));
   var ot=0;mc.forEach(function(i){ot=Math.max(ot,n(i.mcOtMin));});S.op.ot=ot?String(ot):'';
@@ -1004,7 +1007,7 @@ function render(){
   S.lost.forEach(function(l,ix){
     var grp=(M.lostGroups||{})[l.type]||'';
     h+='<div class="ltl" id="lt'+l.id+'" onclick="openLtEd('+ix+')"><div class="tx"><b>'+esc(l.type||'Pilih jenis')+'</b><small>'+esc([grp,l.remarks].filter(Boolean).join(' • ')||'Ketuk untuk mengubah')+'</small></div>'
-      +'<span class="mn'+(n(l.minutes)?'':' no')+'">'+(n(l.minutes)?fmt(n(l.minutes))+' mnt':'– mnt')+'</span>'+IC.right+'</div>';
+      +'<span class="mn'+(n(l.minutes)?'':' no')+'">'+(n(l.minutes)?fmt(n(l.minutes))+' mnt'+(isOtLt(l)?' OT':''):'– mnt')+'</span>'+IC.right+'</div>';
   });
   h+='<button class="add" onclick="S.lost.push(newLt());changed();openLtEd(S.lost.length-1)">'+IC.plus+' Tambah lost time</button>';
   h+='</div></div>';
@@ -1041,12 +1044,15 @@ function ltBody(ix){
   h+='<div class="f" data-k="minutes"><span class="lb">Durasi <span class="req">*</span></span><div class="dur"><button type="button" aria-label="Kurangi 5 menit" onclick="stepLt('+ix+',-5)">&minus;</button>'
     +'<input id="lti'+l.id+'" inputmode="decimal" placeholder="0" value="'+esc(l.minutes)+'" oninput="S.lost['+ix+'].minutes=this.value;S.lost['+ix+'].auto=false;this.closest(\'.f\').classList.remove(\'err\');changed()"><span>mnt</span>'
     +'<button type="button" class="pl" aria-label="Tambah 5 menit" onclick="stepLt('+ix+',5)">+</button></div></div>';
+  var ot=isOtLt(l);
+  h+='<div class="f" data-k="ot"><span class="lb">Waktu</span><div class="qchips"><button type="button" class="'+(ot?'':'on')+'" onclick="setLtOt('+ix+',false)">Jam normal</button><button type="button" class="'+(ot?'on':'')+'" onclick="setLtOt('+ix+',true)">Lembur (OT)</button></div><small class="hint" style="display:block;margin-top:4px">Pilih Lembur (OT) bila kegiatan ini dikerjakan saat jam lembur.</small></div>';
   h+='<label class="f"><span class="lb">Keterangan <small>(opsional)</small></span><textarea class="in" placeholder="Tuliskan keterangan…" oninput="S.lost['+ix+'].remarks=this.value;changed()">'+esc(l.remarks)+'</textarea></label>';
   var qk=quickLt(),cur=M.lostTypes.indexOf(l.type);
   if(cur>=0)qk=[cur].concat(qk.filter(function(i){return i!==cur;}));
   if(qk.length)h+='<div class="f gap"><span class="lb">Sering dipakai</span><div class="qchips">'+qk.map(function(i){return '<button type="button" class="'+(i===cur?'on':'')+'" onclick="setLtType('+ix+','+i+')">'+(i===cur?'':'+ ')+esc(M.lostTypes[i])+'</button>';}).join('')+'</div></div>';
   return h+'</div>';
 }
+function setLtOt(ix,v){var l=S.lost[ix];l.ot=!!v;l.auto=false;changed();render();}
 function setLtType(ix,i){var l=S.lost[ix];l.type=M.lostTypes[i];l.auto=false;changed();render();}
 function scrClose(){EDP=null;EDL=null;changed();render();}
 function scrBack(){
@@ -1237,7 +1243,7 @@ function delItem(ix,after){
 function updateBar(){
   var q=0,ng=0,m=0,o=0,lt=0,bs=$('btnSend');if(bs&&bs.firstChild)bs.firstChild.textContent=S.editId?'Simpan perubahan ':'Periksa & kirim ';
   S.items.forEach(function(i){q+=n(i.normalQty)+n(i.otQty);ng+=i.ng.reduce(function(a,b){return a+n(b);},0);});m=workMin();o=workOt();
-  S.lost.forEach(function(l){lt+=n(l.minutes);});
+  lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
   var rest=M.normalMin-m-lt,hasWork=S.items.some(function(i){return i.part||n(i.normalMin)||n(i.mcMin);})||S.lost.length;
   var np=S.items.filter(function(i){return i.part;}).length,overOt=o/60>M.otLimitHrs;
   $('sSum').textContent=np+' part · '+fmt(q)+' pcs · NG '+fmt(ng)+(o?' · OT '+fmt(o/60)+' jam':'');
@@ -1274,7 +1280,7 @@ function drawMeter(m,lt,o,hasWork){
   else{st.textContent='Lebih '+fmt(-rest)+' menit';st.className='lb2';}
   $('rgLeg').innerHTML='<span>Produksi <b>'+fmt(m)+'</b> mnt</span><span class="l">Lost time <b>'+fmt(lt)+'</b> mnt</span>'+(o?'<span class="o">Lembur <b>'+fmt(o)+'</b> mnt</span>':'');
 }
-function gapMinutes(){var m=workMin(),lt=0;S.lost.forEach(function(l){lt+=n(l.minutes);});return M.normalMin-m-lt;}
+function gapMinutes(){return M.normalMin-workMin()-ltSum(S.lost,false);}
 function fillGap(rest){
   var ix=-1;S.lost.forEach(function(l,i){if(ix<0&&!n(l.minutes))ix=i;});
   if(ix>=0)S.lost[ix].minutes=String(rest);else{var l=newLt();l.minutes=String(rest);S.lost.push(l);ix=S.lost.length-1;}
@@ -1335,7 +1341,7 @@ function muatKiriman(x,editId,yakin){
   S.items=(x.items||[]).map(function(it){var o=newItem(it.category);Object.keys(it).forEach(function(k){if(k!=='id')o[k]=it[k];});if(it.mcMin===undefined){o.mcMin=it.normalMin;o.mcOtMin=it.otMin;}o.ng=(it.ng||[]).concat(['','','','','','','','','','']).slice(0,10);o.open=false;o.ngOpen=false;return o;});
   S.op=x.op?{min:String(x.op.min||''),ot:String(x.op.ot||''),auto:false}:{min:'',ot:'',auto:true};
   if(!S.items.length)S.items=[newItem()];
-  S.lost=(x.lostTimes||[]).map(function(l){var o=newLt();o.type=l.type;o.minutes=l.minutes;o.remarks=l.remarks||'';return o;});
+  S.lost=(x.lostTimes||[]).map(function(l){var o=newLt();o.type=l.type;o.minutes=l.minutes;o.remarks=l.remarks||'';o.ot=isOtLt(l);return o;});
   if(x.date)S.date=x.date;
   S.editId=editId||'';S.editSent=editId?x.sent:'';
   changed(true);render();window.scrollTo(0,0);
@@ -1358,7 +1364,7 @@ function loadHist(force){
   var mb=S.member;HIST.member=mb;HIST.list=null;drawHist();
   call('riwayatMember',[mb],function(r){if(HIST.member!==mb)return;HIST.list=r;drawHist();},function(){if(HIST.member===mb){HIST.list=[];drawHist();}});
 }
-function histTotals(x){var q=0,mn=0,lt=0;(x.items||[]).forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);});(x.lostTimes||[]).forEach(function(l){lt+=n(l.minutes);});return {q:q,mn:mn,lt:lt};}
+function histTotals(x){var q=0,mn=0,lt=0;(x.items||[]).forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);});lt=ltSum(x.lostTimes,false);return {q:q,mn:mn,lt:lt};}
 function drawHist(){
   var box=$('hist');if(!box)return;
   if(!S.member){box.innerHTML='';return;}
@@ -1374,7 +1380,7 @@ function drawHist(){
         +'<span class="pill '+cls+'">'+esc(x.status)+'</span></div>';
       if(op){
         h+='<div style="width:100%;font-size:12px;color:var(--ink2)">'+(x.items||[]).map(function(it){return '• '+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+(it.mc&&it.mc!=='-'?' ('+esc(it.mc)+')':'')+': '+fmt(n(it.normalQty)+n(it.otQty))+' pcs, '+(it.mcMin!==undefined&&it.mc&&it.mc!=='-'&&n(it.mcMin)+n(it.mcOtMin)?'MC '+fmt(n(it.mcMin)+n(it.mcOtMin))+' mnt':fmt(n(it.normalMin)+n(it.otMin))+' mnt')+(it.oiban?', oiban '+esc(it.oiban):'');}).join('<br>')+(x.op&&(n(x.op.min)||n(x.op.ot))?'<br>• Jaga mesin: '+fmt(n(x.op.min))+' mnt'+(n(x.op.ot)?' + OT '+fmt(n(x.op.ot)):''):'')
-          +((x.lostTimes||[]).length?'<br>'+x.lostTimes.map(function(l){return '• '+esc(l.type)+': '+fmt(n(l.minutes))+' mnt';}).join('<br>'):'')+'</div>';
+          +((x.lostTimes||[]).length?'<br>'+x.lostTimes.map(function(l){return '• '+esc(l.type)+': '+fmt(n(l.minutes))+' mnt'+(isOtLt(l)?' (OT)':'');}).join('<br>'):'')+'</div>';
       }
       if(x.status==='Menunggu')h+='<button class="btn ghost sm-btn" style="margin-top:0" onclick="editKirimanSaya(\''+esc(x.id)+'\')">Edit kiriman ini</button>';
       else if(x.status==='Ditolak')h+='<button class="btn ghost sm-btn" style="margin-top:0" onclick="pakaiUlang(\''+esc(x.id)+'\')">Perbaiki &amp; kirim ulang</button>';
@@ -1528,8 +1534,8 @@ function openReview(){
     rows+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><b>'+fmt(iq)+' pcs</b></div><div class="in2">'+esc(info)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
   });
   if(mcItems().length)rows+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(opMin('min'))+' mnt</b>'+(opMin('ot')?' + OT <b>'+fmt(opMin('ot'))+' mnt</b>':'')+' (dibagi ke '+mcItems().length+' MC sesuai menit MC jalan)</div>';
-  S.lost.forEach(function(l){lt+=n(l.minutes);});
-  if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
+  lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
+  if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
   var tot=m+lt;
   var h='<div class="meta"><span><b>'+esc(S.member)+'</b>'+(helperSec()?' · Perbantuan ('+esc(helperSec())+')':'')+'</span><span>'+esc(new Date(S.date+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</span></div>';
   h+='<div class="tiles"><div class="tile"><small>Hasil</small><b>'+fmt(q)+'</b></div><div class="tile"><small>NG</small><b>'+fmt(ng)+'</b></div><div class="tile '+(tot===M.normalMin||helperSec()&&tot<M.normalMin?'ok':'w')+'"><small>Menit</small><b>'+fmt(tot)+'</b></div></div>';
@@ -1550,7 +1556,7 @@ function send(){
   var b=$('btnConfirm');SENDING=true;b.disabled=true;b.innerHTML='<span class="spin"></span> Mengirim…';
   var payload={date:S.date,member:S.member,
     items:items.map(function(it){var o={category:it.category,part:it.part,type:it.type,mc:it.mc,normalQty:it.normalQty,normalMin:it.normalMin,otQty:it.otQty,otMin:it.otMin,lot:it.lot,oiban:it.oiban,ng:it.ng};if(String(it.ngNote||'').trim()&&lainIdx(cat(it.category))>=0&&n(it.ng[lainIdx(cat(it.category))]))o.ngNote=String(it.ngNote).trim();if(isMc(it)){o.mcMin=it.mcMin;o.mcOtMin=it.mcOtMin;}return o;}),
-    lostTimes:S.lost.map(function(l){return {type:l.type,minutes:l.minutes,remarks:l.remarks};}),replaceId:S.editId||''};
+    lostTimes:S.lost.map(function(l){var o={type:l.type,minutes:l.minutes,remarks:l.remarks};if(isOtLt(l))o.ot=true;return o;}),replaceId:S.editId||''};
   if(items.some(isMc))payload.op={min:S.op.min,ot:S.op.ot};
   call('submitReport',[payload],function(r){
     SENDING=false;b.disabled=false;b.textContent='Kirim laporan';closeReview();clearDraft();HIST.member='';
@@ -1667,7 +1673,7 @@ function leaderShell(body){
 function subTotals(s){
   var n=function(v){var x=parseFloat(v);return isNaN(x)?0:x;},q=0,mn=0,ot=0,ng=0,lt=0;
   s.items.forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);ot+=n(it.otMin);(it.ng||[]).forEach(function(v){ng+=n(v);});});
-  s.lostTimes.forEach(function(l){lt+=n(l.minutes);});
+  lt=ltSum(s.lostTimes,false);ot+=ltSum(s.lostTimes,true);
   return {q:q,mn:mn,ot:ot,ng:ng,lt:lt};
 }
 function fmtDate(d){try{return new Date(d+'T00:00:00').toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return d;}}
@@ -1708,7 +1714,7 @@ function renderQueue(){
           +'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
       if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
-      if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit: '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
+      if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit'+(ltSum(s.lostTimes,true)?' + OT '+fmt(ltSum(s.lostTimes,true)):'')+': '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
       h+='</div>';
       if(pend)h+='<div class="lacts"><button class="btn main '+(w.length?'grey':'green')+'" onclick="approveOne(\''+id+'\')">Setujui</button><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup':'Detail')+'</button><button class="btn soft" onclick="rejectOne(\''+id+'\')">Tolak</button></div>';
@@ -1806,7 +1812,7 @@ function renderEdit(){
   h+='<div class="ed-sec">Lost time / Another job</div>';
   E.lost.forEach(function(l,ix){
     var P='E.lost['+ix+']';
-    h+='<div class="ed-it"><div class="ed-g">'+edSel('Jenis',M.lostTypes,l.type,P+'.type')+edIn('Menit',l.minutes,P+'.minutes',1)+'</div>'
+    h+='<div class="ed-it"><div class="ed-g">'+edSel('Jenis',M.lostTypes,l.type,P+'.type')+edIn('Menit',l.minutes,P+'.minutes',1)+edSel('Waktu',['Normal','OT'],isOtLt(l)?'OT':'Normal',P+'.ot')+'</div>'
       +'<div class="ed-h" style="margin:10px 0 0"><div class="grow">'+edIn('Keterangan',l.remarks||'',P+'.remarks')+'</div>'
       +'<button class="icon-btn" title="Hapus" onclick="E.lost.splice('+ix+',1);renderEdit()">'+IC.del+'</button></div></div>';
   });
