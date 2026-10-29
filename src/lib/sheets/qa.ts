@@ -281,6 +281,21 @@ export async function apiMaster() {
   };
 }
 
+/** Master Data untuk Rencana Lembur: STKI + Std MC per part dan jumlah mesin aktif per kategori. */
+export async function planMaster() {
+  const m = await readMaster();
+  const parts: { category: string; name: string; type: string; stki: number; stdMc: number }[] = [];
+  m.categories.forEach((c) =>
+    c.parts.forEach((p) =>
+      (p.types.length ? p.types : [""]).forEach((t) => {
+        const k = `${c.name}|${p.name}|${t}`;
+        parts.push({ category: c.name, name: p.name, type: t, stki: m.stki[k] || 0, stdMc: m.stdMc[k] || 0 });
+      }),
+    ),
+  );
+  return { parts, machines: Object.fromEntries(m.categories.map((c) => [c.name, c.machines.length])), normalMin: m.normalMin, otLimitHrs: m.otLimitHrs };
+}
+
 // ---------- Antrian ----------
 
 export type Item = Record<string, unknown> & { ng?: unknown[] };
