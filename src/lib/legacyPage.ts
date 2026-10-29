@@ -276,6 +276,10 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .lwho{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
 .lwho .in{width:auto;height:38px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.4);color:#fff;font-weight:600;font-size:14px;padding:0 10px}
 .lwho .in::-webkit-calendar-picker-indicator{filter:invert(1)}
+.ldate{display:inline-flex;align-items:center;gap:4px}.ldate button{width:34px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:20px;font-weight:700;cursor:pointer}.ldate button:disabled{opacity:.35;cursor:default}
+.ldate label{position:relative;display:inline-flex;align-items:center;height:38px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap}
+.ldate input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.lnk2{background:none;border:0;padding:0 4px;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer;font-size:inherit}
 .lwho a,.lwho button.lnk{color:#fff;font-weight:700;background:none;border:0;cursor:pointer;font-size:13px;padding:0}
 .ltabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:rgba(255,255,255,.14);border-radius:12px;padding:4px;margin-top:12px}
 .ltabs button{min-height:42px;border:0;border-radius:9px;background:transparent;color:#fff;font-weight:600;font-size:14px;cursor:pointer}
@@ -1652,23 +1656,29 @@ function doLogin(){
   var b=$('btnLogin');b.disabled=true;b.innerHTML='<span class="spin"></span> Memeriksa…';
   call('leaderLogin',[L.name,pin],function(){
     L.pin=pin;try{localStorage.setItem(LKEY,L.name);}catch(e){}
-    loadQueue();
+    L.date=M.today;loadQueue();
   },function(msg){renderLogin(msg);});
 }
 function loadQueue(keepSel){
   if(!keepSel)L.sel={};
   $('app').innerHTML=leaderShell('<div class="loading"><div class="spin"></div>Memuat kiriman…</div>');
+  if(!L.date)L.date=M.today;
   call('getAntrian',[L.name,L.pin,L.tab,L.date],function(r){L.data=r;renderQueue();},function(msg){toast(msg);renderLogin(msg);});
 }
 function leaderShell(body){
   var c=L.data?L.data.counts:{};
   var tab=function(k,label){return '<button class="'+(L.tab===k?'on':'')+'" onclick="L.tab=\''+k+'\';loadQueue()">'+label+(c[k]!=null?' '+c[k]:'')+'</button>';};
   return '<div class="lband"><div class="lwho"><span><b>'+esc(L.name)+'</b> · Leader</span>'
-    +'<input class="in" type="date" value="'+esc(L.date)+'" onchange="L.date=this.value;loadQueue()">'
-    +(L.date?'<button class="lnk" onclick="L.date=\'\';loadQueue()">Semua tanggal</button>':'')
+    +'<span class="ldate"><button type="button" onclick="geserTgl(-1)" aria-label="Hari sebelumnya">‹</button><label><b>'+esc(L.date===M.today?'Hari ini':fmtDate(L.date))+'</b><input type="date" value="'+esc(L.date)+'" max="'+esc(M.today)+'" onchange="if(this.value){L.date=this.value;loadQueue()}"></label><button type="button" onclick="geserTgl(1)" '+(L.date>=M.today?'disabled':'')+' aria-label="Hari berikutnya">›</button></span>'
     +'<span style="margin-left:auto;display:flex;gap:14px"><a href="/hari-ini" style="text-decoration:none">Hari Ini &amp; Laporan</a><button class="lnk" onclick="keluar()">Keluar</button></span></div>'
     +'<div class="ltabs">'+tab('Menunggu','Menunggu')+tab('Disetujui','Disetujui')+tab('Ditolak','Ditolak')+'</div></div>'
     +body;
+}
+// Geser tanggal validasi satu hari (tidak lewat hari ini).
+function geserTgl(d){var t=new Date(L.date+'T00:00:00');t.setDate(t.getDate()+d);var v=t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2);if(v>M.today)return;L.date=v;loadQueue();}
+function tglLain(){
+  var w=(L.data&&L.data.waitOther)||[];if(!w.length)return '';
+  return '<div class="lwarn" style="margin:14px 0 0">Masih ada kiriman <b>Menunggu</b> di tanggal lain: '+w.map(function(x){return '<button class="lnk2" onclick="L.date=\''+x.date+'\';L.tab=\'Menunggu\';loadQueue()">'+esc(fmtDate(x.date))+' ('+x.count+')</button>';}).join(' ')+'</div>';
 }
 function subTotals(s){
   var n=function(v){var x=parseFloat(v);return isNaN(x)?0:x;},q=0,mn=0,ot=0,ng=0,lt=0;
@@ -1679,9 +1689,9 @@ function subTotals(s){
 function fmtDate(d){try{return new Date(d+'T00:00:00').toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return d;}}
 function inisial(nm){var w=String(nm||'').trim().split(/\s+/);return ((w[0]||'').charAt(0)+(w[1]||'').charAt(0)).toUpperCase()||'?';}
 function renderQueue(){
-  var list=L.data.list,h='',pend=L.tab==='Menunggu';
+  var list=L.data.list,h=tglLain(),pend=L.tab==='Menunggu',hari=L.date===M.today?'hari ini':fmtDate(L.date);
   if(!list.length){
-    h='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi.':'Belum ada kiriman '+L.tab.toLowerCase()+'.')+'</div></div>';
+    h+='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi untuk '+esc(hari)+'.':'Belum ada kiriman '+L.tab.toLowerCase()+' untuk '+esc(hari)+'.')+'</div></div>';
   } else {
     if(pend){
       var nok=list.filter(function(s){return !perluCek(s);}).length;
