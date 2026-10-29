@@ -276,6 +276,11 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .lwho{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
 .lwho .in{width:auto;height:38px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.4);color:#fff;font-weight:600;font-size:14px;padding:0 10px}
 .lwho .in::-webkit-calendar-picker-indicator{filter:invert(1)}
+.ldate{display:inline-flex;align-items:center;gap:4px}.ldate button{width:34px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:20px;font-weight:700;cursor:pointer}.ldate button:disabled{opacity:.35;cursor:default}
+.ldate label{position:relative;display:inline-flex;align-items:center;height:38px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap}
+.ldate input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.mcbox{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:14px}.mcbox>b{display:block;margin-bottom:6px}.mcr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:6px 0;border-top:1px solid var(--line)}.mcr .mcn{font-weight:700;min-width:64px}.mcr .mcv{margin-left:auto;font-weight:700}.mcr small{flex-basis:100%;color:var(--muted);font-size:12.5px}.mcr.bad{color:var(--red-d)}.mcr.bad .mcv{color:var(--red-d)}.mcr small.w{color:var(--red-d);font-weight:600}
+.lnk2{background:none;border:0;padding:0 4px;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer;font-size:inherit}
 .lwho a,.lwho button.lnk{color:#fff;font-weight:700;background:none;border:0;cursor:pointer;font-size:13px;padding:0}
 .ltabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:rgba(255,255,255,.14);border-radius:12px;padding:4px;margin-top:12px}
 .ltabs button{min-height:42px;border:0;border-radius:9px;background:transparent;color:#fff;font-weight:600;font-size:14px;cursor:pointer}
@@ -909,6 +914,23 @@ function freshState(keepMember){
 function isMc(it){var c=cat(it.category);return !!(c&&c.machines.length&&it.mc&&it.mc!=='-'&&it.mcMin!==undefined);}
 function mcItems(){return S.items.filter(isMc);}
 // Satu MC hanya bisa jalan maksimal waktu kerja per hari. Bila 2 lot di MC yang sama, menit MC harus dibagi per lot.
+// Total menit MC per mesin (semua lot dijumlah) untuk ringkasan di form, layar kirim dan halaman leader.
+function mcTot(items){
+  var t={},ks=[];
+  (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc;if(!t[k]){t[k]={mc:it.mc,n:0,o:0,lots:[]};ks.push(k);}var e=t[k];e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.lots.push({lot:it.lot||'?',n:n(it.mcMin),o:n(it.mcOtMin)});});
+  return ks.map(function(k){return t[k];});
+}
+function mcBox(items){
+  var l=mcTot(items);if(!l.length)return '';
+  var maxO=M.otLimitHrs*60;
+  return '<div class="mcbox"><b>Total menit per MC</b>'+l.map(function(e){
+    var bad=e.n>M.normalMin||e.o>maxO;
+    return '<div class="mcr'+(bad?' bad':'')+'"><span class="mcn">'+esc(e.mc)+'</span><span class="mcv">'+fmt(e.n)+' / '+M.normalMin+(e.o?' · OT '+fmt(e.o):'')+' mnt</span>'
+      +(e.lots.length>1?'<small>'+e.lots.map(function(x){return 'Lot '+esc(x.lot)+': '+fmt(x.n)+(x.o?' + OT '+fmt(x.o):'');}).join(' + ')+'</small>':'')
+      +(bad?'<small class="w">Lebih dari waktu kerja. Bila beberapa lot, bagi menit MC per lot.</small>':'')+'</div>';
+  }).join('')+'</div>';
+}
+function drawMcSum(){var b=$('mcSum');if(b)b.innerHTML=mcBox(S.items);}
 function mcOver(items){
   var t={},out=[];
   (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc,e=t[k]||(t[k]={mc:it.mc,n:0,o:0,rows:0});e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.rows++;});
@@ -987,7 +1009,7 @@ function render(){
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
   S.items.forEach(function(it,ix){h+=partCard(it,ix);});
-  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button>';
+  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button><div id="mcSum">'+mcBox(S.items)+'</div>';
   if(mcItems().length){
     autoOp();
     h+='<div class="sec-h"><h2>Waktu kerja operator di mesin</h2><span class="cnt">'+mcItems().length+' MC</span></div>';
@@ -1174,7 +1196,7 @@ function pairHtml(ix,title,q,m,it,mc){
 /* ---------- actions ---------- */
 function changed(recheck){
   if(S.op&&S.op.auto){autoOp();var a=$('opMin'),b=$('opOt');if(a&&document.activeElement!==a)a.value=S.op.min;if(b&&document.activeElement!==b)b.value=S.op.ot;}
-  saveDraft();updateBar();if(recheck)checkExisting();
+  saveDraft();updateBar();drawMcSum();if(recheck)checkExisting();
 }
 function setF(ix,k,v,rerender){
   S.items[ix][k]=v;changed();
@@ -1533,6 +1555,7 @@ function openReview(){
     var info=[it.category,it.mc&&it.mc!=='-'?it.mc:'',fmt(im)+(mc?' menit MC':' menit'),it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
     rows+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><b>'+fmt(iq)+' pcs</b></div><div class="in2">'+esc(info)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
   });
+  if(mcItems().length)rows+='<div class="prow">'+mcBox(S.items)+'</div>';
   if(mcItems().length)rows+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(opMin('min'))+' mnt</b>'+(opMin('ot')?' + OT <b>'+fmt(opMin('ot'))+' mnt</b>':'')+' (dibagi ke '+mcItems().length+' MC sesuai menit MC jalan)</div>';
   lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
   if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
@@ -1652,23 +1675,29 @@ function doLogin(){
   var b=$('btnLogin');b.disabled=true;b.innerHTML='<span class="spin"></span> Memeriksa…';
   call('leaderLogin',[L.name,pin],function(){
     L.pin=pin;try{localStorage.setItem(LKEY,L.name);}catch(e){}
-    loadQueue();
+    L.date=M.today;loadQueue();
   },function(msg){renderLogin(msg);});
 }
 function loadQueue(keepSel){
   if(!keepSel)L.sel={};
   $('app').innerHTML=leaderShell('<div class="loading"><div class="spin"></div>Memuat kiriman…</div>');
+  if(!L.date)L.date=M.today;
   call('getAntrian',[L.name,L.pin,L.tab,L.date],function(r){L.data=r;renderQueue();},function(msg){toast(msg);renderLogin(msg);});
 }
 function leaderShell(body){
   var c=L.data?L.data.counts:{};
   var tab=function(k,label){return '<button class="'+(L.tab===k?'on':'')+'" onclick="L.tab=\''+k+'\';loadQueue()">'+label+(c[k]!=null?' '+c[k]:'')+'</button>';};
   return '<div class="lband"><div class="lwho"><span><b>'+esc(L.name)+'</b> · Leader</span>'
-    +'<input class="in" type="date" value="'+esc(L.date)+'" onchange="L.date=this.value;loadQueue()">'
-    +(L.date?'<button class="lnk" onclick="L.date=\'\';loadQueue()">Semua tanggal</button>':'')
+    +'<span class="ldate"><button type="button" onclick="geserTgl(-1)" aria-label="Hari sebelumnya">‹</button><label><b>'+esc(L.date===M.today?'Hari ini':fmtDate(L.date))+'</b><input type="date" value="'+esc(L.date)+'" max="'+esc(M.today)+'" onchange="if(this.value){L.date=this.value;loadQueue()}"></label><button type="button" onclick="geserTgl(1)" '+(L.date>=M.today?'disabled':'')+' aria-label="Hari berikutnya">›</button></span>'
     +'<span style="margin-left:auto;display:flex;gap:14px"><a href="/hari-ini" style="text-decoration:none">Hari Ini &amp; Laporan</a><button class="lnk" onclick="keluar()">Keluar</button></span></div>'
     +'<div class="ltabs">'+tab('Menunggu','Menunggu')+tab('Disetujui','Disetujui')+tab('Ditolak','Ditolak')+'</div></div>'
     +body;
+}
+// Geser tanggal validasi satu hari (tidak lewat hari ini).
+function geserTgl(d){var t=new Date(L.date+'T00:00:00');t.setDate(t.getDate()+d);var v=t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2);if(v>M.today)return;L.date=v;loadQueue();}
+function tglLain(){
+  var w=(L.data&&L.data.waitOther)||[];if(!w.length)return '';
+  return '<div class="lwarn" style="margin:14px 0 0">Masih ada kiriman <b>Menunggu</b> di tanggal lain: '+w.map(function(x){return '<button class="lnk2" onclick="L.date=\''+x.date+'\';L.tab=\'Menunggu\';loadQueue()">'+esc(fmtDate(x.date))+' ('+x.count+')</button>';}).join(' ')+'</div>';
 }
 function subTotals(s){
   var n=function(v){var x=parseFloat(v);return isNaN(x)?0:x;},q=0,mn=0,ot=0,ng=0,lt=0;
@@ -1679,9 +1708,9 @@ function subTotals(s){
 function fmtDate(d){try{return new Date(d+'T00:00:00').toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return d;}}
 function inisial(nm){var w=String(nm||'').trim().split(/\s+/);return ((w[0]||'').charAt(0)+(w[1]||'').charAt(0)).toUpperCase()||'?';}
 function renderQueue(){
-  var list=L.data.list,h='',pend=L.tab==='Menunggu';
+  var list=L.data.list,h=tglLain(),pend=L.tab==='Menunggu',hari=L.date===M.today?'hari ini':fmtDate(L.date);
   if(!list.length){
-    h='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi.':'Belum ada kiriman '+L.tab.toLowerCase()+'.')+'</div></div>';
+    h+='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi untuk '+esc(hari)+'.':'Belum ada kiriman '+L.tab.toLowerCase()+' untuk '+esc(hari)+'.')+'</div></div>';
   } else {
     if(pend){
       var nok=list.filter(function(s){return !perluCek(s);}).length;
@@ -1713,6 +1742,7 @@ function renderQueue(){
           +(mc?kv('Menit MC',fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):''),b.mc):kv('Menit',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):''),false))
           +'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
+      if(mcTot(s.items).length)h+='<div class="prow">'+mcBox(s.items)+'</div>';
       if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
       if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit'+(ltSum(s.lostTimes,true)?' + OT '+fmt(ltSum(s.lostTimes,true)):'')+': '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';

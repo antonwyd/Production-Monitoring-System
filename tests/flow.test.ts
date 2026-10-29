@@ -96,6 +96,12 @@ describe("form member → leader → report", () => {
     const ant = await qa.getAntrian("Dian Kartika", "4139", "Menunggu", "");
     expect(ant.counts).toEqual({ Menunggu: 1, Disetujui: 0, Ditolak: 0 });
     expect(ant.list[0]).toMatchObject({ id: r.id, date: DATE, member: "Harjuki" });
+    // Per tanggal: tanggal lain kosong, kiriman Menunggu tanggal ini dilaporkan di waitOther.
+    const lain = await qa.getAntrian("Dian Kartika", "4139", "Menunggu", "2026-10-19");
+    expect(lain.counts).toEqual({ Menunggu: 0, Disetujui: 0, Ditolak: 0 });
+    expect(lain.list).toEqual([]);
+    expect(lain.waitOther).toEqual([{ date: DATE, count: 1 }]);
+    expect((await qa.getAntrian("Dian Kartika", "4139", "Menunggu", DATE)).waitOther).toEqual([]);
 
     // Leader mengedit qty; data asli tetap tersimpan.
     const edited = { ...payload(), items: [{ ...payload().items[0], normalQty: "7000" }] };
