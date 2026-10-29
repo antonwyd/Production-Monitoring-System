@@ -630,14 +630,21 @@ export async function leaderLogin(name: string, pin: string) {
 export async function getAntrian(name: string, pin: string, status: string, dateStr: string) {
   await cekLeader(name, pin);
   const all = await readQueue();
+  // Angka di tab mengikuti tanggal yang dipilih; kiriman Menunggu di tanggal lain dilaporkan terpisah.
   const counts: Record<string, number> = { [ST_WAIT]: 0, [ST_OK]: 0, [ST_NO]: 0 };
+  const lain: Record<string, number> = {};
   all.forEach((x) => {
+    if (dateStr && x.date !== dateStr) {
+      if (x.status === ST_WAIT) lain[x.date] = (lain[x.date] || 0) + 1;
+      return;
+    }
     if (counts[x.status] !== undefined) counts[x.status]++;
   });
+  const waitOther = Object.keys(lain).sort().map((date) => ({ date, count: lain[date] }));
   let list = all.filter((x) => x.status === status && (!dateStr || x.date === dateStr));
   list.sort((a, b) => (status === ST_WAIT ? (a.sent < b.sent ? -1 : 1) : a.decided > b.decided ? -1 : 1));
   if (status !== ST_WAIT) list = list.slice(0, 100);
-  return { counts, list: list.map(pub) };
+  return { counts, waitOther, list: list.map(pub) };
 }
 
 export async function putuskan(name: string, pin: string, ids: string[], action: string, note: string) {
