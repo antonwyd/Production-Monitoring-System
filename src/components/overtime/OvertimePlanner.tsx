@@ -9,7 +9,8 @@ import {
   findProduct,
   finishText,
   normalEnd,
-  parsePoText,
+  parsePo,
+  poDateOf,
   productLabel,
   STEP_NAME,
   toClock,
@@ -169,10 +170,12 @@ export default function OvertimePlanner({ master, saved, today, canSave }: { mas
     setPasteInfo([]);
   }
   function applyPaste() {
-    const rows = parsePoText(paste ?? "");
+    const po = parsePo(paste ?? "");
     const miss: string[] = [];
     const first = Math.max(0, dates.indexOf(pasteDate));
-    for (const r of rows) {
+    const year = Number(d.start.slice(0, 4));
+    let last = "";
+    for (const r of po.rows) {
       const p = findProduct(products, r.name, r.type);
       if (!p) {
         miss.push(r.raw);
@@ -180,12 +183,21 @@ export default function OvertimePlanner({ master, saved, today, canSave }: { mas
       }
       const q: Record<string, number> = {};
       r.qtys.forEach((v, i) => {
-        const t = dates[first + i];
-        if (t && v > 0) q[t] = v;
+        const t = poDateOf(po, r, i, year, (k) => dates[first + k]);
+        if (t && v > 0) {
+          q[t] = v;
+          if (t > last) last = t;
+        }
       });
       addLine(p, q);
     }
-    setPasteInfo([`${rows.length - miss.length} baris masuk.`, ...miss.map((m) => `Tidak dikenali: ${m}`)]);
+    // Periode diperpanjang sampai tanggal PO terakhir dari judul kolom.
+    if (last && !dates.includes(last) && last > d.start) {
+      let n = d.nDays;
+      while (n < 15 && workDates(d.start, n, d.sat).slice(-1)[0] < last) n++;
+      set({ nDays: n });
+    }
+    setPasteInfo([`${po.rows.length - miss.length} baris masuk.`, ...miss.map((m) => `Tidak dikenali: ${m}`)]);
     if (!miss.length) setPaste(null);
   }
   const setQty = (key: string, date: string, v: number) => setD((x) => ({ ...x, lines: x.lines.map((l) => (l.key === key ? { ...l, qty: { ...l.qty, [date]: v } } : l)) }));
@@ -339,7 +351,7 @@ export default function OvertimePlanner({ master, saved, today, canSave }: { mas
             </div>
             {paste !== null && (
               <div className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
-                <p className="text-xs text-slate-600">Copy dari Excel: kolom Part, Type, lalu Qty. Bisa beberapa kolom Qty berurutan per tanggal.</p>
+                <p className="text-xs text-slate-600">Copy dari Excel: kolom Part, Type, lalu Qty per tanggal. Kode GDD627*D1 J dan judul tanggal (29-Oct, 30-Oct) ikut terbaca; ikutkan baris judul tanggal supaya qty masuk ke tanggal yang benar.</p>
                 <textarea className="input min-h-28 font-mono text-sm" placeholder={"627-J\tD1\t50000\t40000\n629-J\tD2\t30000"} value={paste} onChange={(e) => setPaste(e.target.value)} />
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   Qty pertama untuk

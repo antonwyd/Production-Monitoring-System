@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProducts, computePlan, findProduct, parsePoText, partKey, prodBefore, runSchedule, toClock, type PlanInput, type PlanMaster } from "@/lib/overtime";
+import { buildProducts, computePlan, findProduct, parsePo, parsePoText, poDateOf, partKey, prodBefore, runSchedule, toClock, type PlanInput, type PlanMaster } from "@/lib/overtime";
 
 const master: PlanMaster = {
   parts: [
@@ -90,5 +90,44 @@ describe("Rencana Lembur", () => {
     expect(se.status).toBe("kurang");
     expect(se.needNoOt).toBe(10);
     expect(r.status).toBe("kurang");
+  });
+});
+
+describe("Kode PO customer", () => {
+  it("membaca GDD...*D1 J dengan kolom kosong", () => {
+    const rows = parsePoText("GDD608JCL-1*D1      J\t\t\t\nGDD625-H-*D1        J\t\t 48,000 \t 48,000 \nGDD627*D2           J\t\t 162,000 \t 367,200 \nGDD629*D2-NC              J\t\t\t 5,000\nGDD688A-H-*D1       J\t\t\t 36,000 \nGDD6800*D2          J\t\t 54,000 \t");
+    expect(rows.map((r) => [r.name, r.type, r.qtys])).toEqual([
+      ["625-H", "D1", [0, 48000, 48000]],
+      ["627-J", "D2", [0, 162000, 367200]],
+      ["629-J NC", "D2", [0, 0, 5000]],
+      ["688A-H", "D1", [0, 0, 36000]],
+      ["6800-J", "D2", [0, 54000]],
+    ]);
+  });
+});
+
+describe("File PO dengan judul tanggal", () => {
+  it("memasangkan qty ke kolom 29-Oct / 30-Oct, kolom update dilewati", () => {
+    const text = [
+      "Part Name\tupdate\t\t\t",
+      "\t\t29-Oct\t30-Oct\t31-Oct",
+      "GD 6900T1X-DF             J\t\t\t\t",
+      "GDD625-H-*D2        J\t\t 72,000 \t\t",
+      "GDD627*D1           J\t\t 237,600 \t 345,600 \t",
+      "GDD688A-H-*D1       J\t\t\t 36,000 \t",
+      "GDD699*D1           J",
+    ].join("\n");
+    const po = parsePo(text);
+    const got = po.rows.map((r) => [r.name, r.type, r.qtys.map((q, i) => (q ? `${poDateOf(po, r, i, 2026, () => undefined)}=${q}` : "")).filter(Boolean)]);
+    expect(got).toEqual([
+      ["625-H", "D2", ["2026-10-29=72000"]],
+      ["627-J", "D1", ["2026-10-29=237600", "2026-10-30=345600"]],
+      ["688A-H", "D1", ["2026-10-30=36000"]],
+    ]);
+    expect(findProduct(products, "627-J", "D1")).toBeTruthy();
+  });
+
+  it("kode plastik GD ...-DF", () => {
+    expect(parsePoText("GD 6900T1X-DF   J\t\t5000")[0]).toMatchObject({ name: "6900T1X", type: "" });
   });
 });

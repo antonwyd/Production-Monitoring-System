@@ -74,16 +74,58 @@ const isNum = (c: string) => /^\d[\d.,]*$/.test(c);
 const numOf = (c: string) => Number(c.replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", ".")) || 0;
 
 /**
+ * Kode part customer di file PO: "GDD627*D1  J" = 627-J D1, "GDD625-H-*D2  J" = 625-H D2,
+ * "GDD629*D2-NC  J" = 629-J NC D2, plastik "GD 6900T1X-DF  J" = 6900T1X.
+ * Huruf di akhir (J) ditambahkan ke Iron bila nama belum berakhiran -H/-J.
+ */
+export function fromPoCode(text: string): { name: string; type: string } | null {
+  const t = text.trim();
+  const m = t.match(/^GDD\s*(.+?)\*\s*(D\d)(-NC)?(?:\s+([A-Z]))?$/i);
+  if (m) {
+    let name = m[1].trim().replace(/-+$/, "");
+    if (m[4] && !/-[A-Z]$/i.test(name)) name += `-${m[4].toUpperCase()}`;
+    if (m[3]) name += " NC";
+    return { name, type: m[2].toUpperCase() };
+  }
+  const p = t.match(/^GD\s+(\S+?)(?:-DF)?(?:\s+[A-Z])?$/i);
+  return p ? { name: p[1], type: "" } : null;
+}
+
+const BULAN_PO: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, mei: 5, jun: 6, jul: 7, aug: 8, agu: 8, agt: 8, sep: 9, oct: 10, okt: 10, nov: 11, dec: 12, des: 12 };
+
+/** "29-Oct", "29 Okt", "29/10" -> "10-29" (bulan-tanggal), selain itu null. */
+function headerDate(c: string): string | null {
+  const m = c.trim().match(/^(\d{1,2})[-\s/.]([A-Za-z]{3})[a-z]*\.?$/) ?? null;
+  const n = c.trim().match(/^(\d{1,2})[/.-](\d{1,2})$/);
+  const mon = m ? BULAN_PO[m[2].toLowerCase()] : n ? Number(n[2]) : 0;
+  const day = Number((m ?? n)?.[1] ?? 0);
+  if (!mon || mon > 12 || !day || day > 31) return null;
+  return `${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export type PoPaste = {
+  rows: { name: string; type: string; qtys: number[]; raw: string; /** kolom (indeks sel) qty pertama */ col: number }[];
+  /** Tanggal per kolom dari baris judul ("29-Oct"), format "MM-DD"; kosong bila tidak ada judul tanggal. */
+  colDates: (string | null)[];
+};
+
+/**
  * Baca tempelan dari Excel/WhatsApp: tiap baris "Part  Type  Qty [Qty2 Qty3 ...]" (Tab, ;, atau spasi).
  * Beberapa qty = qty per tanggal berurutan. Type boleh kosong atau ikut di nama ("627-J D1").
+ * Bila ada baris judul berisi tanggal (29-Oct 30-Oct), qty dipasangkan ke tanggal kolomnya.
  */
-export function parsePoText(text: string): { name: string; type: string; qtys: number[]; raw: string }[] {
-  const out: { name: string; type: string; qtys: number[]; raw: string }[] = [];
+export function parsePo(text: string): PoPaste {
+  const rows: PoPaste["rows"] = [];
+  let colDates: (string | null)[] = [];
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    const tabbed = line.includes("\t") || line.includes(";");
-    const cells = (tabbed ? line.split(/[\t;]/) : line.split(/\s+/)).map((c) => c.trim());
+    if (!raw.trim()) continue;
+    const tabbed = raw.includes("\t") || raw.includes(";");
+    const cells = (tabbed ? raw.replace(/\s+$/, "").split(/[\t;]/) : raw.trim().split(/\s+/)).map((c) => c.trim());
+    const dates = cells.map(headerDate);
+    if (dates.filter(Boolean).length >= 1 && !cells.some((c) => isNum(c) && !headerDate(c))) {
+      colDates = dates;
+      continue;
+    }
     let end = cells.length;
     while (end > 1 && (isNum(cells[end - 1]) || cells[end - 1] === "")) end--;
     const qtys = cells.slice(end).map((c) => (c === "" ? 0 : Math.round(numOf(c))));
@@ -92,11 +134,25 @@ export function parsePoText(text: string): { name: string; type: string; qtys: n
     if (!head.length || !qtys.some((q) => q > 0)) continue;
     let type = head.length > 1 && /^(D\d|-)$/i.test(head[head.length - 1]) ? head.pop()! : "";
     let name = head.join(" ");
+    const code = fromPoCode(name);
+    if (code) ({ name, type } = code);
     const m = !type && name.match(/^(.*\S)\s+(D\d)$/i);
     if (m) [name, type] = [m[1], m[2]];
-    out.push({ name: name.trim(), type, qtys, raw: line });
+    rows.push({ name: name.trim(), type, qtys, raw: raw.trim(), col: end });
   }
-  return out;
+  return { rows, colDates };
+}
+
+/** Versi sederhana tanpa info kolom (untuk tes & tempelan satu tanggal). */
+export const parsePoText = (text: string) => parsePo(text).rows.map(({ name, type, qtys, raw }) => ({ name, type, qtys, raw }));
+
+/** Tanggal "YYYY-MM-DD" untuk qty ke-i satu baris: dari judul kolom bila ada, selain itu berurutan mulai `first`. */
+export function poDateOf(p: PoPaste, row: PoPaste["rows"][number], i: number, year: number, fallback: (i: number) => string | undefined): string | undefined {
+  if (p.colDates.some(Boolean)) {
+    const md = p.colDates[row.col + i];
+    return md ? `${year}-${md}` : undefined;
+  }
+  return fallback(i);
 }
 
 // ---------- Jam kerja ----------
