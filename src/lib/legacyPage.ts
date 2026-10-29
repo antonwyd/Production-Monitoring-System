@@ -279,6 +279,7 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .ldate{display:inline-flex;align-items:center;gap:4px}.ldate button{width:34px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:20px;font-weight:700;cursor:pointer}.ldate button:disabled{opacity:.35;cursor:default}
 .ldate label{position:relative;display:inline-flex;align-items:center;height:38px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;font-size:14px;cursor:pointer;white-space:nowrap}
 .ldate input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.mcbox{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:14px}.mcbox>b{display:block;margin-bottom:6px}.mcr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:6px 0;border-top:1px solid var(--line)}.mcr .mcn{font-weight:700;min-width:64px}.mcr .mcv{margin-left:auto;font-weight:700}.mcr small{flex-basis:100%;color:var(--muted);font-size:12.5px}.mcr.bad{color:var(--red-d)}.mcr.bad .mcv{color:var(--red-d)}.mcr small.w{color:var(--red-d);font-weight:600}
 .lnk2{background:none;border:0;padding:0 4px;color:inherit;font-weight:700;text-decoration:underline;cursor:pointer;font-size:inherit}
 .lwho a,.lwho button.lnk{color:#fff;font-weight:700;background:none;border:0;cursor:pointer;font-size:13px;padding:0}
 .ltabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:rgba(255,255,255,.14);border-radius:12px;padding:4px;margin-top:12px}
@@ -913,6 +914,23 @@ function freshState(keepMember){
 function isMc(it){var c=cat(it.category);return !!(c&&c.machines.length&&it.mc&&it.mc!=='-'&&it.mcMin!==undefined);}
 function mcItems(){return S.items.filter(isMc);}
 // Satu MC hanya bisa jalan maksimal waktu kerja per hari. Bila 2 lot di MC yang sama, menit MC harus dibagi per lot.
+// Total menit MC per mesin (semua lot dijumlah) untuk ringkasan di form, layar kirim dan halaman leader.
+function mcTot(items){
+  var t={},ks=[];
+  (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc;if(!t[k]){t[k]={mc:it.mc,n:0,o:0,lots:[]};ks.push(k);}var e=t[k];e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.lots.push({lot:it.lot||'?',n:n(it.mcMin),o:n(it.mcOtMin)});});
+  return ks.map(function(k){return t[k];});
+}
+function mcBox(items){
+  var l=mcTot(items);if(!l.length)return '';
+  var maxO=M.otLimitHrs*60;
+  return '<div class="mcbox"><b>Total menit per MC</b>'+l.map(function(e){
+    var bad=e.n>M.normalMin||e.o>maxO;
+    return '<div class="mcr'+(bad?' bad':'')+'"><span class="mcn">'+esc(e.mc)+'</span><span class="mcv">'+fmt(e.n)+' / '+M.normalMin+(e.o?' · OT '+fmt(e.o):'')+' mnt</span>'
+      +(e.lots.length>1?'<small>'+e.lots.map(function(x){return 'Lot '+esc(x.lot)+': '+fmt(x.n)+(x.o?' + OT '+fmt(x.o):'');}).join(' + ')+'</small>':'')
+      +(bad?'<small class="w">Lebih dari waktu kerja. Bila beberapa lot, bagi menit MC per lot.</small>':'')+'</div>';
+  }).join('')+'</div>';
+}
+function drawMcSum(){var b=$('mcSum');if(b)b.innerHTML=mcBox(S.items);}
 function mcOver(items){
   var t={},out=[];
   (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc,e=t[k]||(t[k]={mc:it.mc,n:0,o:0,rows:0});e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.rows++;});
@@ -991,7 +1009,7 @@ function render(){
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
   S.items.forEach(function(it,ix){h+=partCard(it,ix);});
-  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button>';
+  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button><div id="mcSum">'+mcBox(S.items)+'</div>';
   if(mcItems().length){
     autoOp();
     h+='<div class="sec-h"><h2>Waktu kerja operator di mesin</h2><span class="cnt">'+mcItems().length+' MC</span></div>';
@@ -1178,7 +1196,7 @@ function pairHtml(ix,title,q,m,it,mc){
 /* ---------- actions ---------- */
 function changed(recheck){
   if(S.op&&S.op.auto){autoOp();var a=$('opMin'),b=$('opOt');if(a&&document.activeElement!==a)a.value=S.op.min;if(b&&document.activeElement!==b)b.value=S.op.ot;}
-  saveDraft();updateBar();if(recheck)checkExisting();
+  saveDraft();updateBar();drawMcSum();if(recheck)checkExisting();
 }
 function setF(ix,k,v,rerender){
   S.items[ix][k]=v;changed();
@@ -1537,6 +1555,7 @@ function openReview(){
     var info=[it.category,it.mc&&it.mc!=='-'?it.mc:'',fmt(im)+(mc?' menit MC':' menit'),it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
     rows+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><b>'+fmt(iq)+' pcs</b></div><div class="in2">'+esc(info)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
   });
+  if(mcItems().length)rows+='<div class="prow">'+mcBox(S.items)+'</div>';
   if(mcItems().length)rows+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(opMin('min'))+' mnt</b>'+(opMin('ot')?' + OT <b>'+fmt(opMin('ot'))+' mnt</b>':'')+' (dibagi ke '+mcItems().length+' MC sesuai menit MC jalan)</div>';
   lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
   if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
@@ -1723,6 +1742,7 @@ function renderQueue(){
           +(mc?kv('Menit MC',fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):''),b.mc):kv('Menit',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):''),false))
           +'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
+      if(mcTot(s.items).length)h+='<div class="prow">'+mcBox(s.items)+'</div>';
       if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
       if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit'+(ltSum(s.lostTimes,true)?' + OT '+fmt(ltSum(s.lostTimes,true)):'')+': '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
