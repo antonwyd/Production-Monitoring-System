@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/auth";
 import Sidebar, { type NavGroup } from "./Sidebar";
+import { FEATURES, REPORT_HOME } from "@/lib/features";
 
 const ROLE_LABEL: Record<Session["role"], string> = {
   operator: "Operator",
@@ -18,8 +19,8 @@ function navFor(role: Session["role"]): NavGroup[] {
         { key: "hari-ini", href: "/hari-ini", label: "Dashboard", icon: "dash" },
         { key: "form", href: "/", label: "Input Produksi", icon: "form", external: true },
         ...(canValidate ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
-        { key: "production-report", href: "/production-report", label: "Production Report", icon: "today" },
-        { key: "overtime", href: "/overtime", label: "Rencana Lembur", icon: "clock" },
+        { key: "production-report", href: REPORT_HOME, label: "Production Report", icon: "today" },
+        ...(FEATURES.overtime ? [{ key: "overtime", href: "/overtime", label: "Rencana Lembur", icon: "clock" }] : []),
       ],
     },
     {

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import { FEATURES } from "@/lib/features";
 import PlanForm from "@/components/monthly/PlanForm";
 import { requirePageRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
@@ -11,6 +13,7 @@ export const metadata = { title: "Isi Plan · Production Report" };
 export const dynamic = "force-dynamic";
 
 export default async function PlanPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  if (!FEATURES.planActual) redirect("/production-report/rekap"); // disembunyikan sementara, lihat lib/features.ts
   const session = await requirePageRole(["leader", "admin"]);
   const q = await searchParams;
   const month = isValidMonth(q.month) ? q.month : defaultMonth(todayJakarta());
