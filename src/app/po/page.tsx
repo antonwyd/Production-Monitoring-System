@@ -24,7 +24,7 @@ export default async function PoPage() {
       </main>
     );
   }
-  const body = <PoTracker initial={initial} today={todayJakarta()} user={session.name} manage={manage} />;
+  const body = <PoTracker initial={initial} today={todayJakarta()} manage={manage} />;
   // Operator tidak memakai menu dashboard: cukup kepala sederhana + tombol kembali ke form.
   if (session.role === "operator")
     return (

@@ -1,15 +1,15 @@
-// Tab Pantau PO di Google Sheet:
+// Pantau PO di Google Sheet, cukup dua tab:
 //  "Master Customer" A:M = Customer | Item ID | Item Name | Pcs/Kanban | Pcs/Pole | Diameter Pole | O-Ring | Pole/Kanban | Kanban/Box | Pole/Box | Pcs/Box | Aktif | Catatan
-//  "PO Customer"     A:L = ID | No PO | Customer | Item ID | Item Name | Qty PO (pcs) | Tgl Delivery | Status | Catatan | Diinput oleh | Waktu input | Diubah
-//  "Input Box"       A:M = ID | Tanggal | Waktu | Proses | Customer | Item ID | Item Name | Box | Pcs/Box | Pcs tambahan | Total Pcs | Oleh | Catatan
-// Baris tidak pernah dihapus/digeser: PO dihapus = Status "Dihapus", box dihapus = Proses "Dihapus (...)".
+//  "PO Customer"     A:S = ID | Customer | Item ID | Part | Pcs/Box | Qty PO (pcs) | Qty PO (box) | Tgl Delivery | Seiretsu (box) | Senbetsu (box)
+//                          | Seiretsu kurang (pcs) | Senbetsu kurang (pcs) | Seiretsu kurang (box) | Senbetsu kurang (box) | Sisa hari | Status | No PO | Diinput oleh | Update terakhir
+// G dan K:O rumus di Sheet (supaya Sheet sendiri juga terbaca); aplikasi menghitung ulang sendiri dari A:F, H:J, P.
+// Baris tidak pernah dihapus/digeser: PO dihapus = Status "Dihapus".
 import { nowJakarta, serialToText } from "../dates";
-import { PROCESSES, type BoxEntry, type CustItem, type Po, type PoState, type PoStatus, type Process } from "../po";
+import type { CustItem, Po, PoState, PoStatus, Process } from "../po";
 import { sheetsIO } from "./qa";
 
 export const SHEET_CUST = "Master Customer";
 export const SHEET_PO = "PO Customer";
-export const SHEET_BOX = "Input Box";
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v)).trim();
 const n = (v: unknown) => {
@@ -18,110 +18,97 @@ const n = (v: unknown) => {
   return Number.isFinite(x) ? x : 0;
 };
 const day = (v: unknown) => (typeof v === "number" ? serialToText(v) : s(v).slice(0, 10));
-const stamp = (v: unknown) => (typeof v === "number" ? serialToText(v, true) : s(v));
-const txt = (v: string) => `'${v}`; // simpan apa adanya (item "6700" tetap teks)
+const txt = (v: string) => `'${v}`; // simpan apa adanya (part "6700" tetap teks)
+
+/** Rumus kolom G dan K:O untuk baris r. */
+export const formulas = (r: number) => ({
+  G: `=IF(E${r}>0,ROUNDUP(F${r}/E${r}),"")`,
+  KO: [
+    `=IF(P${r}<>"Open",0,MAX(0,F${r}-I${r}*E${r}))`,
+    `=IF(P${r}<>"Open",0,MAX(0,F${r}-J${r}*E${r}))`,
+    `=IF(E${r}>0,ROUNDUP(K${r}/E${r}),"")`,
+    `=IF(E${r}>0,ROUNDUP(L${r}/E${r}),"")`,
+    `=IF(H${r}="","",H${r}-TODAY())`,
+  ],
+});
 
 export async function readPoState(): Promise<PoState> {
-  const [cust, po, box] = await sheetsIO().get([`'${SHEET_CUST}'!A2:M`, `'${SHEET_PO}'!A2:L`, `'${SHEET_BOX}'!A2:M`], "UNFORMATTED_VALUE");
+  const [cust, po] = await sheetsIO().get([`'${SHEET_CUST}'!A2:M`, `'${SHEET_PO}'!A2:S`], "UNFORMATTED_VALUE");
   const items: CustItem[] = cust
     .filter((r) => s(r[0]) && s(r[1]))
     .map((r) => ({ customer: s(r[0]), itemId: s(r[1]), itemName: s(r[2]) || s(r[1]), pcsPerBox: n(r[10]), active: !/^(tidak|no|n|0|false)$/i.test(s(r[11])) }));
   const pos: Po[] = [];
   po.forEach((r, i) => {
-    const st = s(r[7]);
+    const st = s(r[15]);
     if (!s(r[0]) || st === "Dihapus") return;
     pos.push({
       id: s(r[0]),
       row: i + 2,
-      noPo: s(r[1]),
-      customer: s(r[2]),
-      itemId: s(r[3]),
-      itemName: s(r[4]),
+      customer: s(r[1]),
+      itemId: s(r[2]),
+      itemName: s(r[3]) || s(r[2]),
+      pcsPerBox: n(r[4]),
       qty: n(r[5]),
-      due: day(r[6]),
-      status: (st === "Selesai" || st === "Batal" ? st : "Open") as PoStatus,
-      note: s(r[8]),
-      by: s(r[9]),
-      at: stamp(r[10]),
+      due: day(r[7]),
+      box: { Seiretsu: n(r[8]), Senbetsu: n(r[9]) },
+      status: (st === "Dikirim" || st === "Batal" ? st : "Open") as PoStatus,
+      noPo: s(r[16]),
+      by: s(r[17]),
+      updated: s(r[18]),
     });
   });
-  const entries: BoxEntry[] = [];
-  box.forEach((r, i) => {
-    if (!s(r[0])) return;
-    const process = PROCESSES.find((p) => p.toLowerCase() === s(r[3]).toLowerCase());
-    if (!process) return;
-    const b = n(r[7]),
-      per = n(r[8]),
-      extra = n(r[9]);
-    entries.push({
-      id: s(r[0]),
-      row: i + 2,
-      date: day(r[1]),
-      time: s(r[2]),
-      process,
-      customer: s(r[4]),
-      itemId: s(r[5]),
-      itemName: s(r[6]),
-      box: b,
-      pcsPerBox: per,
-      extra,
-      pcs: r[10] === undefined || r[10] === "" ? b * per + extra : n(r[10]),
-      by: s(r[11]),
-      note: s(r[12]),
-    });
-  });
-  return { items, pos, entries, asOf: nowJakarta() };
+  return { items, pos, asOf: nowJakarta() };
 }
 
-const rid = (prefix: string) => `${prefix}${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0")}`;
+const rid = () => `PO${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, "0")}`;
 
-export type NewPo = { noPo: string; customer: string; itemId: string; itemName: string; qty: number; due: string; note: string };
+export type NewPo = { customer: string; itemId: string; itemName: string; pcsPerBox: number; qty: number; due: string; noPo: string };
 
+/** Tambah PO di baris kosong berikutnya (setelah baris terisi terakhir). */
 export async function addPos(list: NewPo[], by: string): Promise<void> {
-  const at = nowJakarta();
-  const rows = list.map((p) => [rid("PO"), txt(p.noPo), txt(p.customer), txt(p.itemId), txt(p.itemName), p.qty, p.due, "Open", txt(p.note), by, at, ""]);
-  await sheetsIO().append(`'${SHEET_PO}'!A1:L1`, rows);
-}
-
-export async function updatePo(row: number, id: string, patch: { qty?: number; due?: string; status?: PoStatus; noPo?: string; note?: string }, by: string): Promise<void> {
-  if (!(row >= 2)) throw new Error("Baris PO tidak valid. Muat ulang halaman.");
-  const [g] = await sheetsIO().get([`'${SHEET_PO}'!A${row}:L${row}`], "UNFORMATTED_VALUE");
-  if (s(g[0]?.[0]) !== id) throw new Error("PO sudah berubah di Sheet. Muat ulang halaman.");
-  const data: { range: string; values: (string | number)[][] }[] = [];
-  const put = (col: string, v: string | number) => data.push({ range: `'${SHEET_PO}'!${col}${row}`, values: [[v]] });
-  if (patch.noPo !== undefined) put("B", txt(patch.noPo));
-  if (patch.qty !== undefined) put("F", patch.qty);
-  if (patch.due !== undefined) put("G", patch.due);
-  if (patch.status !== undefined) put("H", patch.status);
-  if (patch.note !== undefined) put("I", txt(patch.note));
-  put("L", `${by} ${nowJakarta()}`);
+  const [ids] = await sheetsIO().get([`'${SHEET_PO}'!A2:A`], "UNFORMATTED_VALUE");
+  let r = ids.length + 2;
+  const at = `${by} ${nowJakarta().slice(0, 16)}`;
+  const data = list.map((p) => {
+    const f = formulas(r);
+    const row = { range: `'${SHEET_PO}'!A${r}:S${r}`, values: [[rid(), txt(p.customer), txt(p.itemId), txt(p.itemName), p.pcsPerBox, p.qty, f.G, p.due, 0, 0, ...f.KO, "Open", txt(p.noPo), by, at]] };
+    r++;
+    return row;
+  });
   await sheetsIO().update(data);
 }
 
-export async function deletePo(row: number, id: string): Promise<void> {
+async function checkRow(row: number, id: string) {
   if (!(row >= 2)) throw new Error("Baris PO tidak valid. Muat ulang halaman.");
-  const [g] = await sheetsIO().get([`'${SHEET_PO}'!A${row}:A${row}`], "UNFORMATTED_VALUE");
+  const [g] = await sheetsIO().get([`'${SHEET_PO}'!A${row}:J${row}`], "UNFORMATTED_VALUE");
   if (s(g[0]?.[0]) !== id) throw new Error("PO sudah berubah di Sheet. Muat ulang halaman.");
-  await sheetsIO().update([{ range: `'${SHEET_PO}'!H${row}`, values: [["Dihapus"]] }]);
+  return g[0];
 }
 
-export type NewBox = { date: string; process: Process; customer: string; itemId: string; itemName: string; box: number; pcsPerBox: number; extra: number; note: string };
-
-export async function addBox(b: NewBox, by: string): Promise<string> {
-  const id = rid("BX");
-  const time = nowJakarta().slice(11, 16);
-  await sheetsIO().append(`'${SHEET_BOX}'!A1:M1`, [
-    [id, b.date, time, b.process, txt(b.customer), txt(b.itemId), txt(b.itemName), b.box, b.pcsPerBox, b.extra, b.box * b.pcsPerBox + b.extra, by, txt(b.note)],
+/** Tambah (atau kurangi) box selesai pada satu PO. Mengembalikan jumlah box baru. */
+export async function addBox(row: number, id: string, process: Process, delta: number, by: string): Promise<number> {
+  const r = await checkRow(row, id);
+  const col = process === "Seiretsu" ? "I" : "J";
+  const next = n(r[process === "Seiretsu" ? 8 : 9]) + delta;
+  if (next < 0) throw new Error("Jumlah box tidak boleh kurang dari 0.");
+  const sign = delta > 0 ? `+${delta}` : String(delta);
+  await sheetsIO().update([
+    { range: `'${SHEET_PO}'!${col}${row}`, values: [[next]] },
+    { range: `'${SHEET_PO}'!S${row}`, values: [[`${by} ${nowJakarta().slice(0, 16)} ${process} ${sign} box`]] },
   ]);
-  return id;
+  return next;
 }
 
-export async function readBoxRow(row: number): Promise<{ id: string; by: string; date: string } | null> {
-  const [g] = await sheetsIO().get([`'${SHEET_BOX}'!A${row}:L${row}`], "UNFORMATTED_VALUE");
-  const r = g[0];
-  return r && s(r[0]) ? { id: s(r[0]), by: s(r[11]), date: day(r[1]) } : null;
-}
-
-export async function deleteBox(row: number, by: string): Promise<void> {
-  await sheetsIO().update([{ range: `'${SHEET_BOX}'!D${row}`, values: [[`Dihapus (${by} ${nowJakarta()})`]] }]);
+export async function updatePo(row: number, id: string, patch: { qty?: number; due?: string; status?: PoStatus | "Dihapus"; noPo?: string; box?: Partial<Record<Process, number>> }, by: string): Promise<void> {
+  await checkRow(row, id);
+  const data: { range: string; values: (string | number)[][] }[] = [];
+  const put = (col: string, v: string | number) => data.push({ range: `'${SHEET_PO}'!${col}${row}`, values: [[v]] });
+  if (patch.qty !== undefined) put("F", patch.qty);
+  if (patch.due !== undefined) put("H", patch.due);
+  if (patch.box?.Seiretsu !== undefined) put("I", patch.box.Seiretsu);
+  if (patch.box?.Senbetsu !== undefined) put("J", patch.box.Senbetsu);
+  if (patch.status !== undefined) put("P", patch.status);
+  if (patch.noPo !== undefined) put("Q", txt(patch.noPo));
+  put("S", `${by} ${nowJakarta().slice(0, 16)} ubah PO`);
+  await sheetsIO().update(data);
 }
