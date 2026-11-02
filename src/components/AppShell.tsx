@@ -20,6 +20,7 @@ function navFor(role: Session["role"]): NavGroup[] {
         { key: "form", href: "/", label: "Input Produksi", icon: "form", external: true },
         ...(canValidate ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
         { key: "production-report", href: REPORT_HOME, label: "Production Report", icon: "today" },
+        ...(FEATURES.po ? [{ key: "po", href: "/po", label: "Pantau PO Customer", icon: "box" }] : []),
         ...(FEATURES.overtime ? [{ key: "overtime", href: "/overtime", label: "Rencana Lembur", icon: "clock" }] : []),
       ],
     },
