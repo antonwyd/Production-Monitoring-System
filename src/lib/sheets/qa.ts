@@ -82,6 +82,7 @@ export type V1Master = {
   leaders: string[];
   normalMin: number;
   otLimitHrs: number;
+  otLimitHolHrs: number;
   today: string;
   /** Member section lain (perbantuan): nama -> section. Tidak wajib 480 menit di form. */
   helpers?: Record<string, string>;
@@ -210,6 +211,7 @@ async function readMaster(): Promise<FullMaster> {
     leaders: L.filter((x) => s(x[0]) && s(x[1])).map((x) => s(x[0]).trim()),
     normalMin: setting("Normal working time", 480),
     otLimitHrs: setting("OT limit", 4),
+    otLimitHolHrs: setting("Holiday OT limit", 12),
     today: todayJakarta(),
     nik,
     section,
