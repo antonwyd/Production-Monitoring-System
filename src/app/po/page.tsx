@@ -1,18 +1,23 @@
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import PoTracker from "@/components/po/PoTracker";
+import PoDashboard, { PoInput } from "@/components/po/PoTracker";
 import { getSession } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
 import { FEATURES } from "@/lib/features";
+import { PROCESSES, type Process } from "@/lib/po";
 import { readPoState } from "@/lib/sheets/po";
 
-export const metadata = { title: "Pantau PO Customer · QA Production" };
+export const metadata = { title: "Monitoring PO Customer · QA Production" };
 export const dynamic = "force-dynamic";
 
-export default async function PoPage() {
+/** /po = dashboard; /po?p=Seiretsu|Senbetsu|Washing = input progress box per proses. Operator langsung ke input. */
+export default async function PoPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
   if (!FEATURES.po) redirect("/hari-ini");
   const session = await getSession();
   if (!session) redirect("/login?next=po");
+  const q = (await searchParams).p;
+  const operator = session.role === "operator";
+  const process = PROCESSES.find((p) => p.toLowerCase() === String(q ?? "").toLowerCase()) ?? (operator ? ("Seiretsu" as Process) : null);
   const manage = session.role === "leader" || session.role === "admin";
   let initial;
   try {
@@ -24,9 +29,10 @@ export default async function PoPage() {
       </main>
     );
   }
-  const body = <PoTracker initial={initial} today={todayJakarta()} manage={manage} />;
+  const today = todayJakarta();
+  const body = process ? <PoInput initial={initial} today={today} process={process} operator={operator} /> : <PoDashboard initial={initial} today={today} manage={manage} />;
   // Operator tidak memakai menu dashboard: cukup kepala sederhana + tombol kembali ke form.
-  if (session.role === "operator")
+  if (operator)
     return (
       <div className="min-h-screen">
         <header className="flex items-center gap-3 bg-gradient-to-r from-brand-900 to-brand-600 px-4 py-3 text-white">
@@ -39,7 +45,7 @@ export default async function PoPage() {
       </div>
     );
   return (
-    <AppShell session={session} active="po">
+    <AppShell session={session} active={process ? `po:${process}` : "po"}>
       {body}
     </AppShell>
   );

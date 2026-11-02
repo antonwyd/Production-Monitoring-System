@@ -20,10 +20,22 @@ function navFor(role: Session["role"]): NavGroup[] {
         { key: "form", href: "/", label: "Input Produksi", icon: "form", external: true },
         ...(canValidate ? [{ key: "validasi", href: "/?page=leader", label: "Validasi Leader", icon: "check", external: true }] : []),
         { key: "production-report", href: REPORT_HOME, label: "Production Report", icon: "today" },
-        ...(FEATURES.po ? [{ key: "po", href: "/po", label: "Pantau PO Customer", icon: "box" }] : []),
         ...(FEATURES.overtime ? [{ key: "overtime", href: "/overtime", label: "Rencana Lembur", icon: "clock" }] : []),
       ],
     },
+    ...(FEATURES.po
+      ? [
+          {
+            title: "Monitoring PO",
+            items: [
+              { key: "po", href: "/po", label: "Monitoring PO Customer", icon: "box" },
+              { key: "po:Seiretsu", href: "/po?p=Seiretsu", label: "Input Seiretsu", icon: "form" },
+              { key: "po:Senbetsu", href: "/po?p=Senbetsu", label: "Input Senbetsu", icon: "form" },
+              { key: "po:Washing", href: "/po?p=Washing", label: "Input Washing", icon: "form" },
+            ],
+          },
+        ]
+      : []),
     {
       title: "Analisa",
       items: [

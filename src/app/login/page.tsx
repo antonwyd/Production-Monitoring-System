@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   // ?next=leader: dari halaman Validasi Leader, kembali ke sana setelah masuk.
   const nextQ = (await searchParams).next;
   const toLeader = nextQ === "leader";
-  const toPo = nextQ === "po"; // dari halaman Pantau PO (operator Seiretsu/Senbetsu)
+  const toPo = nextQ === "po"; // dari halaman Monitoring PO (operator Seiretsu/Senbetsu/Washing)
   const s = await getSession();
   if (s) redirect(toPo ? "/po" : toLeader && (s.role === "leader" || s.role === "admin") ? LEADER_PAGE : HOME_BY_ROLE[s.role]);
   return (
