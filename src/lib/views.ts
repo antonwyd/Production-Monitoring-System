@@ -175,13 +175,16 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
   const p = totals(prev, st);
   const vsText = prevDate === addDays(date, -1) ? "vs kemarin" : prevDate ? `vs ${formatDateId(prevDate).slice(0, -5)}` : "";
 
-  // Member yang diharapkan lapor: yang punya data 14 hari terakhir atau mengirim hari ini.
+  // Member yang diharapkan lapor: lihat "Wajib lapor" di bawah.
   const sentToday = new Map<string, string[]>();
   for (const s of subs) sentToday.set(s.member, [...(sentToday.get(s.member) ?? []), s.status]);
-  const active = new Set([...facts.map((f) => f.memberName), ...lost.map((l) => lostMember(l, master)), ...sentToday.keys()]);
   const doneToday = new Set([...today.map((f) => f.memberName), ...lost.filter((l) => l.workDate === date).map((l) => lostMember(l, master))]);
+  // Wajib lapor = semua member QA yang Active di Master Data (tidak lagi bergantung riwayat 14 hari,
+  // supaya tetap jalan setelah data direset). Sabtu/Minggu = libur: hanya yang ikut lembur & mengirim.
   // Section selain QA hanya dihitung kalau hari ini ikut lapor (perbantuan/lembur di QA).
-  const expected = master.members.filter((m) => active.has(m.name) && (isQaMember(m) || sentToday.has(m.name) || doneToday.has(m.name)));
+  const g = new Date(`${date}T00:00:00Z`).getUTCDay();
+  const libur = g === 0 || g === 6;
+  const expected = master.members.filter((m) => (isQaMember(m) && !libur) || sentToday.has(m.name) || doneToday.has(m.name));
   const missing = expected.filter((m) => !sentToday.has(m.name) && !doneToday.has(m.name)).map((m) => m.name);
   const rejected = openRejections(subs)
     .map((s) => ({ member: s.member, note: s.note }));
