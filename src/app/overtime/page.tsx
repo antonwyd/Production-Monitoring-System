@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import { FEATURES } from "@/lib/features";
 import OvertimePlanner from "@/components/overtime/OvertimePlanner";
 import { requirePageRole } from "@/lib/auth";
 import { addDays, todayJakarta } from "@/lib/dates";
@@ -31,6 +33,7 @@ async function recentUnits(today: string): Promise<Record<string, number>> {
 }
 
 export default async function OvertimePage() {
+  if (!FEATURES.overtime) redirect("/hari-ini"); // disembunyikan sementara, lihat lib/features.ts
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const today = todayJakarta();
   const [pm, recent, saved] = await Promise.all([planMaster(), recentUnits(today), readOtPlans()]);

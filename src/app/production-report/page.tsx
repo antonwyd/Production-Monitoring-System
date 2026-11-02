@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import { FEATURES } from "@/lib/features";
 import DataStatus from "@/components/DataStatus";
 import DownloadMenu from "@/components/report/DownloadMenu";
 import PresdirView from "@/components/monthly/PresdirView";
@@ -12,6 +14,7 @@ import { withDataAge } from "@/lib/reports";
 export const metadata = { title: "Plan vs Actual · QA Production" };
 
 export default async function ProductionReportPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  if (!FEATURES.planActual) redirect("/production-report/rekap"); // disembunyikan sementara, lihat lib/features.ts
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const q = await searchParams;
   // Data hari ini baru lengkap sore, jadi pencapaian dihitung s/d kemarin.

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import type { Role } from "./types";
+import { REPORT_HOME } from "./features";
 
 export type Session = {
   userId: number;
@@ -65,7 +66,7 @@ export async function getSession(): Promise<Session | null> {
 export const HOME_BY_ROLE: Record<Role, string> = {
   operator: "/",
   leader: "/hari-ini",
-  manager: "/production-report",
+  manager: REPORT_HOME,
   admin: "/hari-ini",
 };
 

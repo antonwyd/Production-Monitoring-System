@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FEATURES } from "@/lib/features";
 
 type Tab = { kind: string; label: string; desc: string; color: keyof typeof COLORS; icon: keyof typeof ICONS; href?: string };
 
@@ -24,7 +25,7 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
   {
     key: "production-report",
     tabs: [
-      { kind: "production-report", label: "Plan vs Actual", desc: "Pencapaian plan per section (laporan Presdir)", color: "red", icon: "month", href: "/production-report" },
+      ...(FEATURES.planActual ? [{ kind: "production-report", label: "Plan vs Actual", desc: "Pencapaian plan per section (laporan Presdir)", color: "red", icon: "month", href: "/production-report" } as Tab] : []),
       { kind: "monthly", label: "Rekap bulanan", desc: "Total sebulan per kategori & member", color: "violet", icon: "day", href: "/production-report/rekap" },
       { kind: "category", label: "Detail per part", desc: "Pcs per kategori & part, periode bebas", color: "blue", icon: "layers", href: "/production-report/detail" },
     ],
