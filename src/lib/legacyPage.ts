@@ -896,7 +896,7 @@ function showErr(m){toast(m);}
 function newItem(category){return {id:++uid,category:category||'',part:'',type:'',mc:'',normalQty:'',normalMin:'',otQty:'',otMin:'',mcMin:'',mcOtMin:'',lot:'',oiban:'',ng:['','','','','','','','','',''],ngNote:'',open:true,ngOpen:true};}
 // Posisi NG "Lain-lain" di grup NG kategori itu (-1 bila tidak ada). Isinya wajib diberi catatan jenis NG.
 function lainIdx(c){if(!c)return -1;for(var k=0;k<c.ng.length;k++)if(/^lain/i.test(c.ng[k]||''))return k;return -1;}
-function newLt(){return {id:++uid,type:'',minutes:'',remarks:'',ot:false};}
+function newLt(){return {id:++uid,type:'',minutes:'',remarks:'',ot:libur()};}
 // Lost time saat lembur (OT) tidak dihitung ke 480 menit normal, tapi ke jam OT.
 function isOtLt(l){return !!l&&(l.ot===true||l.ot===1||l.ot==='1'||l.ot==='OT');}
 function ltSum(list,ot){var t=0;(list||[]).forEach(function(l){if(isOtLt(l)===!!ot)t+=n(l.minutes);});return t;}
@@ -905,10 +905,15 @@ var DEF_LT=[['5S',10],['Briefing Pagi',5],['Input Laporan',5]];
 // Member section lain (perbantuan) tidak diisi lost time otomatis dan tidak wajib 480 menit.
 function helperOf(mb){return (M.helpers&&M.helpers[mb])||'';}
 function helperSec(){return S?helperOf(S.member):'';}
-function defLost(mb){if(helperOf(mb===undefined?(S&&S.member):mb))return [];return DEF_LT.filter(function(d){return M.lostTypes.indexOf(d[0])>=0;}).map(function(d){var l=newLt();l.type=d[0];l.minutes=String(d[1]);l.auto=true;return l;});}
+// Sabtu/Minggu = hari libur: semua kerja dihitung lembur (OT), tanpa aturan 480 menit, batas OT libur.
+function isLibur(d){if(!d)return false;var g=new Date(d+'T00:00:00').getDay();return g===0||g===6;}
+function libur(){return !!S&&isLibur(S.date);}
+function otMaxMin(d){return (isLibur(d)?(M.otLimitHolHrs||12):M.otLimitHrs)*60;}
+function bebas(){return !!helperSec()||libur();}
+function defLost(mb,d){if(helperOf(mb===undefined?(S&&S.member):mb)||isLibur(d===undefined?(S?S.date:M.today):d))return [];return DEF_LT.filter(function(d){return M.lostTypes.indexOf(d[0])>=0;}).map(function(d){var l=newLt();l.type=d[0];l.minutes=String(d[1]);l.auto=true;return l;});}
 function freshState(keepMember){
   var mb=keepMember&&S?S.member:savedMember();
-  return {date:M.today,member:mb,items:[newItem()],lost:defLost(mb),op:{min:'',ot:'',auto:true}};
+  return {date:M.today,member:mb,items:[newItem()],lost:defLost(mb,M.today),op:{min:'',ot:'',auto:true}};
 }
 // Part di mesin (bagian PF): menit yang diisi adalah menit MC jalan, waktu operator diisi sekali per laporan.
 function isMc(it){var c=cat(it.category);return !!(c&&c.machines.length&&it.mc&&it.mc!=='-'&&it.mcMin!==undefined);}
@@ -920,23 +925,23 @@ function mcTot(items){
   (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc;if(!t[k]){t[k]={mc:it.mc,n:0,o:0,lots:[]};ks.push(k);}var e=t[k];e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.lots.push({lot:it.lot||'?',n:n(it.mcMin),o:n(it.mcOtMin)});});
   return ks.map(function(k){return t[k];});
 }
-function mcBox(items){
+function mcBox(items,d){
   var l=mcTot(items);if(!l.length)return '';
-  var maxO=M.otLimitHrs*60;
+  var dd=d===undefined&&S?S.date:d,maxO=otMaxMin(dd),lb=isLibur(dd);
   return '<div class="mcbox"><b>Total menit per MC</b>'+l.map(function(e){
-    var bad=e.n>M.normalMin||e.o>maxO;
-    return '<div class="mcr'+(bad?' bad':'')+'"><span class="mcn">'+esc(e.mc)+'</span><span class="mcv">'+fmt(e.n)+' / '+M.normalMin+(e.o?' · OT '+fmt(e.o):'')+' mnt</span>'
+    var bad=(lb?e.n>0:e.n>M.normalMin)||e.o>maxO;
+    return '<div class="mcr'+(bad?' bad':'')+'"><span class="mcn">'+esc(e.mc)+'</span><span class="mcv">'+(lb?'OT '+fmt(e.o)+' / '+fmt(maxO):fmt(e.n)+' / '+M.normalMin+(e.o?' · OT '+fmt(e.o):''))+' mnt</span>'
       +(e.lots.length>1?'<small>'+e.lots.map(function(x){return 'Lot '+esc(x.lot)+': '+fmt(x.n)+(x.o?' + OT '+fmt(x.o):'');}).join(' + ')+'</small>':'')
-      +(bad?'<small class="w">Lebih dari waktu kerja. Bila beberapa lot, bagi menit MC per lot.</small>':'')+'</div>';
+      +(bad?'<small class="w">'+(lb&&e.n?'Hari libur: menit MC diisi di kolom Lembur (OT).':'Lebih dari waktu kerja. Bila beberapa lot, bagi menit MC per lot.')+'</small>':'')+'</div>';
   }).join('')+'</div>';
 }
-function drawMcSum(){var b=$('mcSum');if(b)b.innerHTML=mcBox(S.items);}
-function mcOver(items){
+function drawMcSum(){var b=$('mcSum');if(b)b.innerHTML=mcBox(S.items,S.date);}
+function mcOver(items,d){
   var t={},out=[];
   (items||[]).forEach(function(it){if(!it.mc||it.mc==='-'||it.mcMin===undefined)return;var k=it.category+'|'+it.mc,e=t[k]||(t[k]={mc:it.mc,n:0,o:0,rows:0});e.n+=n(it.mcMin);e.o+=n(it.mcOtMin);e.rows++;});
   Object.keys(t).forEach(function(k){var e=t[k];
     if(e.n>M.normalMin)out.push({mc:e.mc,msg:e.mc+' jalan normal total '+fmt(e.n)+' menit di '+e.rows+' baris (maks '+M.normalMin+'). Bila beberapa lot di MC yang sama, bagi menit MC per lot.'});
-    if(e.o>M.otLimitHrs*60)out.push({mc:e.mc,msg:e.mc+' jalan OT total '+fmt(e.o)+' menit di '+e.rows+' baris (maks '+fmt(M.otLimitHrs*60)+'). Bagi menit MC OT per lot.'});});
+    var mo=otMaxMin(d);if(e.o>mo)out.push({mc:e.mc,msg:e.mc+' jalan OT total '+fmt(e.o)+' menit di '+e.rows+' baris (maks '+fmt(mo)+'). Bagi menit MC OT per lot.'});});
   return out;
 }
 // Menit operator untuk part tanpa mesin (normal / OT).
@@ -948,7 +953,8 @@ function autoOp(){
   var mc=mcItems();
   if(!mc.length){S.op.min='';S.op.ot='';return;}
   var lt=ltSum(S.lost,false);
-  if(helperSec()){var mx=0;mc.forEach(function(i){mx=Math.max(mx,n(i.mcMin));});S.op.min=mx?String(mx):'';}
+  if(libur())S.op.min='';
+  else if(helperSec()){var mx=0;mc.forEach(function(i){mx=Math.max(mx,n(i.mcMin));});S.op.min=mx?String(mx):'';}
   else S.op.min=String(Math.max(0,M.normalMin-nonMcMin('normalMin')-lt));
   var ot=0;mc.forEach(function(i){ot=Math.max(ot,n(i.mcOtMin));});S.op.ot=ot?String(ot):'';
 }
@@ -1001,7 +1007,7 @@ var EDP=null,EDL=null; // part / lost time yang sedang dibuka di layar edit
 function render(){
   var h='';
   h+='<div class="band"><div class="idrow">';
-  h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="S.date=this.value;this.closest(\'.idc\').classList.remove(\'err\');changed(true)"></div></label>';
+  h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="setTgl(this.value);this.closest(\'.idc\').classList.remove(\'err\')"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
   h+='</div></div><div class="pane"><div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
@@ -1009,12 +1015,12 @@ function render(){
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
   S.items.forEach(function(it,ix){h+=partCard(it,ix);});
-  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button><div id="mcSum">'+mcBox(S.items)+'</div>';
+  h+='<button class="add" onclick="addItem()">'+IC.plus+' Tambah part</button><div id="mcSum">'+mcBox(S.items,S.date)+'</div>';
   if(mcItems().length){
     autoOp();
     h+='<div class="sec-h"><h2>Waktu kerja operator di mesin</h2><span class="cnt">'+mcItems().length+' MC</span></div>';
     h+='<div class="card"><p class="hint" style="margin:0 0 12px;font-size:13px;color:var(--muted)">Isi sekali saja, berapa menit Anda menjaga mesin hari ini (bukan dijumlah per MC). '
-      +(S.op.auto?(helperSec()?'Terisi otomatis dari menit MC jalan terlama.':'Terisi otomatis dari '+M.normalMin+' menit dikurangi lost time dan part tanpa mesin.'):'<a href="#" onclick="S.op.auto=true;changed();render();return false">Hitung otomatis lagi</a>')+'</p><div class="grid g2">'
+      +(S.op.auto?(libur()?'Hari libur: isi kolom Lembur (OT). OT terisi dari menit MC OT terlama.':helperSec()?'Terisi otomatis dari menit MC jalan terlama.':'Terisi otomatis dari '+M.normalMin+' menit dikurangi lost time dan part tanpa mesin.'):'<a href="#" onclick="S.op.auto=true;changed();render();return false">Hitung otomatis lagi</a>')+'</p><div class="grid g2">'
       +'<label class="f" data-k="opMin"><span class="lb">Normal (menit)</span><input class="in num" id="opMin" inputmode="decimal" value="'+esc(S.op.min)+'" oninput="S.op.min=this.value;S.op.auto=false;changed()"></label>'
       +'<label class="f" data-k="opOt"><span class="lb">Lembur / OT (menit)</span><input class="in num" id="opOt" inputmode="decimal" value="'+esc(S.op.ot)+'" oninput="S.op.ot=this.value;S.op.auto=false;changed()"></label>'
       +'</div></div>';
@@ -1022,9 +1028,9 @@ function render(){
 
   h+='<div class="sec-h" id="ltSec"><h2>Lost time / Another job</h2><span class="cnt">'+(S.lost.length?S.lost.length+' catatan':'0 catatan')+'</span></div>';
   h+='<div class="card ltcard">'+(EDL==null?'<div id="ltGap" style="padding-top:8px"></div>':'');
-  if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">'+(helperSec()?'Belum ada lost time. Tidak wajib untuk perbantuan.':'Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.')+'</div>';
+  if(!S.lost.length)h+='<div class="empty" style="padding-top:10px">'+(libur()?'Belum ada lost time. Tidak wajib di hari libur.':helperSec()?'Belum ada lost time. Tidak wajib untuk perbantuan.':'Belum ada lost time. Wajib bila waktu kerja kurang dari '+M.normalMin+' menit.')+'</div>';
   if(S.lost.some(function(l){return l.auto;}))h+='<p class="hint" style="margin:8px 0 0">5S, Briefing Pagi, dan Input Laporan sudah terisi otomatis. Ubah menitnya bila berbeda.</p>';
-  else if(!helperSec()&&DROPPED===S.date+'|'+S.member&&!S.lost.some(function(l){return DEF_LT.some(function(d){return d[0]===l.type;});}))
+  else if(!bebas()&&DROPPED===S.date+'|'+S.member&&!S.lost.some(function(l){return DEF_LT.some(function(d){return d[0]===l.type;});}))
     h+='<div class="notice ok" style="margin:10px 0 4px"><div style="flex:1">5S, Briefing Pagi, dan Input Laporan sudah tercatat di kiriman sebelumnya hari ini, jadi tidak diisi lagi agar tidak dobel.<br><button class="btn ghost sm-btn" onclick="tambahDefLt()">'+IC.plus+' Tetap tambahkan</button></div></div>';
   S.lost.forEach(function(l,ix){
     var grp=(M.lostGroups||{})[l.type]||'';
@@ -1267,17 +1273,19 @@ function updateBar(){
   S.items.forEach(function(i){q+=n(i.normalQty)+n(i.otQty);ng+=i.ng.reduce(function(a,b){return a+n(b);},0);});m=workMin();o=workOt();
   lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
   var rest=M.normalMin-m-lt,hasWork=S.items.some(function(i){return i.part||n(i.normalMin)||n(i.mcMin);})||S.lost.length;
-  var np=S.items.filter(function(i){return i.part;}).length,overOt=o/60>M.otLimitHrs;
+  var np=S.items.filter(function(i){return i.part;}).length,overOt=o>otMaxMin(S.date),lb=libur();
   $('sSum').textContent=np+' part · '+fmt(q)+' pcs · NG '+fmt(ng)+(o?' · OT '+fmt(o/60)+' jam':'');
   var st=$('sSt');
   var hp=helperSec();
   if(!hasWork){st.textContent='Isi part atau lost time';st.className='';}
+  else if(lb){st.textContent='Hari libur · OT '+fmt(o)+' menit'+(m?' · ada menit normal':'')+(overOt?' · lewat batas '+fmt(otMaxMin(S.date)/60)+' jam':'');st.className=!m&&o>0&&!overOt?'okc':'wc';}
   else if(hp){st.textContent=fmt(m+lt)+' menit'+(o?' + OT '+fmt(o)+' menit':'')+' perbantuan'+(rest<0?' · lebih dari '+M.normalMin:'')+(overOt?' · OT lewat batas':'');st.className=rest>=0&&!overOt?'okc':'wc';}
   else{st.textContent=(rest===0?fmt(m+lt)+' menit, siap dikirim':rest>0?'Kurang '+fmt(rest)+' menit dari '+M.normalMin:'Lebih '+fmt(-rest)+' menit dari '+M.normalMin)+(overOt?' · OT lewat batas':'');st.className=rest===0&&!overOt?'okc':'wc';}
-  var sf=$('sFill');if(sf){var tt=m+lt;sf.style.width=(hasWork?Math.min(100,tt/M.normalMin*100):0)+'%';sf.className=hasWork&&(rest===0||hp&&rest>0)&&!overOt?'ok':rest<0?'ov':'';}
+  var sf=$('sFill');if(sf){var tt=m+lt;sf.style.width=(hasWork?Math.min(100,(lb?o/otMaxMin(S.date):tt/M.normalMin)*100):0)+'%';sf.className=hasWork&&(lb?!m&&o>0:(rest===0||hp&&rest>0))&&!overOt?'ok':rest<0||lb&&m?'ov':'';}
   drawMeter(m,lt,o,hasWork);
   var g=$('ltGap');if(!g)return;
   if(!hasWork){g.innerHTML='';return;}
+  if(lb){g.innerHTML='<div class="notice ok" style="margin:0 0 14px"><div><b>Hari libur (Sabtu/Minggu):</b> semua kerja dihitung lembur. Isi hasil dan menit di kolom <b>Lembur (OT)</b>, tidak perlu '+M.normalMin+' menit. Batas OT hari libur '+fmt(otMaxMin(S.date)/60)+' jam.</div></div>';return;}
   if(hp){g.innerHTML='<div class="notice ok" style="margin:0 0 14px"><div>Perbantuan dari section <b>'+esc(hp)+'</b>: isi menit yang benar-benar membantu saja (normal dan/atau OT). Tidak perlu '+M.normalMin+' menit dan lost time tidak wajib.</div></div>';return;}
   if(rest>0)g.innerHTML='<div class="notice" style="margin:0 0 14px">'+IC.warn+'<div style="flex:1">Waktu tercatat '+fmt(m)+' menit kerja + '+fmt(lt)+' menit lost time dari '+M.normalMin+' menit. <b>Isi lost time untuk sisa '+fmt(rest)+' menit.</b><br><button class="btn ghost" style="height:36px;margin-top:8px;font-size:13px" onclick="fillGap('+rest+')">'+IC.plus+' Tambah lost time '+fmt(rest)+' menit</button></div></div>';
   else if(rest===0)g.innerHTML='<div class="notice ok" style="margin:0 0 14px"><div>Waktu kerja lengkap: '+M.normalMin+' menit tercatat.</div></div>';
@@ -1296,6 +1304,7 @@ function drawMeter(m,lt,o,hasWork){
   $('rgTot').textContent=fmt(tot);
   var st=$('rgSt');
   if(!hasWork){st.textContent='Belum diisi';st.className='';}
+  else if(libur()){st.innerHTML=(m?'Isi di kolom OT':IC.ck+' Hari libur');st.className=m?'lb2':'ok';}
   else if(helperSec()&&rest>=0){st.innerHTML=IC.ck+' Perbantuan';st.className='ok';}
   else if(rest===0){st.innerHTML=IC.ck+' Lengkap';st.className='ok';}
   else if(rest>0){st.textContent='Kurang '+fmt(rest)+' menit';st.className='kr';}
@@ -1437,6 +1446,12 @@ $('pickQ').addEventListener('keydown',function(e){
   else if(e.key==='Escape')closePick();
 });
 function opts(arr){return arr.map(function(v){return {value:v,label:v};});}
+function setTgl(v){
+  var was=libur();S.date=v;
+  if(libur()&&!was){S.lost=S.lost.filter(function(l){return !l.auto;});S.lost.forEach(function(l){l.ot=true;});}
+  else if(!libur()&&was&&!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost();
+  changed(true);render();
+}
 function pickMember(){if(LOCK)return;openPick('Nama member',opts(M.members),S.member,function(v){S.member=v;saveMember(v);if(helperOf(v))S.lost=S.lost.filter(function(l){return !l.auto;});else if(!S.lost.length&&!S.items.some(function(i){return i.part;}))S.lost=defLost(v);changed(true);render();});}
 function pickCat(ix){
   openPick('Kategori',M.categories.map(function(c){return {value:c.name,label:c.name,sub:c.process};}),S.items[ix].category,function(v){
@@ -1512,15 +1527,17 @@ function validate(){
     if(mcF.some(function(i){return n(i.normalQty);})&&!n(S.op.min))mark(null,'opMin','Waktu kerja operator di mesin (normal) belum diisi');
     if(mcF.some(function(i){return n(i.otQty);})&&!n(S.op.ot))mark(null,'opOt','Waktu kerja operator di mesin (OT) belum diisi');
   }
-  mcOver(filledItems).forEach(function(x){var ix=-1;filledItems.forEach(function(it){if(ix<0&&it.mc===x.mc)ix=S.items.indexOf(it);});if(ix>=0)mark(ix,'mcMin',x.msg,ix);else errs.push(x.msg);});
+  mcOver(filledItems,S.date).forEach(function(x){var ix=-1;filledItems.forEach(function(it){if(ix<0&&it.mc===x.mc)ix=S.items.indexOf(it);});if(ix>=0)mark(ix,'mcMin',x.msg,ix);else errs.push(x.msg);});
   var ltFirst=null;
   S.lost.forEach(function(l,ix){
     if((!l.type||!n(l.minutes))&&ltFirst==null)ltFirst=ix;
     if(!l.type)errs.push('Lost time #'+(ix+1)+': jenis belum dipilih');
     if(!n(l.minutes))errs.push('Lost time #'+(ix+1)+': menit belum diisi');
   });
+  if(libur())filledItems.forEach(function(it){var ix=S.items.indexOf(it),L='Part #'+(ix+1)+': ';if(n(it.normalQty)||n(it.normalMin)||n(it.mcMin))mark(ix,isMc(it)?'mcMin':'normalMin',L+'hari libur, isi hasil dan menit di kolom Lembur (OT)',ix);});
+  if(libur())S.lost.forEach(function(l){l.ot=true;});
   var rest=gapMinutes();
-  if(!errs.length&&rest>0&&!helperSec()){
+  if(!errs.length&&rest>0&&!bebas()){
     if(!S.lost.length)S.lost.push(newLt());
     render();
     var sec=$('ltSec');sec&&sec.scrollIntoView({behavior:'smooth',block:'start'});
@@ -1555,17 +1572,17 @@ function openReview(){
     var info=[it.category,it.mc&&it.mc!=='-'?it.mc:'',fmt(im)+(mc?' menit MC':' menit'),it.lot?'Lot '+it.lot:'',it.oiban?'Oiban '+it.oiban+(ob>1?' ('+ob+')':''):''].filter(Boolean).join(' · ');
     rows+='<div class="prow"><div class="tp"><b>'+esc(it.part)+' '+esc(it.type&&it.type!=='-'?it.type:'')+'</b><b>'+fmt(iq)+' pcs</b></div><div class="in2">'+esc(info)+'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
   });
-  if(mcItems().length)rows+='<div class="prow">'+mcBox(S.items)+'</div>';
+  if(mcItems().length)rows+='<div class="prow">'+mcBox(S.items,S.date)+'</div>';
   if(mcItems().length)rows+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(opMin('min'))+' mnt</b>'+(opMin('ot')?' + OT <b>'+fmt(opMin('ot'))+' mnt</b>':'')+' (dibagi ke '+mcItems().length+' MC sesuai menit MC jalan)</div>';
   lt=ltSum(S.lost,false);o+=ltSum(S.lost,true);
   if(S.lost.length)rows+='<div class="prow lost">Lost time: '+S.lost.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
   var tot=m+lt;
-  var h='<div class="meta"><span><b>'+esc(S.member)+'</b>'+(helperSec()?' · Perbantuan ('+esc(helperSec())+')':'')+'</span><span>'+esc(new Date(S.date+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</span></div>';
-  h+='<div class="tiles"><div class="tile"><small>Hasil</small><b>'+fmt(q)+'</b></div><div class="tile"><small>NG</small><b>'+fmt(ng)+'</b></div><div class="tile '+(tot===M.normalMin||helperSec()&&tot<M.normalMin?'ok':'w')+'"><small>Menit</small><b>'+fmt(tot)+'</b></div></div>';
+  var h='<div class="meta"><span><b>'+esc(S.member)+'</b>'+(helperSec()?' · Perbantuan ('+esc(helperSec())+')':'')+(libur()?' · Hari libur (semua OT)':'')+'</span><span>'+esc(new Date(S.date+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</span></div>';
+  h+='<div class="tiles"><div class="tile"><small>Hasil</small><b>'+fmt(q)+'</b></div><div class="tile"><small>NG</small><b>'+fmt(ng)+'</b></div>'+(libur()?'<div class="tile '+(!tot&&o>0&&o<=otMaxMin(S.date)?'ok':'w')+'"><small>Menit OT</small><b>'+fmt(o)+'</b></div>':'<div class="tile '+(tot===M.normalMin||bebas()&&tot<M.normalMin?'ok':'w')+'"><small>Menit</small><b>'+fmt(tot)+'</b></div>')+'</div>';
   if(rows)h+='<div class="plist">'+rows+'</div>';
   var w=[];
   if(tot>M.normalMin)w.push('Menit normal + lost time ('+fmt(tot)+') melebihi waktu kerja normal '+M.normalMin+' menit.');
-  if(o/60>M.otLimitHrs)w.push('Jam OT ('+fmt(o/60)+') melebihi batas '+M.otLimitHrs+' jam per hari.');
+  if(o>otMaxMin(S.date))w.push('Jam OT ('+fmt(o/60)+') melebihi batas '+fmt(otMaxMin(S.date)/60)+' jam per hari'+(libur()?' libur':'')+'.');
   w=w.concat(lotOibanWarn(items));
   h='<div class="notice" style="margin:0 0 12px">'+IC.warn+'<div><b>Pastikan oiban, lot, serta menit sudah benar.</b> Kamu sering salah loh ya. Hati-hati, periksa kembali. Jika kamu sudah yakin, silakan kirim.</div></div>'+h;
   if(w.length)h+='<div class="warns">'+w.map(function(x){return '<div class="notice">'+IC.warn+'<div>'+esc(x)+' Tetap bisa dikirim bila memang benar.</div></div>';}).join('')+'</div>';
@@ -1718,13 +1735,13 @@ function renderQueue(){
     } else h+='<div style="height:14px"></div>';
     list.forEach(function(s){
       var t=subTotals(s),ms=masalah(s),w=ms.list,id=esc(s.id),tot=t.mn+t.lt,open=L.open[s.id]!==undefined?L.open[s.id]:pend;
-      var hp=helperOf(s.member),info=[];if(hp)info.push('Perbantuan dari section '+hp+': menit tidak harus '+M.normalMin);else if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
+      var hp=helperOf(s.member),lbr=isLibur(s.date),info=[];if(lbr)info.push('Hari libur: semua kerja dihitung OT, tidak perlu '+M.normalMin+' menit');else if(hp)info.push('Perbantuan dari section '+hp+': menit tidak harus '+M.normalMin);else if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
       var cats={};s.items.forEach(function(it){cats[it.category]=1;});
       var bdg=pend?(w.length?'<span class="bdg no">'+w.length+' kesalahan</span>':'<span class="bdg">Lengkap</span>'):(s.status==='Disetujui'?'<span class="bdg">Disetujui</span>':'<span class="bdg no">Ditolak</span>');
       var sub=(L.date?'':fmtDate(s.date)+' · ')+'Kirim '+esc(s.sent.slice(11,16).replace(':','.'))+(Object.keys(cats).length?' · '+esc(Object.keys(cats).join(', ')):'')+' · '+(s.items.length?s.items.length+' part':'hanya lost time');
       var pct=t.q+t.ng>0&&t.ng?(t.ng/(t.q+t.ng)*100).toLocaleString('id-ID',{maximumFractionDigits:2})+'%':'';
       h+='<div class="lc'+(open?' open':'')+'" id="sc'+id+'"><div class="lc-h" onclick="toggleSc(\''+id+'\')"><span class="av">'+esc(inisial(s.member))+'</span><div class="grow"><b>'+esc(s.member)+'</b><small>'+sub+'</small></div>'+bdg+'</div>';
-      h+='<div class="st3"><div><small>Hasil</small><b>'+fmt(t.q)+'</b></div><div><small>NG</small><b>'+fmt(t.ng)+(pct?' <em>'+pct+'</em>':'')+'</b></div><div><small>Menit</small><b'+(Math.abs(tot-M.normalMin)>=1&&!(hp&&tot<M.normalMin)?' class="wc"':'')+'>'+fmt(tot)+(t.ot?' <em>+OT '+fmt(t.ot)+'</em>':'')+'</b></div></div>';
+      h+='<div class="st3"><div><small>Hasil</small><b>'+fmt(t.q)+'</b></div><div><small>NG</small><b>'+fmt(t.ng)+(pct?' <em>'+pct+'</em>':'')+'</b></div><div><small>Menit</small><b'+(Math.abs(tot-M.normalMin)>=1&&!((hp||lbr)&&tot<M.normalMin)?' class="wc"':'')+'>'+fmt(tot)+(t.ot?' <em>+OT '+fmt(t.ot)+'</em>':'')+'</b></div></div>';
       if(w.length)h+='<div class="lerr"><b>'+w.length+' kesalahan, cek dulu sebelum disetujui</b><ul style="margin:0;padding:0">'+w.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
       info.forEach(function(x){h+='<div class="lwarn">'+esc(x)+'</div>';});
       if(s.edited)h+='<div class="ldec">Diedit '+esc(s.edited)+'</div>';
@@ -1742,7 +1759,7 @@ function renderQueue(){
           +(mc?kv('Menit MC',fmt(n(it.mcMin))+(n(it.mcOtMin)?' + OT '+fmt(n(it.mcOtMin)):''),b.mc):kv('Menit',fmt(n(it.normalMin))+(n(it.otMin)?' + OT '+fmt(n(it.otMin)):''),false))
           +'</div>'+(nt?'<div class="ngl">'+esc(nt)+'</div>':'')+'</div>';
       });
-      if(mcTot(s.items).length)h+='<div class="prow">'+mcBox(s.items)+'</div>';
+      if(mcTot(s.items).length)h+='<div class="prow">'+mcBox(s.items,s.date)+'</div>';
       if(s.op&&(n(s.op.min)||n(s.op.ot)))h+='<div class="prow lost">Waktu operator di mesin: <b>'+fmt(n(s.op.min))+' mnt</b>'+(n(s.op.ot)?' + OT <b>'+fmt(n(s.op.ot))+'</b>':'')+' (satu orang untuk semua MC di atas)</div>';
       if(s.lostTimes.length)h+='<div class="prow lost">Lost time '+fmt(t.lt)+' menit'+(ltSum(s.lostTimes,true)?' + OT '+fmt(ltSum(s.lostTimes,true)):'')+': '+s.lostTimes.map(function(l){return esc(l.type)+' '+fmt(n(l.minutes))+(isOtLt(l)?' <b>OT</b>':'')+(l.remarks?' ('+esc(l.remarks)+')':'');}).join(' · ')+'</div>';
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
@@ -1780,9 +1797,10 @@ function masalah(s){
     var key=ob.list.slice().sort().join(',');
     if(key&&it.mc&&it.mc!=='-'){if(seen[key]&&seen[key].mc!==it.mc){tandai(i,'oiban');tandai(seen[key].i,'oiban');list.push('Oiban '+it.oiban+' sama persis di '+seen[key].mc+' dan '+it.mc);}else seen[key]={mc:it.mc,i:i};}
   });
-  mcOver(s.items).forEach(function(x){s.items.forEach(function(it,i){if(it.mc===x.mc)tandai(i,'mc');});list.push(x.msg);});
-  if(!hp&&t.mn+t.lt>M.normalMin)list.push('Menit normal + lost time '+fmt(t.mn+t.lt)+', lebih dari '+M.normalMin);
-  if(t.ot/60>M.otLimitHrs)list.push('OT '+fmt(t.ot/60)+' jam, lewat batas '+M.otLimitHrs+' jam');
+  mcOver(s.items,s.date).forEach(function(x){s.items.forEach(function(it,i){if(it.mc===x.mc)tandai(i,'mc');});list.push(x.msg);});
+  if(isLibur(s.date)&&t.mn>0)list.push('Hari libur: ada menit normal '+fmt(t.mn)+', harusnya diisi sebagai OT');
+  else if(!hp&&t.mn+t.lt>M.normalMin)list.push('Menit normal + lost time '+fmt(t.mn+t.lt)+', lebih dari '+M.normalMin);
+  if(t.ot>otMaxMin(s.date))list.push('OT '+fmt(t.ot/60)+' jam, lewat batas '+fmt(otMaxMin(s.date)/60)+' jam'+(isLibur(s.date)?' (hari libur)':''));
   return {list:list,bad:bad};
 }
 function perluCek(s){return masalah(s).list.length>0;}
