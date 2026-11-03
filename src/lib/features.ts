@@ -7,6 +7,8 @@ export const FEATURES = {
   planActual: false,
   /** Rencana Lembur (/overtime). */
   overtime: false,
+  /** Monitoring PO Customer (/po): kekurangan PO per customer dari input box Seiretsu/Senbetsu/Washing. */
+  po: true,
 };
 
 export const REPORT_HOME = FEATURES.planActual ? "/production-report" : "/production-report/rekap";

@@ -23,6 +23,19 @@ function navFor(role: Session["role"]): NavGroup[] {
         ...(FEATURES.overtime ? [{ key: "overtime", href: "/overtime", label: "Rencana Lembur", icon: "clock" }] : []),
       ],
     },
+    ...(FEATURES.po
+      ? [
+          {
+            title: "Monitoring PO",
+            items: [
+              { key: "po", href: "/po", label: "Monitoring PO Customer", icon: "box" },
+              { key: "po:Seiretsu", href: "/po?p=Seiretsu", label: "Input Seiretsu", icon: "form" },
+              { key: "po:Senbetsu", href: "/po?p=Senbetsu", label: "Input Senbetsu", icon: "form" },
+              { key: "po:Washing", href: "/po?p=Washing", label: "Input Washing", icon: "form" },
+            ],
+          },
+        ]
+      : []),
     {
       title: "Analisa",
       items: [
