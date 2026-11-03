@@ -328,7 +328,7 @@ export type Dash = {
   /** Kiriman tertua yang masih menunggu, "HH:MM", dan berapa jam sudah menunggu (hari ini saja). */
   oldest: { sent: string; hours: number | null } | null;
   trend: { date: string; label: string; qty: number; ach: number | null; rate: number | null; lt: number }[];
-  byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number }[];
+  byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number; split: { plastik: number; iron: number } | null }[];
   machines: { key: string; mc: string; category: string; categoryId: number; proc: string; line: string; status: "jalan" | "kosong"; qty: number; ng: number; rate: number | null; alert: boolean }[];
   topNg: { mc: string; category: string; categoryId: number; proc: string; qty: number; ng: number; rate: number | null }[];
   /** Mesin yang tidak ikut ranking NG rate karena produksinya di bawah NG_RANK_MIN_QTY. */
@@ -385,7 +385,14 @@ function buildDash(a: {
   const byProc = (a.proc ? [a.proc] : a.procs).map((pr) => {
     const rows = today.filter((f) => (procOf.get(f.categoryId) ?? "") === pr);
     const x = totals(rows, st);
-    return { proc: pr, qty: x.qty, ng: x.ng, rate: x.rate, ach: x.ach, lt: Math.round(ltByProc.get(pr) ?? 0), members: new Set(rows.map((f) => f.memberName)).size };
+    // Rincian Plastik vs Iron (kategori bernama "Plastik" = plastik, lainnya = iron, Shield Cage ikut iron).
+    // Hanya untuk proses yang punya kedua jenis kategori di Master Data (bukan Drum PF).
+    const cats = a.master.categories.filter((c) => c.process === pr);
+    const isPl = (name: string) => /plasti/i.test(name);
+    const split = cats.some((c) => isPl(c.name)) && cats.some((c) => !isPl(c.name))
+      ? rows.reduce((o, f) => (isPl(f.categoryName) ? { ...o, plastik: o.plastik + f.qty } : { ...o, iron: o.iron + f.qty }), { plastik: 0, iron: 0 })
+      : null;
+    return { proc: pr, qty: x.qty, ng: x.ng, rate: x.rate, ach: x.ach, lt: Math.round(ltByProc.get(pr) ?? 0), members: new Set(rows.map((f) => f.memberName)).size, split };
   });
 
   // Mesin: status hanya dari laporan (bukan sinyal mesin).

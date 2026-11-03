@@ -279,6 +279,11 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
                       <div className="text-sm tabular-nums">
                         <b>{n0(p.qty)}</b> <span className="text-slate-500">pcs</span>
                       </div>
+                      {p.split && (
+                        <div className="text-xs tabular-nums text-slate-500">
+                          Plastik {n0(p.split.plastik)} pcs · Iron {n0(p.split.iron)} pcs
+                        </div>
+                      )}
                       <div className="mt-1 flex items-center gap-2">
                         <div className="flex-1">
                           <Bar value={(p.ach ?? 0) * 100} tone={p.ach == null ? "brand" : ok ? "good" : "bad"} />
