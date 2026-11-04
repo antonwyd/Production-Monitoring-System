@@ -4,6 +4,7 @@ import { BackendError } from "@/lib/backend";
 import { clearReportCache } from "@/lib/reports";
 import { SheetsError } from "@/lib/sheets/client";
 import { putuskanTanpaPin, QaError } from "@/lib/sheets/qa";
+import { nanti, notifKeputusan } from "@/lib/push";
 
 /** POST /api/decide { ids, action: "ok" | "no", note } — setujui/tolak dari halaman Hari Ini. */
 export async function POST(req: Request) {
@@ -16,6 +17,7 @@ export async function POST(req: Request) {
     try {
       const r = await putuskanTanpaPin(s.name, ids, action, String(b.note ?? ""));
       clearReportCache();
+      nanti(() => notifKeputusan(s.name, action, String(b.note ?? ""), r.detail));
       return Response.json(r);
     } catch (e) {
       if (e instanceof QaError || e instanceof SheetsError) throw new BackendError(e.message);

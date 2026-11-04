@@ -778,7 +778,7 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
   if (action === "no" && !s(note).trim()) throw new QaError("Isi alasan penolakan.");
   const m = action === "ok" ? await getMasterData() : null;
   return locked(async () => {
-    const hasil = { ok: 0, skip: 0, errors: [] as string[], detail: [] as { id: string; ok: boolean; message?: string }[] };
+    const hasil = { ok: 0, skip: 0, errors: [] as string[], detail: [] as { id: string; ok: boolean; message?: string; member?: string; date?: string }[] };
     const byId: Record<string, QueueEntry> = {};
     (await readQueue()).forEach((x) => (byId[x.id] = x));
     for (const id of ids || []) {
@@ -812,7 +812,7 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
       const catatan = s(note).trim() || (action === "ok" ? x.note : "");
       await io.update([{ range: `${q(SHEET_QUEUE)}!H${x.row}:K${x.row}`, values: [[action === "ok" ? ST_OK : ST_NO, asText(name), nowJakarta(), asText(catatan)]] }]);
       hasil.ok++;
-      hasil.detail.push({ id, ok: true });
+      hasil.detail.push({ id, ok: true, member: x.member, date: x.date });
     }
     return hasil;
   });
@@ -943,3 +943,60 @@ export const RPC: Record<string, (...args: never[]) => Promise<unknown> | unknow
   editKiriman,
   getScriptUrl,
 };
+
+/* ---------- Notifikasi HP (web push), tab "Notifikasi HP" ---------- */
+// Kolom: A NIK | B Nama | C Endpoint | D Langganan (JSON) | E Didaftarkan | F Perangkat
+export const SHEET_PUSH = "Notifikasi HP";
+export type Langganan = { row: number; nik: string; nama: string; endpoint: string; sub: unknown };
+
+async function pastikanTabPush() {
+  const tabs = await io.rowCounts();
+  if (tabs[SHEET_PUSH]) {
+    const [h] = await io.get([`${q(SHEET_PUSH)}!A1`], "FORMATTED_VALUE");
+    if (s(h[0]?.[0]).trim()) return;
+  } else {
+    if (!io.addTab) throw new QaError(`Tab ${SHEET_PUSH} belum ada.`);
+    await io.addTab(SHEET_PUSH);
+  }
+  await io.update([{ range: `${q(SHEET_PUSH)}!A1:F1`, values: [["NIK", "Nama", "Endpoint", "Langganan", "Didaftarkan", "Perangkat"]] }]);
+}
+
+export async function bacaLangganan(): Promise<Langganan[]> {
+  try {
+    const [g] = await io.get([`${q(SHEET_PUSH)}!A2:D`], "FORMATTED_VALUE");
+    return g
+      .map((r, i) => {
+        let sub: unknown = null;
+        try {
+          sub = JSON.parse(s(r[3]));
+        } catch {}
+        return { row: i + 2, nik: s(r[0]).trim(), nama: s(r[1]).trim(), endpoint: s(r[2]).trim(), sub };
+      })
+      .filter((x) => x.endpoint && x.sub);
+  } catch {
+    return []; // tab belum dibuat
+  }
+}
+
+/** Simpan / perbarui langganan notifikasi satu HP. Satu HP (endpoint) = satu baris. */
+export async function simpanLangganan(nik: string, nama: string, sub: { endpoint?: unknown }, perangkat: string) {
+  const endpoint = s(sub?.endpoint).trim();
+  if (!/^https:\/\//.test(endpoint)) throw new QaError("Data notifikasi tidak valid.");
+  await pastikanTabPush();
+  const row = [asText(nik), asText(nama), asText(endpoint), asText(JSON.stringify(sub)), nowJakarta(), asText(perangkat.slice(0, 120))];
+  const ada = (await bacaLangganan()).find((x) => x.endpoint === endpoint);
+  if (ada) await io.update([{ range: `${q(SHEET_PUSH)}!A${ada.row}:F${ada.row}`, values: [row] }]);
+  else await io.append(`${q(SHEET_PUSH)}!A:F`, [row]);
+  return { ok: true };
+}
+
+/** Hapus langganan yang sudah tidak berlaku (HP ganti / izin dicabut). */
+export async function hapusLangganan(rows: number[]) {
+  if (!rows.length) return;
+  await io.update(rows.map((r) => ({ range: `${q(SHEET_PUSH)}!A${r}:F${r}`, values: [["", "", "", "", "", ""]] })));
+}
+
+/** NIK member dari Master Data (untuk mencocokkan langganan). */
+export async function nikMember(nama: string): Promise<string> {
+  return (await readMaster()).nik[nama] ?? "";
+}

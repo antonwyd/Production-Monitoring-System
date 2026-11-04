@@ -20,6 +20,8 @@ export interface SheetsIO {
   rowCounts(): Promise<Record<string, { sheetId: number; rows: number }>>;
   /** Tambah `count` baris di akhir tab; rumus baris terakhir ikut disalin, kolom input dikosongkan. */
   growSheet(title: string, count: number, clearCols: string[]): Promise<void>;
+  /** Buat tab baru bila belum ada (dipakai tab "Notifikasi HP"). */
+  addTab?(title: string): Promise<void>;
 }
 
 type ServiceAccount = { client_email: string; private_key: string };
@@ -139,6 +141,9 @@ export const googleSheets: SheetsIO = {
       `?fields=sheets.properties(sheetId,title,gridProperties.rowCount)`,
     );
     return Object.fromEntries(body.sheets.map((s) => [s.properties.title, { sheetId: s.properties.sheetId, rows: s.properties.gridProperties.rowCount }]));
+  },
+  async addTab(title) {
+    await api(`:batchUpdate`, { method: "POST", body: { requests: [{ addSheet: { properties: { title } } }] } });
   },
   async growSheet(title, count, clearCols) {
     const meta = (await this.rowCounts())[title];
