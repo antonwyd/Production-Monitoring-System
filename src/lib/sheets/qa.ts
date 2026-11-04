@@ -657,25 +657,31 @@ export async function levelMember(member: string) {
   if (!member) return null;
   const today = todayJakarta();
   const [queue, rows, m, u] = await Promise.all([readQueue(), apiRows("2000-01-01", today), readMaster(), barisUser(member).catch(() => ({ row: 0, r: [] as Cell[] }))]);
-  const ngRaw = Object.keys(m.settings).find((x) => x.indexOf("NG limit") === 0);
-  const ngPpm = ngRaw !== undefined && Number(m.settings[ngRaw]) > 0 ? Number(m.settings[ngRaw]) : 1000;
   const days = new Map<string, HariMember>();
   const hari = (d: string) => {
     let h = days.get(d);
-    if (!h) days.set(d, (h = { date: d, disetujui: false, hariSama: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
+    if (!h) days.set(d, (h = { date: d, disetujui: false, kirim: "", otMin: 0, libur: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
     return h;
   };
+  const n = (v: unknown) => Number(v) || 0;
   for (const x of queue) {
     if (x.member !== member || !x.date || x.date > today) continue;
     const h = hari(x.date);
     if (x.status === ST_NO) h.ditolak = true;
     if (x.status === ST_OK) {
       h.disetujui = true;
-      if (x.sent.slice(0, 10) === x.date) h.hariSama = true;
+      if (!h.kirim || x.sent < h.kirim) h.kirim = x.sent;
+      const g = new Date(`${x.date}T00:00:00Z`).getUTCDay();
+      h.libur = g === 0 || g === 6;
+      // Menit lembur ORANG: part manual (otMin), waktu operator di mesin (op.ot, atau MC OT terlama bila kosong), lost time OT.
+      const mc = (it: Item) => !!s(it.mc) && s(it.mc) !== "-";
+      const manual = x.items.filter((it) => !mc(it)).reduce((a, it) => a + n(it.otMin), 0);
+      const mesin = n(x.op?.ot) || Math.max(0, ...x.items.filter(mc).map((it) => n(it.mcOtMin)));
+      const lost = x.lostTimes.filter((l) => isOtLt(l)).reduce((a, l) => a + n(l.minutes), 0);
+      h.otMin += manual + mesin + lost;
       if (x.edited) h.diedit = true;
     }
   }
-  const n = (v: unknown) => Number(v) || 0;
   for (const r of rows.prod) {
     if (s(r[1]) !== member) continue;
     const h = hari(s(r[0]));
@@ -690,8 +696,8 @@ export async function levelMember(member: string) {
     h.rated += rated;
     if (rated > 0 && std > 0) h.std += qty / std;
   }
-  const hasil = hitungLevel([...days.values()], today, ngPpm / 1e6);
-  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER, ngLimit: ngPpm / 1e6 };
+  const hasil = hitungLevel([...days.values()], today);
+  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER };
 }
 
 /** Simpan karakter pilihan member ke tab Users kolom H "Karakter". */
