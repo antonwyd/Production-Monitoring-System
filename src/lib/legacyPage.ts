@@ -1748,7 +1748,6 @@ function send(){
 // v6.1/v6.5: pesan setelah kirim. Tema per hari kerja (Senin kehidupan, Selasa semangat, Rabu jenaka,
 // Kamis peribahasa, Jumat tebak-tebakan). P + bunga berjatuhan, L + pengingat sholat.
 var TEMA_IKON={kehidupan:'🌸',semangat:'💪',jenaka:'😄',peribahasa:'📜',tebak:'🤔'};
-var TEMA_JUDUL={kehidupan:'Pantun kehidupan',semangat:'Pantun penyemangat',jenaka:'Pantun jenaka',peribahasa:'Peribahasa hari ini',tebak:'Tebak-tebakan'};
 function isiPesanHtml(r){
   var h='<div class="ptxt"></div>';
   if(r.jawab&&r.tema==='tebak')h+='<button type="button" class="pbtn">Lihat jawaban 👀</button><div class="pjwb" style="display:none"></div>';
@@ -1770,8 +1769,8 @@ function tampilPesan(r){
     dp.querySelector('.pult').textContent=r.ultah;if(r.pesan)isiPesanIsi(dp,r);dp.style.display='block';balon();return;
   }
   if(!r||!r.pesan){dp.style.display='none';dp.innerHTML='';return;}
-  var ik=TEMA_IKON[r.tema]||(r.jk==='L'?'💪':'🌸'),jd=TEMA_JUDUL[r.tema]||'';
-  dp.innerHTML='<div class="bloom">'+ik+'</div>'+(jd?'<div class="pjdl">'+jd+'</div>':'')+isiPesanHtml(r);
+  var ik=TEMA_IKON[r.tema]||(r.jk==='L'?'💪':'🌸');
+  dp.innerHTML='<div class="bloom">'+ik+'</div>'+isiPesanHtml(r); // judul tema tidak ditampilkan (Anton), cukup isinya
   isiPesanIsi(dp,r);
   dp.className='pantun'+(r.jk==='L'?' lk':'')+(r.tema==='tebak'||r.tema==='peribahasa'?' tb':'');dp.style.display='block';
   if(r.jk==='P'&&fx){
