@@ -19,11 +19,3 @@ describe("ulang tahun", () => {
     expect(ucapanUltah("Risfan Wiguna")).toContain("Risfan!");
   });
 });
-
-import { QUOTES, quoteHari } from "../src/lib/semangat";
-describe("quote penyemangat", () => {
-  it("tetap dalam sehari, dari daftar", () => {
-    expect(quoteHari("201003", "2026-11-04")).toBe(quoteHari("201003", "2026-11-04"));
-    expect(QUOTES).toContain(quoteHari("201003", "2026-11-05"));
-  });
-});

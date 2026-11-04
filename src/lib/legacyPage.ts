@@ -771,7 +771,6 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 .lv1{--lvc:#cbd5e1}.lv2{--lvc:#4ade80}.lv3{--lvc:#60a5fa}.lv4{--lvc:#c084fc}.lv5{--lvc:#fbbf24}
 .tipd{margin:0 0 14px;border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #f1d3d3;box-shadow:var(--shadow)}
 .tipd .ic{width:40px;height:40px;flex:none;border-radius:12px;display:grid;place-items:center;font-size:22px;background:#fde8e8}
-.tipd.qt{border-color:#c7d7fe}.tipd.qt .ic{background:#eef2ff}.tipd.qt h4{color:#3730a3}.tipd.qt p{font-style:italic}
 .tipd.k3{border-color:#f3e2b8}.tipd.k3 .ic{background:#fff4d6}
 .tipd h4{margin:0;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#9B1B1F}.tipd.k3 h4{color:#a86400}
 .tipd p{margin:3px 0 0;font-size:14px;line-height:1.4;color:#222}
@@ -825,7 +824,6 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <h2>Laporan terkirim</h2>
   <p id="doneMsg"></p>
   <div class="pantun" id="donePesan" style="display:none"></div>
-  <div class="tipd qt" id="doneQuote" style="display:none;max-width:340px;margin:12px auto 4px;text-align:left"></div>
   <div id="bungaFx" aria-hidden="true"></div>
   <div class="row">
     <button class="btn ghost" onclick="newReport(true)">Laporan member lain</button>
@@ -1745,7 +1743,6 @@ function send(){
 function tampilPesan(r){
   var dp=$('donePesan'),fx=$('bungaFx');if(!dp)return;
   if(fx)fx.innerHTML='';
-  var qb=$('doneQuote');if(qb){if(r&&r.quote){qb.innerHTML='<div class="ic">💪</div><div><h4>Quote penyemangat</h4><p></p></div>';qb.querySelector('p').textContent=r.quote;qb.style.display='flex';}else{qb.style.display='none';qb.innerHTML='';}}
   if(r&&r.ultah){
     dp.className='pantun ultah';dp.innerHTML='<div class="bloom">🎂</div><div class="ptxt"></div>'+(r.pesan?'<div class="ptxt2" style="margin-top:10px;font-weight:400;font-style:italic"></div>':'');
     dp.querySelector('.ptxt').textContent=r.ultah;if(r.pesan)dp.querySelector('.ptxt2').textContent=r.pesan;dp.style.display='block';balon();return;
