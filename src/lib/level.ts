@@ -37,7 +37,7 @@ export function karakterDari(id: string, gender: "L" | "P" | ""): Karakter & { d
 
 export type Level = { lv: number; nama: string; poin: number; ach: number; tanpaTolak?: boolean };
 
-/** Syarat tiap level: poin terkumpul + rata-rata 30 hari terakhir (achievement minimal, NG rate di bawah limit). */
+/** Syarat tiap level: poin terkumpul + achievement rata-rata 30 hari terakhir (NG rate tidak dipakai, keputusan Anton 4 Nov). */
 export const LEVELS: Level[] = [
   { lv: 1, nama: "Pemula", poin: 0, ach: 0 },
   { lv: 2, nama: "Semangat", poin: 50, ach: 0.8 },
@@ -94,7 +94,7 @@ export function poinKirim(h: Pick<HariMember, "date" | "kirim" | "otMin" | "libu
   return m <= batas ? { poin: 2, label: `Kirim ≤ ${hhmm(batas)} (${jam})` } : telat;
 }
 
-export function poinHari(h: HariMember, ngMax: number) {
+export function poinHari(h: HariMember) {
   if (!h.disetujui) return { total: 0, rincian: [] as string[] };
   const r: string[] = ["Disetujui +2"];
   let total = 2;
@@ -104,9 +104,10 @@ export function poinHari(h: HariMember, ngMax: number) {
   const plus = (ok: boolean, label: string) => {
     if (ok) (r.push(`${label} +2`), (total += 2));
   };
-  plus(!h.ditolak && !h.diedit, "Tanpa revisi");
+  // Langsung disetujui +2; pernah ditolak atau diedit leader -1.
+  if (h.ditolak || h.diedit) (r.push(`${h.ditolak ? "Pernah ditolak" : "Diedit leader"} -1`), (total -= 1));
+  else plus(true, "Tanpa revisi");
   plus(h.rated > 0 && h.std / h.rated >= ACH_HARIAN, "Achievement ≥ 90%");
-  plus(h.qty + h.ng > 0 && h.ng / (h.qty + h.ng) <= ngMax, "NG di bawah limit");
   return { total, rincian: r };
 }
 
@@ -129,10 +130,10 @@ export type HasilLevel = {
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-export function hitungLevel(days: HariMember[], today: string, ngMax: number): HasilLevel {
+export function hitungLevel(days: HariMember[], today: string): HasilLevel {
   const sorted = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   let poin = 0;
-  for (const h of sorted) poin += poinHari(h, ngMax).total;
+  for (const h of sorted) poin += poinHari(h).total;
   poin = Math.max(0, poin);
   const batas = geserTanggal(today, -29);
   const last = sorted.filter((h) => h.date >= batas && h.date <= today);
@@ -144,7 +145,7 @@ export function hitungLevel(days: HariMember[], today: string, ngMax: number): H
   const ng30 = qty + ng > 0 ? ng / (qty + ng) : null;
   const tolak30 = last.filter((h) => h.ditolak).length;
   const lolos = (L: Level) =>
-    L.lv === 1 || (ach30 != null && ach30 >= L.ach && (ng30 == null || ng30 <= ngMax) && (!L.tanpaTolak || tolak30 === 0));
+    L.lv === 1 || (ach30 != null && ach30 >= L.ach && (!L.tanpaTolak || tolak30 === 0));
   let level = LEVELS[0];
   for (const L of LEVELS) if (poin >= L.poin && lolos(L)) level = L;
   const lvPoin = [...LEVELS].reverse().find((L) => poin >= L.poin)!.lv;
@@ -153,7 +154,6 @@ export function hitungLevel(days: HariMember[], today: string, ngMax: number): H
   if (next) {
     if (poin < next.poin) kurang.push(`${next.poin - poin} poin lagi`);
     if (ach30 == null || ach30 < next.ach) kurang.push(`Achievement 30 hari ${ach30 == null ? "-" : pct(ach30)} (perlu ${pct(next.ach)})`);
-    if (ng30 != null && ng30 > ngMax) kurang.push(`NG rate 30 hari di atas limit`);
     if (next.tanpaTolak && tolak30 > 0) kurang.push(`Tidak boleh ada laporan ditolak 30 hari (ada ${tolak30})`);
   }
   const span = next ? next.poin - level.poin : 1;
@@ -170,7 +170,7 @@ export function hitungLevel(days: HariMember[], today: string, ngMax: number): H
     kurang,
     lvPoin,
     hari: sorted.filter((h) => h.disetujui).length,
-    hariIni: h0 ? poinHari(h0, ngMax) : null,
+    hariIni: h0 ? poinHari(h0) : null,
   };
 }
 

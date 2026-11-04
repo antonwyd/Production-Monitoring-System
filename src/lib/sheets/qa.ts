@@ -657,8 +657,6 @@ export async function levelMember(member: string) {
   if (!member) return null;
   const today = todayJakarta();
   const [queue, rows, m, u] = await Promise.all([readQueue(), apiRows("2000-01-01", today), readMaster(), barisUser(member).catch(() => ({ row: 0, r: [] as Cell[] }))]);
-  const ngRaw = Object.keys(m.settings).find((x) => x.indexOf("NG limit") === 0);
-  const ngPpm = ngRaw !== undefined && Number(m.settings[ngRaw]) > 0 ? Number(m.settings[ngRaw]) : 1000;
   const days = new Map<string, HariMember>();
   const hari = (d: string) => {
     let h = days.get(d);
@@ -698,8 +696,8 @@ export async function levelMember(member: string) {
     h.rated += rated;
     if (rated > 0 && std > 0) h.std += qty / std;
   }
-  const hasil = hitungLevel([...days.values()], today, ngPpm / 1e6);
-  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER, ngLimit: ngPpm / 1e6 };
+  const hasil = hitungLevel([...days.values()], today);
+  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER };
 }
 
 /** Simpan karakter pilihan member ke tab Users kolom H "Karakter". */
