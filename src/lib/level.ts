@@ -52,8 +52,10 @@ export type HariMember = {
   disetujui: boolean;
   /** Waktu kirim (Jakarta, "yyyy-MM-dd HH:mm[:ss]") kiriman pertama yang disetujui di tanggal ini; "" bila belum ada. */
   kirim: string;
-  /** Ada lembur (menit OT, MC OT, lost time OT) atau hari libur: batas kirim 19:00, bukan 16:30/18:00. */
-  lembur: boolean;
+  /** Menit lembur orang di hari itu (part manual OT + waktu operator OT di mesin + lost time OT). */
+  otMin: number;
+  /** Sabtu/Minggu: semua kerja dihitung OT. */
+  libur: boolean;
   ditolak: boolean; // ada kiriman yang ditolak di tanggal ini
   diedit: boolean; // kiriman disetujui setelah diedit leader
   std: number; // jam standar (qty / standar)
@@ -64,21 +66,32 @@ export type HariMember = {
 
 export const ACH_HARIAN = 0.9;
 
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
 /**
- * Poin waktu kirim (aturan Anton 4 Nov 2026), dari jam kirim kiriman pertama yang disetujui:
- * paling lambat 30 menit setelah jam kerja selesai = +2, lewat dari itu (atau besoknya) = -1.
- * - tanpa lembur: jam kerja selesai 16:00, batas 16:30
- * - lembur / hari libur: lembur selesai 18:30, batas 19:00
+ * Batas kirim (menit sejak 00:00) = jam kerja selesai + 30 menit (aturan Anton 4 Nov 2026).
+ * Hari biasa: kerja selesai 16:00, lembur langsung menyambung (lembur 1 jam selesai 17:00, 2,5 jam selesai 18:30).
+ * Hari libur: 8 jam pertama dianggap seperti hari biasa (selesai 16:00), sisanya menyambung.
  */
-export function poinKirim(h: Pick<HariMember, "date" | "kirim" | "lembur">): { poin: number; label: string } {
+export function batasKirim(h: Pick<HariMember, "otMin" | "libur">): number {
+  const ot = Math.max(0, Math.round(h.otMin || 0));
+  return 16 * 60 + 30 + (h.libur ? Math.max(0, ot - 480) : ot);
+}
+
+/**
+ * Poin waktu kirim, dari jam kirim kiriman pertama yang disetujui:
+ * paling lambat 30 menit setelah jam kerja selesai = +2, lewat dari itu (atau besoknya) = -1.
+ */
+export function poinKirim(h: Pick<HariMember, "date" | "kirim" | "otMin" | "libur">): { poin: number; label: string } {
   if (!h.kirim) return { poin: 0, label: "" };
   const hari = h.kirim.slice(0, 10),
     jam = h.kirim.slice(11, 16);
-  const telat = { poin: -1, label: `Kirim terlambat (${hari === h.date ? jam : "besoknya"})` };
+  const batas = batasKirim(h);
+  const telat = { poin: -1, label: `Kirim terlambat (${hari === h.date ? jam : "besoknya"}, batas ${hhmm(batas)})` };
   if (hari < h.date) return { poin: 2, label: "Kirim tepat waktu" }; // diisi lebih awal (jarang)
   if (hari > h.date) return telat;
-  if (h.lembur) return jam <= "19:00" ? { poin: 2, label: `Kirim ≤ 19:00 (lembur, ${jam})` } : telat;
-  return jam <= "16:30" ? { poin: 2, label: `Kirim ≤ 16:30 (${jam})` } : telat;
+  const m = Number(jam.slice(0, 2)) * 60 + Number(jam.slice(3, 5));
+  return m <= batas ? { poin: 2, label: `Kirim ≤ ${hhmm(batas)} (${jam})` } : telat;
 }
 
 export function poinHari(h: HariMember, ngMax: number) {

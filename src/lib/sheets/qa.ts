@@ -662,7 +662,7 @@ export async function levelMember(member: string) {
   const days = new Map<string, HariMember>();
   const hari = (d: string) => {
     let h = days.get(d);
-    if (!h) days.set(d, (h = { date: d, disetujui: false, kirim: "", lembur: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
+    if (!h) days.set(d, (h = { date: d, disetujui: false, kirim: "", otMin: 0, libur: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
     return h;
   };
   const n = (v: unknown) => Number(v) || 0;
@@ -674,14 +674,13 @@ export async function levelMember(member: string) {
       h.disetujui = true;
       if (!h.kirim || x.sent < h.kirim) h.kirim = x.sent;
       const g = new Date(`${x.date}T00:00:00Z`).getUTCDay();
-      if (
-        g === 0 ||
-        g === 6 ||
-        x.items.some((it) => n(it.otMin) + n(it.otQty) + n(it.mcOtMin) > 0) ||
-        x.lostTimes.some((l) => isOtLt(l) && n(l.minutes) > 0) ||
-        n(x.op?.ot) > 0
-      )
-        h.lembur = true;
+      h.libur = g === 0 || g === 6;
+      // Menit lembur ORANG: part manual (otMin), waktu operator di mesin (op.ot, atau MC OT terlama bila kosong), lost time OT.
+      const mc = (it: Item) => !!s(it.mc) && s(it.mc) !== "-";
+      const manual = x.items.filter((it) => !mc(it)).reduce((a, it) => a + n(it.otMin), 0);
+      const mesin = n(x.op?.ot) || Math.max(0, ...x.items.filter(mc).map((it) => n(it.mcOtMin)));
+      const lost = x.lostTimes.filter((l) => isOtLt(l)).reduce((a, l) => a + n(l.minutes), 0);
+      h.otMin += manual + mesin + lost;
       if (x.edited) h.diedit = true;
     }
   }

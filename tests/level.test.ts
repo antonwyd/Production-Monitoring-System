@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hitungLevel, poinHari, poinKirim, tipHari, karakterDari, type HariMember } from "../src/lib/level";
 
 const hari = (date: string, o: Partial<HariMember> = {}): HariMember => ({
-  date, disetujui: true, kirim: `${date} 15:30:00`, lembur: false, ditolak: false, diedit: false, std: 7.6, rated: 8, qty: 1000, ng: 0, ...o,
+  date, disetujui: true, kirim: `${date} 15:30:00`, otMin: 0, libur: false, ditolak: false, diedit: false, std: 7.6, rated: 8, qty: 1000, ng: 0, ...o,
 });
 const NG = 0.001;
 
@@ -13,15 +13,18 @@ describe("level member", () => {
     expect(poinHari(hari("2026-11-03", { kirim: "2026-11-03 18:30:00", ditolak: true, std: 6, ng: 50 }), NG).total).toBe(1);
   });
 
-  it("poin jam kirim: 16:30 tanpa lembur, 19:00 bila lembur", () => {
+  it("poin jam kirim: maks 30 menit setelah jam kerja (lembur menyambung dari 16:00)", () => {
     const d = "2026-11-03";
-    const p = (jam: string, lembur = false, hari = d) => poinKirim({ date: d, kirim: `${hari} ${jam}:00`, lembur }).poin;
+    const p = (jam: string, otMin = 0, hari = d, libur = false) => poinKirim({ date: d, kirim: `${hari} ${jam}:00`, otMin, libur }).poin;
     expect(p("16:30")).toBe(2);
     expect(p("16:31")).toBe(-1);
-    expect(p("18:30", true)).toBe(2);
-    expect(p("19:00", true)).toBe(2);
-    expect(p("19:01", true)).toBe(-1);
-    expect(p("08:00", false, "2026-11-04")).toBe(-1);
+    expect(p("17:30", 60)).toBe(2); // lembur 1 jam selesai 17:00
+    expect(p("17:31", 60)).toBe(-1);
+    expect(p("19:00", 150)).toBe(2); // lembur 2,5 jam selesai 18:30
+    expect(p("19:01", 150)).toBe(-1);
+    expect(p("08:00", 0, "2026-11-04")).toBe(-1);
+    expect(p("16:30", 480, d, true)).toBe(2); // hari libur 8 jam
+    expect(p("18:30", 600, d, true)).toBe(2); // hari libur 10 jam
   });
 
   it("naik level butuh poin DAN kualitas 30 hari", () => {
