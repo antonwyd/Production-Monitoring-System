@@ -5,7 +5,7 @@ import { PAGE_HTML } from "./legacyPage";
 import { tipHari } from "./level";
 import { todayJakarta } from "./dates";
 
-export const APP_VERSION = "v6.4"; // v6.4: ucapan ulang tahun (Users kolom I) di form, layar kirim, halaman leader & dashboard; v6.3: poin jam kirim (maks 30 menit setelah jam kerja selesai = 16:00 + menit lembur, +2; lewat -1), ditolak/diedit leader -1, NG rate tidak dipakai, bonus streak +5 per 5 laporan sempurna; v6.2: karakter member + level (poin harian & syarat kualitas 30 hari, Users kolom H) (tips harian dimatikan dulu); v6.1: pesan setelah kirim (pantun untuk P, pengingat sholat untuk L, Users kolom G); v6.0: Sabtu/Minggu = hari libur, semua kerja OT (batas OT libur 12 jam); v5.9: halaman leader per tanggal (default hari ini); v5.8: lost time bisa ditandai Lembur (OT)
+export const APP_VERSION = "v6.5"; // v6.5: 100 pantun tambahan (total 120), bergiliran tanpa ulang per orang; v6.4: ucapan ulang tahun (Users kolom I) di form, layar kirim, halaman leader & dashboard; v6.3: poin jam kirim (maks 30 menit setelah jam kerja selesai = 16:00 + menit lembur, +2; lewat -1), ditolak/diedit leader -1, NG rate tidak dipakai, bonus streak +5 per 5 laporan sempurna; v6.2: karakter member + level (poin harian & syarat kualitas 30 hari, Users kolom H) (tips harian dimatikan dulu); v6.1: pesan setelah kirim (pantun untuk P, pengingat sholat untuk L, Users kolom G); v6.0: Sabtu/Minggu = hari libur, semua kerja OT (batas OT libur 12 jam); v5.9: halaman leader per tanggal (default hari ini); v5.8: lost time bisa ditandai Lembur (OT)
 
 const CALL_V1 = "function call(fn,args,ok,fail){";
 const CALL_WEB = `function call(fn,args,ok,fail){
