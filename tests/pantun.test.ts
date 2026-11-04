@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { JENAKA, PANTUN, PANTUN_HIDUP, PANTUN_SEMANGAT, FAKTA, TEBAK, jenisKelamin, pesanKirim, pilihIsi } from "../src/lib/pantun";
+import { JENAKA, PANTUN, PANTUN_HIDUP, PANTUN_SEMANGAT, BIJAK, TEBAK, jenisKelamin, pesanKirim, pilihIsi } from "../src/lib/pantun";
 
 const tgl = (awal: string, i: number) => new Date(Date.parse(awal + "T00:00:00Z") + i * 86400000).toISOString().slice(0, 10);
 
 describe("pesan setelah kirim (v6.5: tema per hari)", () => {
-  it("Senin kehidupan, Selasa semangat, Rabu jenaka, Kamis fakta, Jumat tebakan, Sabtu/Minggu kosong", () => {
+  it("Senin kehidupan, Selasa semangat, Rabu jenaka, Kamis bijak, Jumat tebakan, Sabtu/Minggu kosong", () => {
     // 2 Nov 2026 = Senin
     const tema = Array.from({ length: 7 }, (_, i) => pilihIsi("201001", tgl("2026-11-02", i)).tema ?? null);
-    expect(tema).toEqual(["kehidupan", "semangat", "jenaka", "fakta", "tebak", null, null]);
+    expect(tema).toEqual(["kehidupan", "semangat", "jenaka", "bijak", "tebak", null, null]);
     expect(pesanKirim("P", "201001", "2026-11-07").pesan).toBe("");
     expect(pesanKirim("L", "201001", "2026-11-08")).toEqual({ pesan: "" });
   });
@@ -27,7 +27,7 @@ describe("pesan setelah kirim (v6.5: tema per hari)", () => {
     expect(PANTUN_HIDUP.length + PANTUN_SEMANGAT.length).toBe(PANTUN.length);
     // stok tiap tema cukup minimal setahun (1 isi per minggu), juga untuk laki-laki
     const netral = (p: string) => !/wanita|cantik|menawan/i.test(p);
-    for (const n of [PANTUN_HIDUP.filter(netral).length, PANTUN_SEMANGAT.filter(netral).length, JENAKA.length, FAKTA.length, TEBAK.length]) expect(n).toBeGreaterThanOrEqual(52);
+    for (const n of [PANTUN_HIDUP.filter(netral).length, PANTUN_SEMANGAT.filter(netral).length, JENAKA.length, BIJAK.length, TEBAK.length]) expect(n).toBeGreaterThanOrEqual(52);
     expect(new Set(PANTUN).size).toBe(PANTUN.length);
     const rabu = Array.from({ length: JENAKA.length }, (_, w) => pilihIsi("201001", tgl("2026-11-04", w * 7)).pesan);
     expect(new Set(rabu).size).toBe(JENAKA.length);
