@@ -1,3 +1,6 @@
 {
-  "crons": [{ "path": "/api/cron/sync-lama", "schedule": "5 17 * * *" }]
+  "crons": [
+    { "path": "/api/cron/sync-lama", "schedule": "5 17 * * *" },
+    { "path": "/api/cron/pengingat", "schedule": "0 8 * * 1-5" }
+  ]
 }

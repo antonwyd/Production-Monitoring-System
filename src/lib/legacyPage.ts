@@ -799,6 +799,13 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 @keyframes lvpop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 @media(max-width:380px){.avbar{width:60px}.avt span{display:none}}
 /* ---- v6.4: ulang tahun ---- */
+.notifc{display:flex;align-items:center;gap:12px;background:#fff7e6;border:1px solid #f3d38a;border-radius:14px;padding:12px 14px;margin:0 0 12px}
+.notifc.ok{background:#ecf8ef;border-color:#a8dcb5}
+.notifc .nk{font-size:26px;line-height:1}
+.notifc .nt{flex:1;min-width:0}.notifc .nt b{display:block;font-size:15px}.notifc .nt small{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.notifc .nb{display:flex;flex-direction:column;gap:6px}
+.notifc .nb button{border:0;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;cursor:pointer}
+.notifc .ya{background:#9b1b1f;color:#fff}.notifc .no{background:transparent;color:var(--muted)}
 .ultahc{position:relative;margin:0 0 14px;border-radius:18px;padding:14px 16px;display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#fff1f6 0%,#fff7e6 100%);border:1px solid #f9c5d9;box-shadow:var(--shadow);overflow:hidden}
 .ultahc .kue{font-size:40px;flex:none;animation:lvpop .7s ease}
 .ultahc h3{margin:0;font-size:17px;color:#9d174d}.ultahc p{margin:4px 0 0;font-size:14px;line-height:1.45;color:#3b0a1e}
@@ -1072,7 +1079,7 @@ function render(){
   h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="setTgl(this.value);this.closest(\'.idc\').classList.remove(\'err\')"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
-  h+='</div></div><div class="pane"><div id="ultahBox"></div>'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
+  h+='</div></div><div class="pane"><div id="ultahBox"></div><div id="notifBox"></div>'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
@@ -1108,6 +1115,7 @@ function render(){
   checkExisting();
   loadHist();
   loadLevel(); // v6.2/6.4: karakter & ucapan ulang tahun (render ulang mengosongkan #ultahBox)
+  drawNotif();
 }
 function pcMin(it){var m=isMc(it)?n(it.mcMin)+n(it.mcOtMin):n(it.normalMin)+n(it.otMin);return m?'<span class="pm"><b>'+fmt(m)+'</b><small>menit</small></span>':IC.right;}
 function partCard(it,ix){
@@ -1457,6 +1465,36 @@ function tipHtml(){
   return '<div class="tipd'+(k3?' k3':'')+'"><div class="ic">'+(k3?'🦺':'💡')+'</div><div><h4>'+(k3?'Tips K3 hari ini':'Tips kurangi NG hari ini')+'</h4><p>'+esc(t.teks)+'</p></div></div>';
 }
 var LV={member:'',d:null};
+// v6.6: notifikasi HP (web push). Kartu ajakan muncul sekali sampai diaktifkan / ditutup.
+var NOTIF={sent:false};
+function notifBisa(){return !!(ME&&window.BOOT&&BOOT.vapid&&('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window));}
+function b64u(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';var r=atob(s),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;}
+function langgan(cb){
+  navigator.serviceWorker.register('/sw.js').then(function(){return navigator.serviceWorker.ready;}).then(function(reg){
+    return reg.pushManager.getSubscription().then(function(sub){return sub||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(BOOT.vapid)});});
+  }).then(function(sub){
+    return fetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sub:sub.toJSON(),perangkat:navigator.userAgent})}).then(function(r){return r.json();});
+  }).then(function(j){NOTIF.sent=!!(j&&j.ok);cb&&cb(j&&j.ok?null:((j&&j.error)||'Gagal menyimpan.'));})
+  .catch(function(e){cb&&cb('Notifikasi tidak bisa diaktifkan di HP ini.');});
+}
+function drawNotif(){
+  var b=$('notifBox');if(!b)return;b.innerHTML='';
+  if(!notifBisa())return;
+  if(Notification.permission==='granted'){if(!NOTIF.sent){NOTIF.sent=true;langgan();}return;}
+  if(Notification.permission==='denied')return;
+  try{if(localStorage.getItem('qa-notif-tutup'))return;}catch(e){}
+  b.innerHTML='<div class="notifc"><div class="nk">🔔</div><div class="nt"><b>Aktifkan notifikasi</b><small>Dapat kabar saat laporan disetujui / ditolak, dan pengingat kalau belum kirim.</small></div>'
+    +'<div class="nb"><button class="ya" onclick="aktifNotif()">Aktifkan</button><button class="no" onclick="tutupNotif()">Nanti</button></div></div>';
+}
+function aktifNotif(){
+  var b=$('notifBox');
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted'){if(b)b.innerHTML='';try{localStorage.setItem('qa-notif-tutup','1');}catch(e){}return;}
+    if(b)b.innerHTML='<div class="notifc"><div class="nk">⏳</div><div class="nt"><b>Mengaktifkan…</b></div></div>';
+    langgan(function(err){if(!b)return;b.innerHTML=err?'<div class="notifc"><div class="nk">⚠️</div><div class="nt"><b>Belum berhasil</b><small>'+esc(err)+'</small></div></div>':'<div class="notifc ok"><div class="nk">✅</div><div class="nt"><b>Notifikasi aktif</b><small>Kabar laporan akan muncul di HP ini.</small></div></div>';if(!err)setTimeout(function(){if(b)b.innerHTML='';},4000);});
+  });
+}
+function tutupNotif(){try{localStorage.setItem('qa-notif-tutup','1');}catch(e){}var b=$('notifBox');if(b)b.innerHTML='';}
 function loadLevel(){
   var w=$('avw');if(!w)return;
   if(!S||!S.member){LV={member:'',d:null};w.classList.remove('on');drawUltah();return;}

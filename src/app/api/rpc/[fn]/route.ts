@@ -3,6 +3,7 @@ import { SheetsError } from "@/lib/sheets/client";
 import { todayJakarta } from "@/lib/dates";
 import { LEADER_SESSION, leaderLogin, QaError, RPC, ultahHariIni } from "@/lib/sheets/qa";
 import { buildToday } from "@/lib/views";
+import { nanti, notifKeputusan } from "@/lib/push";
 
 /** Tambahan khusus halaman leader di Vercel: member yang belum kirim pada tanggal itu (sama dengan Hari Ini). */
 const EXTRA: Record<string, (...a: never[]) => Promise<unknown>> = {
@@ -60,6 +61,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
   }
   try {
     const data = await (f as (...a: unknown[]) => unknown)(...list);
+    if (fn === "putuskan" && data && typeof data === "object") {
+      const detail = (data as { detail?: { ok: boolean; member?: string; date?: string }[] }).detail ?? [];
+      nanti(() => notifKeputusan(String(list[0]), String(list[3]), String(list[4] ?? ""), detail));
+    }
     return Response.json({ ok: true, data: data ?? null });
   } catch (e) {
     if (e instanceof QaError || e instanceof SheetsError) return Response.json({ ok: false, error: e.message });
