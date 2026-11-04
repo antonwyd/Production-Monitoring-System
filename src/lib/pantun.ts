@@ -3,27 +3,7 @@
 // Laki-laki (L): pengingat sholat. Kosong: tidak ada pesan.
 
 export const PANTUN: string[] = [
-  "Pagi hari membeli jamu,\nPulangnya mampir membeli roti.\nTetap semangat menjalani harimu,\nSenyummu indah, menenangkan hati.",
-  "Bunga mawar tumbuh di taman,\nDisiram hujan setiap pagi.\nTetaplah kuat dalam perjalanan,\nKamu lebih hebat dari yang kamu sadari.",
-  "Jalan-jalan ke tepi kali,\nMelihat bunga sedang merekah.\nTetap tersenyum setiap hari,\nSebab senyummu begitu indah.",
-  "Burung berkicau di atas dahan,\nAngin berembus membawa berita.\nJangan menyerah pada keadaan,\nKamu punya kekuatan yang luar biasa.",
-  "Pergi ke pasar membeli mangga,\nTidak lupa membeli pepaya.\nTetaplah menjadi wanita berharga,\nCantik paras dan baik hatinya.",
-  "Langit cerah di pagi hari,\nBurung terbang melintasi awan.\nJangan lelah memperbaiki diri,\nKeindahanmu bukan sekadar penampilan.",
-  "Bunga melati di dekat jendela,\nHarumnya sampai ke ruang tamu.\nSemoga bahagia selalu menyertaimu,\nKarena dunia terasa indah melihat senyummu.",
-  "Pergi berlibur ke kota Medan,\nPulang membawa kain sutra.\nTetap semangat mengejar impian,\nJangan pernah lupa betapa berharganya dirimu.",
-  "Air mengalir menuju lautan,\nIkan berenang di antara batu.\nJangan takut menghadapi tantangan,\nKamu lebih kuat dari yang kamu tahu.",
-  "Bunga kenanga tumbuh berjajar,\nWarnanya indah terkena cahaya.\nTeruslah bermimpi dan terus belajar,\nSebab masa depanmu masih luar biasa.",
-  "Pagi-pagi membeli sarapan,\nSecangkir kopi teman cerita.\nSemoga harimu penuh kebahagiaan,\nSebab kamu pantas mendapatkannya.",
-  "Indah senja di tepi pantai,\nOmbak berlari menyentuh kaki.\nTetaplah jadi pribadi yang baik,\nSebab itulah cantik yang paling berarti.",
-  "Bunga di taman tumbuh bersemi,\nKupu-kupu datang menghampiri.\nJangan pernah berhenti bermimpi,\nSenyummu pantas menghiasi hari.",
-  "Matahari terbit di ufuk timur,\nCahayanya hangat menyinari bumi.\nKalau hari ini terasa berat dan mundur,\nIngat, kamu tetap hebat di mata diri sendiri.",
-  "Pergi ke toko membeli pita,\nPita berwarna merah delima.\nKecantikanmu terlihat nyata,\nNamun kebaikanmu jauh lebih istimewa.",
-  "Bulan bersinar di malam hari,\nBintang menemani dengan cahayanya.\nJangan terlalu keras pada diri sendiri,\nKamu sudah hebat dengan caramu.",
-  "Jalan setapak menuju permai,\nDi kanan kiri tumbuh melati.\nSemoga langkahmu selalu damai,\nDan bahagiamu tak pernah berhenti.",
-  "Hujan reda muncul pelangi,\nWarnanya indah menghiasi langit.\nTetaplah tersenyum setiap hari,\nKarena pesonamu memang sulit ditandingi.",
-  "Pergi ke taman melihat bunga,\nBunga bermekaran indah warnanya.\nTak perlu menjadi orang lain untuk istimewa,\nJadilah dirimu, itu sudah luar biasa.",
-  "Burung merpati terbang berdua,\nHinggap sebentar di pohon jati.\nTetap semangat menjalani dunia,\nCantik wajahmu, indah pula hati.",
-  // v6.5: 100 pantun tambahan (4 Nov 2026), isi kata mutiara hidup (bukan pekerjaan)
+  // v6.5 (4 Nov 2026): 100 pantun kata mutiara hidup, menggantikan 20 pantun v6.1
   "Beli kain di Pasar Baru,\nKainnya halus berwarna biru.\nSyukuri apa yang ada di tanganmu,\nBahagia datang tanpa kau tunggu.",
   "Pohon kelapa tinggi menjulang,\nDaunnya hijau di tepi pantai.\nUsaha yang tulus takkan terbuang,\nBahagia esok pasti kau capai.",
   "Makan rujak di siang hari,\nRasanya manis, pedas, dan segar.\nHidup tak selalu sesuai mimpi,\nNamun hati yang kuat tetap tegar.",
@@ -130,7 +110,7 @@ export const PESAN_LAKI = "Woeey jangan lupa sholat woeey 🙏";
 
 /** Pantun untuk orang + tanggal: tetap selama hari itu, berganti tiap hari, beda antar orang.
  *  Bergiliran (hari ke-n + geser per orang), jadi satu orang tidak dapat pantun yang sama
- *  sebelum semua pantun keluar (120 hari). */
+ *  sebelum semua pantun keluar (100 hari). */
 export function pilihPantun(key: string, date: string): string {
   let h = 2166136261;
   for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);

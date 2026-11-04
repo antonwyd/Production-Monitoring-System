@@ -14,12 +14,12 @@ describe("pesan setelah kirim", () => {
     const hari = new Set(Array.from({ length: 10 }, (_, i) => pilihPantun("201001", `2026-11-${String(i + 1).padStart(2, "0")}`)));
     expect(hari.size).toBeGreaterThan(5);
   });
-  it("120 pantun dan satu orang tidak dapat pantun sama selama 120 hari", () => {
-    expect(PANTUN.length).toBe(120);
-    expect(new Set(PANTUN).size).toBe(120);
+  it("100 pantun dan satu orang tidak dapat pantun sama selama 100 hari", () => {
+    expect(PANTUN.length).toBe(100);
+    expect(new Set(PANTUN).size).toBe(100);
     const awal = Date.UTC(2026, 10, 4);
-    const seri = Array.from({ length: 120 }, (_, i) => pilihPantun("201001", new Date(awal + i * 86400000).toISOString().slice(0, 10)));
-    expect(new Set(seri).size).toBe(120);
+    const seri = Array.from({ length: 100 }, (_, i) => pilihPantun("201001", new Date(awal + i * 86400000).toISOString().slice(0, 10)));
+    expect(new Set(seri).size).toBe(100);
   });
   it("membaca isi kolom jenis kelamin", () => {
     expect(jenisKelamin("L")).toBe("L");
