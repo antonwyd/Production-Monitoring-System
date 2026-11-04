@@ -3,7 +3,7 @@
 //   Senin pantun kehidupan, Selasa pantun penyemangat, Rabu pantun jenaka,
 //   Kamis peribahasa + artinya, Jumat tebak-tebakan lucu.
 // P dan L sama-sama dapat; L memakai pantun yang netral (tanpa wanita/cantik/menawan)
-// dan tetap dapat pengingat sholat. Jenis kelamin kosong: tidak ada pesan.
+// (pengingat sholat sudah dihapus). Jenis kelamin kosong: tidak ada pesan.
 
 export const PANTUN: string[] = [
   // v6.5 (4 Nov 2026): 100 pantun kata mutiara hidup, menggantikan 20 pantun v6.1
@@ -327,6 +327,5 @@ export function jenisKelamin(v: string): "L" | "P" | "" {
 
 export function pesanKirim(gender: "L" | "P" | "", key: string, date: string): Pesan {
   if (!gender) return { pesan: "" };
-  const isi = pilihIsi(key, date, gender);
-  return gender === "L" && isi.pesan ? { ...isi, sholat: PESAN_LAKI } : isi;
+  return pilihIsi(key, date, gender); // pengingat sholat dihapus (Anton, 4 Nov 2026)
 }
