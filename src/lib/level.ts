@@ -50,7 +50,10 @@ export const LEVELS: Level[] = [
 export type HariMember = {
   date: string;
   disetujui: boolean;
-  hariSama: boolean; // kiriman yang disetujui dikirim di tanggal laporan itu sendiri
+  /** Waktu kirim (Jakarta, "yyyy-MM-dd HH:mm[:ss]") kiriman pertama yang disetujui di tanggal ini; "" bila belum ada. */
+  kirim: string;
+  /** Ada lembur (menit OT, MC OT, lost time OT) atau hari libur: batas kirim 19:00, bukan 16:30/18:00. */
+  lembur: boolean;
   ditolak: boolean; // ada kiriman yang ditolak di tanggal ini
   diedit: boolean; // kiriman disetujui setelah diedit leader
   std: number; // jam standar (qty / standar)
@@ -61,14 +64,37 @@ export type HariMember = {
 
 export const ACH_HARIAN = 0.9;
 
+/**
+ * Poin waktu kirim (aturan Anton 4 Nov 2026), dari jam kirim kiriman pertama yang disetujui:
+ * paling lambat 30 menit setelah jam kerja selesai = +2, lewat dari itu (atau besoknya) = -1.
+ * - tanpa lembur: jam kerja selesai 16:00, batas 16:30
+ * - lembur / hari libur: lembur selesai 18:30, batas 19:00
+ */
+export function poinKirim(h: Pick<HariMember, "date" | "kirim" | "lembur">): { poin: number; label: string } {
+  if (!h.kirim) return { poin: 0, label: "" };
+  const hari = h.kirim.slice(0, 10),
+    jam = h.kirim.slice(11, 16);
+  const telat = { poin: -1, label: `Kirim terlambat (${hari === h.date ? jam : "besoknya"})` };
+  if (hari < h.date) return { poin: 2, label: "Kirim tepat waktu" }; // diisi lebih awal (jarang)
+  if (hari > h.date) return telat;
+  if (h.lembur) return jam <= "19:00" ? { poin: 2, label: `Kirim ≤ 19:00 (lembur, ${jam})` } : telat;
+  return jam <= "16:30" ? { poin: 2, label: `Kirim ≤ 16:30 (${jam})` } : telat;
+}
+
 export function poinHari(h: HariMember, ngMax: number) {
   if (!h.disetujui) return { total: 0, rincian: [] as string[] };
-  const r: string[] = ["Disetujui"];
-  if (h.hariSama) r.push("Tepat waktu");
-  if (!h.ditolak && !h.diedit) r.push("Tanpa revisi");
-  if (h.rated > 0 && h.std / h.rated >= ACH_HARIAN) r.push("Achievement ≥ 90%");
-  if (h.qty + h.ng > 0 && h.ng / (h.qty + h.ng) <= ngMax) r.push("NG di bawah limit");
-  return { total: r.length * 2, rincian: r };
+  const r: string[] = ["Disetujui +2"];
+  let total = 2;
+  const k = poinKirim(h);
+  if (k.label) r.push(`${k.label} ${k.poin > 0 ? "+" : ""}${k.poin}`);
+  total += k.poin;
+  const plus = (ok: boolean, label: string) => {
+    if (ok) (r.push(`${label} +2`), (total += 2));
+  };
+  plus(!h.ditolak && !h.diedit, "Tanpa revisi");
+  plus(h.rated > 0 && h.std / h.rated >= ACH_HARIAN, "Achievement ≥ 90%");
+  plus(h.qty + h.ng > 0 && h.ng / (h.qty + h.ng) <= ngMax, "NG di bawah limit");
+  return { total, rincian: r };
 }
 
 export type HasilLevel = {
@@ -94,6 +120,7 @@ export function hitungLevel(days: HariMember[], today: string, ngMax: number): H
   const sorted = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   let poin = 0;
   for (const h of sorted) poin += poinHari(h, ngMax).total;
+  poin = Math.max(0, poin);
   const batas = geserTanggal(today, -29);
   const last = sorted.filter((h) => h.date >= batas && h.date <= today);
   const std = last.reduce((a, h) => a + h.std, 0),

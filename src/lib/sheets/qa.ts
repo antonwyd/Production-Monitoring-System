@@ -662,20 +662,29 @@ export async function levelMember(member: string) {
   const days = new Map<string, HariMember>();
   const hari = (d: string) => {
     let h = days.get(d);
-    if (!h) days.set(d, (h = { date: d, disetujui: false, hariSama: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
+    if (!h) days.set(d, (h = { date: d, disetujui: false, kirim: "", lembur: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
     return h;
   };
+  const n = (v: unknown) => Number(v) || 0;
   for (const x of queue) {
     if (x.member !== member || !x.date || x.date > today) continue;
     const h = hari(x.date);
     if (x.status === ST_NO) h.ditolak = true;
     if (x.status === ST_OK) {
       h.disetujui = true;
-      if (x.sent.slice(0, 10) === x.date) h.hariSama = true;
+      if (!h.kirim || x.sent < h.kirim) h.kirim = x.sent;
+      const g = new Date(`${x.date}T00:00:00Z`).getUTCDay();
+      if (
+        g === 0 ||
+        g === 6 ||
+        x.items.some((it) => n(it.otMin) + n(it.otQty) + n(it.mcOtMin) > 0) ||
+        x.lostTimes.some((l) => isOtLt(l) && n(l.minutes) > 0) ||
+        n(x.op?.ot) > 0
+      )
+        h.lembur = true;
       if (x.edited) h.diedit = true;
     }
   }
-  const n = (v: unknown) => Number(v) || 0;
   for (const r of rows.prod) {
     if (s(r[1]) !== member) continue;
     const h = hari(s(r[0]));
