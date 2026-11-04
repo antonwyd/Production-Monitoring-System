@@ -126,7 +126,38 @@ export type HasilLevel = {
   lvPoin: number;
   hari: number;
   hariIni: { total: number; rincian: string[] } | null;
+  /** Laporan sempurna berturut-turut saat ini (0-4 menuju bonus berikutnya). */
+  streak: number;
+  /** Jumlah bonus streak yang sudah didapat. */
+  bonusStreak: number;
 };
+
+export const STREAK_HARI = 5;
+export const STREAK_BONUS = 5;
+
+/**
+ * Bonus konsisten: +5 setiap 5 laporan sempurna berturut-turut (tepat waktu + langsung disetujui).
+ * Dihitung hanya dari hari member lapor, jadi hari sakit/cuti/libur (tidak ada kiriman) tidak memutus streak.
+ * Hari yang ada kiriman tapi tidak sempurna (telat, ditolak, diedit) mengulang streak dari 0.
+ */
+export function hitungStreak(sorted: HariMember[]) {
+  let c = 0,
+    bonus = 0;
+  for (const h of sorted) {
+    if (!h.disetujui && !h.ditolak) continue;
+    const sempurna = h.disetujui && !h.ditolak && !h.diedit && poinKirim(h).poin > 0;
+    if (!sempurna) {
+      c = 0;
+      continue;
+    }
+    c++;
+    if (c === STREAK_HARI) {
+      bonus++;
+      c = 0;
+    }
+  }
+  return { streak: c, bonusStreak: bonus };
+}
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -134,7 +165,8 @@ export function hitungLevel(days: HariMember[], today: string): HasilLevel {
   const sorted = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   let poin = 0;
   for (const h of sorted) poin += poinHari(h).total;
-  poin = Math.max(0, poin);
+  const st = hitungStreak(sorted);
+  poin = Math.max(0, poin + st.bonusStreak * STREAK_BONUS);
   const batas = geserTanggal(today, -29);
   const last = sorted.filter((h) => h.date >= batas && h.date <= today);
   const std = last.reduce((a, h) => a + h.std, 0),
@@ -171,6 +203,7 @@ export function hitungLevel(days: HariMember[], today: string): HasilLevel {
     lvPoin,
     hari: sorted.filter((h) => h.disetujui).length,
     hariIni: h0 ? poinHari(h0) : null,
+    ...st,
   };
 }
 

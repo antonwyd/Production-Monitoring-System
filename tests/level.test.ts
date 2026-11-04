@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hitungLevel, poinHari, poinKirim, tipHari, karakterDari, type HariMember } from "../src/lib/level";
+import { hitungLevel, hitungStreak, poinHari, poinKirim, tipHari, karakterDari, type HariMember } from "../src/lib/level";
 
 const hari = (date: string, o: Partial<HariMember> = {}): HariMember => ({
   date, disetujui: true, kirim: `${date} 15:30:00`, otMin: 0, libur: false, ditolak: false, diedit: false, std: 7.6, rated: 8, qty: 1000, ng: 0, ...o,
@@ -24,6 +24,15 @@ describe("level member", () => {
     expect(p("08:00", 0, "2026-11-04")).toBe(-1);
     expect(p("16:30", 480, d, true)).toBe(2); // hari libur 8 jam
     expect(p("18:30", 600, d, true)).toBe(2); // hari libur 10 jam
+  });
+
+  it("streak +5 tiap 5 laporan sempurna berturut-turut; hari tanpa kiriman tidak memutus", () => {
+    const d = (n: number, o: Partial<HariMember> = {}) => hari(`2026-10-${String(n).padStart(2, "0")}`, o);
+    // 1,2,3 sempurna, 4-5 tidak lapor (sakit), 6,7 sempurna -> bonus 1
+    expect(hitungStreak([d(1), d(2), d(3), d(6), d(7)])).toEqual({ streak: 0, bonusStreak: 1 });
+    // hari ke-3 telat -> mulai lagi
+    expect(hitungStreak([d(1), d(2), d(3, { kirim: "2026-10-03 17:00:00" }), d(6), d(7)])).toEqual({ streak: 2, bonusStreak: 0 });
+    expect(hitungLevel([d(1), d(2), d(3), d(6), d(7)], "2026-10-07").poin).toBe(5 * 8 + 5);
   });
 
   it("naik level butuh poin DAN kualitas 30 hari", () => {
