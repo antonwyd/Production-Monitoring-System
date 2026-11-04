@@ -178,9 +178,14 @@ export const TIPS_K3 = [
   "Jaga area kerja tetap 5S: rapi, bersih, tidak ada barang di jalan lewat.",
 ];
 
-/** Tips hari itu: berganti setiap hari. K3 dimatikan dulu (Anton akan ganti dengan tips kualitas). */
+/**
+ * Tips hari itu, berganti setiap hari. DIMATIKAN dulu (4 Nov 2026): Anton akan menyiapkan isi tips kualitas sendiri.
+ * Untuk menyalakan: TIPS_AKTIF = true (dan TIPS_K3_AKTIF untuk selang-seling dengan K3).
+ */
+export const TIPS_AKTIF = false;
 export const TIPS_K3_AKTIF = false;
-export function tipHari(date: string): { jenis: "NG" | "K3"; teks: string } {
+export function tipHari(date: string): { jenis: "NG" | "K3"; teks: string } | null {
+  if (!TIPS_AKTIF) return null;
   const n = Math.floor(Date.parse(`${date}T00:00:00Z`) / 864e5);
   if (!TIPS_K3_AKTIF) return { jenis: "NG", teks: TIPS_NG[n % TIPS_NG.length] };
   const half = Math.floor(n / 2);

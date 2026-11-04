@@ -35,12 +35,8 @@ describe("level member", () => {
     expect(hitungLevel(days, "2026-11-04", NG).level.lv).toBe(4);
   });
 
-  it("tips berganti tiap hari, hanya NG selama K3 dimatikan", () => {
-    const a = tipHari("2026-11-04"), b = tipHari("2026-11-05");
-    expect(a.jenis).toBe("NG");
-    expect(b.jenis).toBe("NG");
-    expect(a.teks).not.toBe(b.teks);
-    expect(a.teks.length).toBeGreaterThan(10);
+  it("tips dimatikan dulu", () => {
+    expect(tipHari("2026-11-04")).toBeNull();
   });
 
   it("karakter default dari jenis kelamin bila belum memilih", () => {
