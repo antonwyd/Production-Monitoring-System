@@ -311,6 +311,12 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .pantun .bloom{font-size:44px;font-style:normal;line-height:1;margin-bottom:8px;display:inline-block;animation:bloom 1.2s ease-out both,sway 3s ease-in-out 1.2s infinite}
 .pantun.laki{background:#F0FDF4;border-color:#BBF7D0;color:#14532D;font-style:normal;font-weight:700;font-size:17px}
 .pantun .bloom.pray{animation:bloom 1s ease-out both}
+.pantun .pjdl{font-style:normal;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;opacity:.75;margin-bottom:6px}
+.pantun.tb .ptxt{font-style:normal;font-weight:700;font-size:16px}
+.pantun .pjwb{margin-top:10px;font-style:normal;font-weight:600}
+.pantun .pbtn{margin-top:12px;font-style:normal;border:1px solid currentColor;background:#fff;color:inherit;border-radius:999px;padding:7px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.pantun .psh{margin-top:12px;padding-top:10px;border-top:1px dashed #86EFAC;font-style:normal;font-weight:700}
+.pantun.lk{background:#F0FDF4;border-color:#BBF7D0;color:#14532D}
 #bungaFx{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:60}
 #bungaFx span{position:absolute;top:-40px;animation-name:jatuh;animation-timing-function:linear;animation-fill-mode:forwards}
 @keyframes jatuh{0%{transform:translateY(0) rotate(0);opacity:0}10%{opacity:1}100%{transform:translateY(110vh) rotate(540deg);opacity:.2}}
@@ -1739,18 +1745,35 @@ function send(){
     $('app').style.display='none';$('bar').style.display='none';$('done').style.display='block';window.scrollTo(0,0);
   },function(msg){SENDING=false;b.disabled=false;b.textContent='Kirim laporan';toast('Gagal mengirim: '+msg);});
 }
-// v6.1: pesan setelah kirim. P = pantun + bunga berjatuhan, L = pengingat sholat.
+// v6.1/v6.5: pesan setelah kirim. Tema per hari kerja (Senin kehidupan, Selasa semangat, Rabu jenaka,
+// Kamis peribahasa, Jumat tebak-tebakan). P + bunga berjatuhan, L + pengingat sholat.
+var TEMA_IKON={kehidupan:'🌸',semangat:'💪',jenaka:'😄',peribahasa:'📜',tebak:'🤔'};
+var TEMA_JUDUL={kehidupan:'Pantun kehidupan',semangat:'Pantun penyemangat',jenaka:'Pantun jenaka',peribahasa:'Peribahasa hari ini',tebak:'Tebak-tebakan'};
+function isiPesanHtml(r){
+  var h='<div class="ptxt"></div>';
+  if(r.jawab&&r.tema==='tebak')h+='<button type="button" class="pbtn">Lihat jawaban 👀</button><div class="pjwb" style="display:none"></div>';
+  else if(r.jawab)h+='<div class="pjwb"></div>';
+  if(r.sholat)h+='<div class="psh">🕌 <span></span></div>';
+  return h;
+}
+function isiPesanIsi(dp,r){
+  dp.querySelector('.ptxt').textContent=r.pesan;
+  var j=dp.querySelector('.pjwb');if(j)j.textContent=(r.tema==='peribahasa'?'Artinya: ':'')+r.jawab;
+  var bt=dp.querySelector('.pbtn');if(bt)bt.addEventListener('click',function(){bt.style.display='none';j.style.display='block';});
+  var sh=dp.querySelector('.psh span');if(sh)sh.textContent=r.sholat;
+}
 function tampilPesan(r){
   var dp=$('donePesan'),fx=$('bungaFx');if(!dp)return;
   if(fx)fx.innerHTML='';
   if(r&&r.ultah){
-    dp.className='pantun ultah';dp.innerHTML='<div class="bloom">🎂</div><div class="ptxt"></div>'+(r.pesan?'<div class="ptxt2" style="margin-top:10px;font-weight:400;font-style:italic"></div>':'');
-    dp.querySelector('.ptxt').textContent=r.ultah;if(r.pesan)dp.querySelector('.ptxt2').textContent=r.pesan;dp.style.display='block';balon();return;
+    dp.className='pantun ultah';dp.innerHTML='<div class="bloom">🎂</div><div class="pult"></div>'+(r.pesan?'<div class="pisi" style="margin-top:10px;font-weight:400;font-style:italic">'+isiPesanHtml(r)+'</div>':'');
+    dp.querySelector('.pult').textContent=r.ultah;if(r.pesan)isiPesanIsi(dp,r);dp.style.display='block';balon();return;
   }
   if(!r||!r.pesan){dp.style.display='none';dp.innerHTML='';return;}
-  var ikon=r.jk==='P'?'<div class="bloom">🌸</div>':r.jk==='L'?'<div class="bloom pray">🕌</div>':'';
-  dp.innerHTML=ikon+'<div class="ptxt"></div>';dp.querySelector('.ptxt').textContent=r.pesan;
-  dp.className='pantun'+(r.jk==='L'?' laki':'');dp.style.display='block';
+  var ik=TEMA_IKON[r.tema]||(r.jk==='L'?'💪':'🌸'),jd=TEMA_JUDUL[r.tema]||'';
+  dp.innerHTML='<div class="bloom">'+ik+'</div>'+(jd?'<div class="pjdl">'+jd+'</div>':'')+isiPesanHtml(r);
+  isiPesanIsi(dp,r);
+  dp.className='pantun'+(r.jk==='L'?' lk':'')+(r.tema==='tebak'||r.tema==='peribahasa'?' tb':'');dp.style.display='block';
   if(r.jk==='P'&&fx){
     var b=['🌸','🌷','🌺','🌼','💮','🌹'],h='';
     for(var i=0;i<26;i++){h+='<span style="left:'+(Math.random()*96).toFixed(1)+'%;animation-delay:'+(Math.random()*2.5).toFixed(2)+'s;animation-duration:'+(3.5+Math.random()*3).toFixed(2)+'s;font-size:'+(18+Math.random()*18).toFixed(0)+'px">'+b[i%b.length]+'</span>';}

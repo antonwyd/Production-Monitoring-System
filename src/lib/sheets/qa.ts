@@ -4,7 +4,7 @@
 // halaman form member dan leader (public/legacy) memanggilnya lewat /api/rpc/<nama>.
 // v1.7: menit MC per mesin (AM:AN), waktu operator per laporan (op), oiban rentang (AO:AP),
 // Standar MC PF di Master Data BI:BM. v1.8: catatan NG Lain-lain (ngNote) ke AW.
-import { jenisKelamin, pesanKirim } from "../pantun";
+import { jenisKelamin, pesanKirim, type Pesan } from "../pantun";
 import { hitungLevel, karakterDari, KARAKTER, type HariMember } from "../level";
 import { tanggalLahir, ucapanUltah, ulangTahun } from "../ultah";
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
@@ -617,15 +617,15 @@ export async function submitReport(payload: Payload) {
   });
 }
 
-/** Pesan penyemangat setelah kirim: pantun (P) atau pengingat sholat (L), dari tab Users kolom G "Jenis Kelamin". */
-async function pesanUntuk(member: string): Promise<{ pesan: string; jk: "L" | "P" | ""; ultah?: string }> {
+/** Pesan setelah kirim: pantun mutiara / jenaka / tebak-tebakan (L & P), plus pengingat sholat untuk L, dari tab Users kolom G "Jenis Kelamin". */
+async function pesanUntuk(member: string): Promise<Pesan & { jk: "L" | "P" | ""; ultah?: string }> {
   try {
     const nik = (await readMaster()).nik[member] ?? "";
     const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
     const u = g.find((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
     const jk = u ? jenisKelamin(s(u[6])) : "";
     const ultah = u && ulangTahun(tanggalLahir(u[8]), todayJakarta()) ? ucapanUltah(member) : "";
-    return { pesan: pesanKirim(jk, nik || member, todayJakarta()), jk, ...(ultah ? { ultah } : {}) };
+    return { ...pesanKirim(jk, nik || member, todayJakarta()), jk, ...(ultah ? { ultah } : {}) };
   } catch {
     return { pesan: "", jk: "" }; // pesan hanya hiasan, jangan sampai menggagalkan kiriman
   }
