@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 /**
  * GET /api/cron/pengingat — notifikasi HP "jangan lupa kirim laporan" untuk member QA yang belum kirim hari ini.
- * Dijalankan Vercel Cron Senin-Jumat sekitar 15:00 WIB (vercel.json); boleh juga dibuka admin yang login.
+ * Dijalankan Vercel Cron Senin-Jumat sekitar 19:00 WIB (vercel.json); boleh juga dibuka admin yang login.
  */
 export async function GET(req: Request) {
   return handle(async () => {
