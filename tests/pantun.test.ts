@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JENAKA, PANTUN, PANTUN_HIDUP, PANTUN_SEMANGAT, PERIBAHASA, PESAN_LAKI, TEBAK, jenisKelamin, pesanKirim, pilihIsi } from "../src/lib/pantun";
+import { JENAKA, PANTUN, PANTUN_HIDUP, PANTUN_SEMANGAT, PERIBAHASA, TEBAK, jenisKelamin, pesanKirim, pilihIsi } from "../src/lib/pantun";
 
 const tgl = (awal: string, i: number) => new Date(Date.parse(awal + "T00:00:00Z") + i * 86400000).toISOString().slice(0, 10);
 
@@ -11,11 +11,11 @@ describe("pesan setelah kirim (v6.5: tema per hari)", () => {
     expect(pesanKirim("P", "201001", "2026-11-07").pesan).toBe("");
     expect(pesanKirim("L", "201001", "2026-11-08")).toEqual({ pesan: "" });
   });
-  it("laki-laki dapat isi + pengingat sholat, tanpa pantun khusus perempuan", () => {
+  it("laki-laki dapat isi tanpa pengingat sholat dan tanpa pantun khusus perempuan", () => {
     for (let i = 0; i < 400; i++) {
       const r = pesanKirim("L", "201003", tgl("2026-11-02", i));
       if (!r.pesan) continue;
-      expect(r.sholat).toBe(PESAN_LAKI);
+      expect(r.sholat).toBeUndefined();
       expect(r.pesan).not.toMatch(/wanita|cantik|menawan/i);
     }
     expect(pesanKirim("", "201001", "2026-11-04")).toEqual({ pesan: "" });
