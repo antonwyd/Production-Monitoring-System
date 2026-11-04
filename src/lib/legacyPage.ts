@@ -761,6 +761,37 @@ body.ldr .hero p{color:rgba(255,255,255,.72)}
 body.ldr .hero .ver{color:rgba(255,255,255,.6)}
 body.ldr .lband{position:relative;background:none;box-shadow:none;clip-path:none;isolation:isolate}
 body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);background:linear-gradient(90deg,#2B0709 0%,#6A0D12 45%,#B5141C 100%);z-index:-1}
+/* ---- v6.2: karakter & level member di header, tips harian ---- */
+.avw{display:none;align-items:center;gap:9px;margin-left:auto;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:5px 9px 5px 5px;cursor:pointer;color:#fff;font:inherit;text-align:left;flex:none;max-width:52%}
+.avw.on{display:flex}.avw+.hero-r{margin-left:6px}
+.av{position:relative;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:21px;flex:none;background:#fff;box-shadow:0 0 0 2.5px var(--lvc,#cbd5e1)}
+.av .cr{position:absolute;top:-11px;right:-6px;font-size:14px;transform:rotate(18deg)}
+.avt{line-height:1.15;min-width:0}.avt b{font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.avt span{font-size:10.5px;opacity:.85;white-space:nowrap}
+.avbar{height:5px;width:76px;background:rgba(255,255,255,.25);border-radius:4px;margin-top:3px;overflow:hidden}.avbar i{display:block;height:100%;background:#ffd34d;border-radius:4px}
+.lv1{--lvc:#cbd5e1}.lv2{--lvc:#4ade80}.lv3{--lvc:#60a5fa}.lv4{--lvc:#c084fc}.lv5{--lvc:#fbbf24}
+.tipd{margin:0 0 14px;border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #f1d3d3;box-shadow:var(--shadow)}
+.tipd .ic{width:40px;height:40px;flex:none;border-radius:12px;display:grid;place-items:center;font-size:22px;background:#fde8e8}
+.tipd.k3{border-color:#f3e2b8}.tipd.k3 .ic{background:#fff4d6}
+.tipd h4{margin:0;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#9B1B1F}.tipd.k3 h4{color:#a86400}
+.tipd p{margin:3px 0 0;font-size:14px;line-height:1.4;color:#222}
+.lvs{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:90}
+.lvp{background:#fff;width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:22px 22px 0 0;padding:18px 16px 24px;animation:lvup .22s ease}
+@keyframes lvup{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.lvp h3{margin:0 0 4px;font-size:17px}.lvp .lvnote{margin:0 0 14px;color:#666;font-size:13px;font-weight:400;line-height:1.45}
+.lvhd{display:flex;gap:14px;align-items:center;margin-bottom:12px}.lvhd .av{width:58px;height:58px;font-size:34px;box-shadow:0 0 0 4px var(--lvc,#cbd5e1)}.lvhd .av .cr{font-size:20px;top:-15px;right:-8px}
+.lvhd b{font-size:17px;display:block}.lvhd small{color:#666;font-size:13px}
+.lvbar{height:8px;background:#f1f1f3;border-radius:6px;overflow:hidden;margin:6px 0 4px}.lvbar i{display:block;height:100%;background:linear-gradient(90deg,#f59e0b,#fbbf24);border-radius:6px}
+.lvk{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.45}
+.lvk.ok{background:#ecfdf5;color:#065f46}
+.lvst{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.lvst div{background:#f7f7f9;border-radius:12px;padding:8px;text-align:center}.lvst b{display:block;font-size:16px}.lvst small{font-size:11px;color:#666}
+.lvt{margin-top:14px;border-top:1px solid #eee;padding-top:10px}.lvt h4{margin:0 0 6px;font-size:14px}
+.lvt div{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:5px 0;color:#333;border-bottom:1px dashed #eee}.lvt div.on{font-weight:700;color:#9B1B1F}.lvt div span:last-child{color:#666;text-align:right}
+.chg{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.chg button{border:2px solid #eee;border-radius:14px;padding:8px 2px;text-align:center;font-size:30px;background:#fff;cursor:pointer;font-family:inherit}
+.chg button small{display:block;font-size:11px;color:#555;margin-top:2px}.chg button.on{border-color:#9B1B1F;background:#fdf0f0}
+.lvbtn{margin-top:14px;width:100%;border:0;border-radius:14px;padding:13px;background:#9B1B1F;color:#fff;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer}.lvbtn.gh{background:#f3f4f6;color:#222}
+.lvcel{text-align:center;padding:8px 0 4px}.lvcel .big{font-size:64px;animation:lvpop .6s ease}.lvcel h3{margin:6px 0 4px;font-size:20px}
+@keyframes lvpop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+@media(max-width:380px){.avbar{width:60px}.avt span{display:none}}
 </style>
 </head>
 <body>
@@ -768,7 +799,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <div class="hero-in">
     <div class="logo"><img src="/logo-tki.png" alt="Takai"></div>
     <div class="t"><h1 id="hTitle">QA Production</h1><p id="hSub">Quality Assurance • Input harian</p><small class="ver">%%VERSI%%</small></div>
-    <div class="hero-r"><a class="mode" id="homeLink" href="/hari-ini" target="_top" style="display:none">&#8592; Dashboard</a><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
+    <button type="button" class="avw" id="avw" onclick="bukaLevel()" aria-label="Karakter dan level saya"></button><div class="hero-r"><a class="mode" id="homeLink" href="/hari-ini" target="_top" style="display:none">&#8592; Dashboard</a><a class="mode" id="modeLink" href="#" target="_top" style="display:none"></a><button type="button" class="hlo" id="hLogout" title="Keluar" aria-label="Keluar" onclick="keluar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
   </div>
   <div class="accent"></div>
 </header>
@@ -1022,7 +1053,7 @@ function render(){
   h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="setTgl(this.value);this.closest(\'.idc\').classList.remove(\'err\')"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
-  h+='</div></div><div class="pane"><div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
+  h+='</div></div><div class="pane">'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
@@ -1399,13 +1430,74 @@ function pakaiUlang(id){
 function editKirimanSaya(id){var x=(HIST.list||[]).filter(function(z){return z.id===id;})[0];if(x)muatKiriman(x,id);}
 function batalEdit(){ask({title:'Batalkan edit?',msg:'Isian di form akan dikosongkan.',ok:'Batalkan edit',cancel:'Kembali',icon:'warn',danger:true},function(){S=freshState(true);saveDraft();render();});}
 
+/* ---------- v6.2: tips harian + karakter & level ---------- */
+function tipHtml(){
+  var t=window.BOOT&&BOOT.tip;if(!t||!t.teks)return '';
+  var k3=t.jenis==='K3';
+  return '<div class="tipd'+(k3?' k3':'')+'"><div class="ic">'+(k3?'🦺':'💡')+'</div><div><h4>'+(k3?'Tips K3 hari ini':'Tips kurangi NG hari ini')+'</h4><p>'+esc(t.teks)+'</p></div></div>';
+}
+var LV={member:'',d:null};
+function loadLevel(){
+  var w=$('avw');if(!w)return;
+  if(!S||!S.member){LV={member:'',d:null};w.classList.remove('on');return;}
+  if(LV.member===S.member&&LV.d){drawAv();return;}
+  var mb=S.member;LV={member:mb,d:null};
+  call('levelMember',[mb],function(d){if(LV.member!==mb)return;LV.d=d;drawAv();cekNaikLevel(mb,d);},function(){if(LV.member===mb)w.classList.remove('on');});
+}
+function avHtml(d){return '<span class="av lv'+d.level.lv+'">'+d.karakter.emoji+(d.level.lv===5?'<span class="cr">👑</span>':'')+'</span>';}
+function drawAv(){
+  var w=$('avw'),d=LV.d;if(!w||!d){if(w)w.classList.remove('on');return;}
+  var sub=!d.next?'Level tertinggi':d.poin>=d.next.poin?'Poin cukup, cek syarat':(d.poin+'/'+d.next.poin+' → Lv '+d.next.lv);
+  w.innerHTML=avHtml(d)+'<span class="avt"><b>Lv '+d.level.lv+' · '+esc(d.level.nama)+'</b><span>'+esc(sub)+'</span><span class="avbar" style="display:block"><i style="width:'+Math.round(d.progress*100)+'%"></i></span></span>';
+  w.classList.add('on');
+}
+function cekNaikLevel(mb,d){
+  var key='qa-lv-'+mb,old=0;try{old=Number(localStorage.getItem(key))||0;localStorage.setItem(key,String(d.level.lv));}catch(e){return;}
+  if(old&&d.level.lv>old)lvSheet('<div class="lvcel"><div class="big">'+d.karakter.emoji+'</div><h3>Selamat, naik ke Lv '+d.level.lv+'!</h3><p class="lvnote">'+esc(mb)+' sekarang <b>'+esc(d.level.nama)+'</b>'+(d.level.lv===5?' 👑':'')+'. Pertahankan kualitasnya ya.</p></div><button class="lvbtn" onclick="tutupLv()">Mantap!</button>');
+}
+function lvSheet(html){tutupLv();var m=document.createElement('div');m.className='lvs';m.id='lvs';m.onclick=function(e){if(e.target===m)tutupLv();};m.innerHTML='<div class="lvp">'+html+'</div>';document.body.appendChild(m);}
+function tutupLv(){var m=$('lvs');if(m)m.remove();}
+function pct(v){return v==null?'-':Math.round(v*100)+'%';}
+function bukaLevel(){
+  var d=LV.d;if(!d)return;
+  var h='<div class="lvhd">'+avHtml(d)+'<div><b>Lv '+d.level.lv+' · '+esc(d.level.nama)+'</b><small>'+esc(LV.member)+' · '+d.poin+' poin</small></div></div>';
+  if(d.next){
+    h+='<div class="lvbar"><i style="width:'+Math.round(d.progress*100)+'%"></i></div><small style="color:#666;font-size:12px">Menuju Lv '+d.next.lv+' '+esc(d.next.nama)+': '+(d.poin>=d.next.poin?'poin sudah cukup ('+d.poin+'), tinggal syarat kualitas':d.poin+' / '+d.next.poin+' poin')+'</small>';
+    h+='<div class="lvk'+(d.kurang.length?'':' ok')+'">'+(d.kurang.length?'<b>Yang masih kurang:</b><br>• '+d.kurang.map(esc).join('<br>• '):'Semua syarat Lv '+d.next.lv+' sudah terpenuhi.')+'</div>';
+  }else h+='<div class="lvk ok">Level tertinggi. Pertahankan achievement ≥ 95%, NG di bawah limit, dan tanpa laporan ditolak agar tidak turun.</div>';
+  h+='<div class="lvst"><div><b>'+pct(d.ach30)+'</b><small>Achievement 30 hr</small></div><div><b>'+(d.ng30==null?'-':(d.ng30*100).toLocaleString('id-ID',{maximumFractionDigits:2})+'%')+'</b><small>NG rate 30 hr</small></div><div><b>'+d.hari+'</b><small>Hari disetujui</small></div></div>';
+  h+='<div class="lvt"><h4>Cara dapat poin (per hari, maks 10)</h4><div><span>Laporan disetujui leader</span><span>+2</span></div><div><span>Dikirim di hari yang sama</span><span>+2</span></div><div><span>Langsung disetujui, tanpa ditolak/diedit</span><span>+2</span></div><div><span>Achievement ≥ 90%</span><span>+2</span></div><div><span>NG rate di bawah limit ('+(d.ngLimit*100).toLocaleString('id-ID',{maximumFractionDigits:3})+'%)</span><span>+2</span></div></div>';
+  h+='<div class="lvt"><h4>Syarat level (rata-rata 30 hari terakhir, NG rate wajib di bawah limit)</h4>';
+  var LVS=[[1,'Pemula',0,0],[2,'Semangat',50,80],[3,'Si Rajin',150,85],[4,'Andalan',300,90],[5,'Juara QA 👑',500,95]];
+  LVS.forEach(function(L){h+='<div'+(L[0]===d.level.lv?' class="on"':'')+'><span>Lv '+L[0]+' · '+L[1]+(L[0]===d.level.lv?' ✓':'')+'</span><span>'+(L[0]===1?'awal':L[2]+' poin · ach ≥ '+L[3]+'%'+(L[0]===5?' · tanpa ditolak':''))+'</span></div>';});
+  h+='</div><p class="lvnote" style="margin-top:10px">Level bisa turun bila rata-rata 30 hari di bawah syarat levelnya.</p>';
+  h+='<button class="lvbtn" onclick="pilihKarakter()">'+(d.karakter.dipilih?'Ganti karakter':'Pilih karakter kamu')+'</button><button class="lvbtn gh" onclick="tutupLv()">Tutup</button>';
+  lvSheet(h);
+}
+var PILIH='';
+function pilihKarakter(){
+  var d=LV.d;if(!d)return;PILIH=d.karakter.dipilih?d.karakter.id:'';
+  var h='<h3>Pilih karakter kamu</h3><p class="lvnote">Karakter ikut naik level setiap kamu rajin dan teliti kirim laporan.</p><div class="chg" id="chg">';
+  d.pilihan.forEach(function(k){h+='<button type="button" data-id="'+esc(k.id)+'" class="'+(k.id===PILIH?'on':'')+'" onclick="PILIH=this.dataset.id;[].forEach.call(document.querySelectorAll(\'#chg button\'),function(b){b.classList.toggle(\'on\',b.dataset.id===PILIH);})">'+k.emoji+'<small>'+esc(k.nama)+'</small></button>';});
+  h+='</div><button class="lvbtn" id="lvSave" onclick="simpanKarakterSaya()">Pakai karakter ini</button><button class="lvbtn gh" onclick="bukaLevel()">Kembali</button>';
+  lvSheet(h);
+}
+function simpanKarakterSaya(){
+  if(!PILIH){toast('Pilih salah satu karakter dulu.');return;}
+  var b=$('lvSave'),mb=LV.member,id=PILIH;b.disabled=true;b.textContent='Menyimpan…';
+  call('simpanKarakter',[mb,id],function(){
+    if(LV.member===mb&&LV.d){var k=LV.d.pilihan.filter(function(x){return x.id===id;})[0];if(k)LV.d.karakter={id:k.id,emoji:k.emoji,nama:k.nama,dipilih:true};}
+    drawAv();tutupLv();toast('Karakter disimpan.');
+  },function(msg){b.disabled=false;b.textContent='Pakai karakter ini';toast(msg);});
+}
 /* ---------- riwayat member ---------- */
 var HIST={member:'',list:null,open:{},show:false};
 function loadHist(force){
-  if(!S.member){HIST={member:'',list:null,open:{},show:HIST.show};drawHist();return;}
+  if(!S.member){HIST={member:'',list:null,open:{},show:HIST.show};drawHist();loadLevel();return;}
   if(HIST.member===S.member&&HIST.list&&!force){drawHist();return;}
   var mb=S.member;HIST.member=mb;HIST.list=null;drawHist();
   call('riwayatMember',[mb],function(r){if(HIST.member!==mb)return;HIST.list=r;drawHist();},function(){if(HIST.member===mb){HIST.list=[];drawHist();}});
+  loadLevel();
 }
 function histTotals(x){var q=0,mn=0,lt=0;(x.items||[]).forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);});lt=ltSum(x.lostTimes,false);return {q:q,mn:mn,lt:lt};}
 function drawHist(){
