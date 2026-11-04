@@ -5,6 +5,7 @@
 // v1.7: menit MC per mesin (AM:AN), waktu operator per laporan (op), oiban rentang (AO:AP),
 // Standar MC PF di Master Data BI:BM. v1.8: catatan NG Lain-lain (ngNote) ke AW.
 import { jenisKelamin, pesanKirim } from "../pantun";
+import { hitungLevel, karakterDari, KARAKTER, type HariMember } from "../level";
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -639,6 +640,74 @@ export async function riwayatMember(member: string) {
     .map((x) => ({ id: x.id, date: x.date, sent: x.sent, status: x.status, qty: x.qty, ltMin: x.ltMin, note: x.note, leader: x.leader, items: x.items, lostTimes: x.lostTimes, op: x.op }));
 }
 
+/** Baris tab Users milik member (cocok NIK atau nama). row = nomor baris sheet. */
+async function barisUser(member: string) {
+  const nik = (await readMaster()).nik[member] ?? "";
+  const [g] = await io.get([`${q(SHEET_USERS)}!A2:H`], "FORMATTED_VALUE");
+  const i = g.findIndex((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
+  return { row: i < 0 ? 0 : i + 2, r: i < 0 ? [] : g[i] };
+}
+
+/**
+ * v6.2: level & karakter member. Poin per hari dari Antrian Validasi (disetujui, tepat waktu, tanpa revisi)
+ * dan Input - Production (achievement, NG rate). Tidak disimpan: dihitung ulang tiap kali dibuka.
+ */
+export async function levelMember(member: string) {
+  member = s(member).trim();
+  if (!member) return null;
+  const today = todayJakarta();
+  const [queue, rows, m, u] = await Promise.all([readQueue(), apiRows("2000-01-01", today), readMaster(), barisUser(member).catch(() => ({ row: 0, r: [] as Cell[] }))]);
+  const ngRaw = Object.keys(m.settings).find((x) => x.indexOf("NG limit") === 0);
+  const ngPpm = ngRaw !== undefined && Number(m.settings[ngRaw]) > 0 ? Number(m.settings[ngRaw]) : 1000;
+  const days = new Map<string, HariMember>();
+  const hari = (d: string) => {
+    let h = days.get(d);
+    if (!h) days.set(d, (h = { date: d, disetujui: false, hariSama: false, ditolak: false, diedit: false, std: 0, rated: 0, qty: 0, ng: 0 }));
+    return h;
+  };
+  for (const x of queue) {
+    if (x.member !== member || !x.date || x.date > today) continue;
+    const h = hari(x.date);
+    if (x.status === ST_NO) h.ditolak = true;
+    if (x.status === ST_OK) {
+      h.disetujui = true;
+      if (x.sent.slice(0, 10) === x.date) h.hariSama = true;
+      if (x.edited) h.diedit = true;
+    }
+  }
+  const n = (v: unknown) => Number(v) || 0;
+  for (const r of rows.prod) {
+    if (s(r[1]) !== member) continue;
+    const h = hari(s(r[0]));
+    const qty = n(r[5]) + n(r[7]);
+    h.qty += qty;
+    for (let i = 12; i < 22; i++) h.ng += n(r[i]);
+    // Sama dengan reports.ts add(): baris mesin dihitung terhadap jam mesin dan Std MC, baris manual jam orang & STKI.
+    const mc = s(r[11]) && s(r[11]) !== "-";
+    const mcH = mc ? (r[23] === "" && r[24] === "" ? (n(r[6]) + n(r[8])) / 60 : (n(r[23]) + n(r[24])) / 60) : 0;
+    const rated = mcH > 0 ? mcH : (n(r[6]) + n(r[8])) / 60;
+    const std = mcH > 0 && n(r[25]) > 0 ? n(r[25]) : n(r[22]) || m.stki[`${s(r[2])}|${s(r[3])}|${s(r[4]) === "-" ? "" : s(r[4])}`] || 0;
+    h.rated += rated;
+    if (rated > 0 && std > 0) h.std += qty / std;
+  }
+  const hasil = hitungLevel([...days.values()], today, ngPpm / 1e6);
+  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER, ngLimit: ngPpm / 1e6 };
+}
+
+/** Simpan karakter pilihan member ke tab Users kolom H "Karakter". */
+export async function simpanKarakter(member: string, id: string) {
+  member = s(member).trim();
+  if (!KARAKTER.some((k) => k.id === id)) throw new QaError("Karakter tidak dikenal.");
+  const u = await barisUser(member);
+  if (!u.row) throw new QaError(`${member} belum punya akun di tab Users.`);
+  try {
+    await io.update([{ range: `${q(SHEET_USERS)}!H${u.row}`, values: [[id]] }]);
+  } catch {
+    throw new QaError('Kolom H "Karakter" belum ada di tab Users. Minta admin menambahkannya.');
+  }
+  return { ok: true, karakter: karakterDari(id, "") };
+}
+
 // ---------- Fungsi yang dipanggil halaman leader ----------
 
 /**
@@ -845,6 +914,8 @@ export const RPC: Record<string, (...args: never[]) => Promise<unknown> | unknow
   cekLaporan,
   submitReport,
   riwayatMember,
+  levelMember,
+  simpanKarakter,
   leaderLogin,
   getAntrian,
   putuskan,

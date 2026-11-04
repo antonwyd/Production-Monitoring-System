@@ -18,6 +18,8 @@ const MEMBER_FNS: Record<string, (args: unknown[]) => unknown> = {
   submitReport: (a) => (a[0] as { member?: unknown } | undefined)?.member,
   riwayatMember: (a) => a[0],
   cekLaporan: (a) => a[1],
+  levelMember: (a) => a[0],
+  simpanKarakter: (a) => a[0],
 };
 
 /** Fungsi halaman leader: argumen 0 = nama leader, 1 = PIN. Wajib sesi leader/admin; nama diambil dari sesi. */
