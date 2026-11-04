@@ -4,6 +4,7 @@
 // halaman form member dan leader (public/legacy) memanggilnya lewat /api/rpc/<nama>.
 // v1.7: menit MC per mesin (AM:AN), waktu operator per laporan (op), oiban rentang (AO:AP),
 // Standar MC PF di Master Data BI:BM. v1.8: catatan NG Lain-lain (ngNote) ke AW.
+import { jenisKelamin, pesanKirim } from "../pantun";
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -610,8 +611,20 @@ export async function submitReport(payload: Payload) {
     if (kembar) return { id: kembar.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, duplicate: true };
     const id = newSubmissionId();
     await io.append(`${q(SHEET_QUEUE)}!A:L`, [[id, nowJakarta(), s(payload.date), asText(payload.member), items.length, totalQty, ltMin, ST_WAIT, "", "", "", asText(data)]]);
-    return { id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true };
+    return { id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, pesan: await pesanUntuk(s(payload.member)) };
   });
+}
+
+/** Pesan penyemangat setelah kirim: pantun (P) atau pengingat sholat (L), dari tab Users kolom G "Jenis Kelamin". */
+async function pesanUntuk(member: string): Promise<string> {
+  try {
+    const nik = (await readMaster()).nik[member] ?? "";
+    const [g] = await io.get([`${q(SHEET_USERS)}!A2:G`], "FORMATTED_VALUE");
+    const u = g.find((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
+    return u ? pesanKirim(jenisKelamin(s(u[6])), nik || member, todayJakarta()) : "";
+  } catch {
+    return ""; // pesan hanya hiasan, jangan sampai menggagalkan kiriman
+  }
 }
 
 /** Riwayat kiriman member 7 hari terakhir (terbaru dulu). */

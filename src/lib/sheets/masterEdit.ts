@@ -183,6 +183,7 @@ export const MASTER_TABLES: MasterTable[] = [
       { key: "pin", label: "PIN", kind: "text", required: true, width: 90 },
       { key: "status", label: "Status", kind: "status", options: ["Aktif", "Nonaktif"], width: 110 },
       { key: "note", label: "Keterangan", kind: "text", width: 200 },
+      { key: "gender", label: "Jenis Kelamin", kind: "select", options: ["L", "P"], width: 120 },
     ],
     unique: [["nik"]],
   },

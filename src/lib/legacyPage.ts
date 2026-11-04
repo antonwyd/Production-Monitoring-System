@@ -307,6 +307,7 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .lacts .btn{height:48px;justify-content:center;padding:0 10px;font-size:15px;flex:1}
 .lacts .btn.main{flex:2}
 .ldec{padding:0 14px 12px;font-size:12px;color:var(--muted)}
+.pantun{margin:14px auto 4px;max-width:340px;padding:14px 16px;border-radius:14px;background:#FFF5F5;border:1px solid #F5C2C4;color:#7A1518;font-size:15px;line-height:1.55;white-space:pre-line;font-style:italic;text-align:center}
 .missing{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:4px}
 .missing h3{margin:0 0 10px;font-size:15px}.missing h3 span{color:var(--warn)}
 .missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px}
@@ -769,6 +770,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <div class="ck"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
   <h2>Laporan terkirim</h2>
   <p id="doneMsg"></p>
+  <div class="pantun" id="donePesan" style="display:none"></div>
   <div class="row">
     <button class="btn ghost" onclick="newReport(true)">Laporan member lain</button>
     <button class="btn" onclick="newReport(false)">Tambah laporan lagi</button>
@@ -1601,6 +1603,7 @@ function send(){
   call('submitReport',[payload],function(r){
     SENDING=false;b.disabled=false;b.textContent='Kirim laporan';closeReview();clearDraft();HIST.member='';
     $('doneMsg').textContent=r.replaced?'Perubahan kiriman '+S.member+' sudah disimpan dan tetap menunggu validasi leader.':r.prod+' part dan '+r.lt+' lost time untuk '+S.member+' sudah terkirim dan menunggu validasi leader. Data masuk ke Dashboard setelah disetujui.';
+    var dp=$('donePesan');if(dp){dp.textContent=r.pesan||'';dp.style.display=r.pesan?'block':'none';}
     S.editId='';HIST.list=null;existCache={};
     $('app').style.display='none';$('bar').style.display='none';$('done').style.display='block';window.scrollTo(0,0);
   },function(msg){SENDING=false;b.disabled=false;b.textContent='Kirim laporan';toast('Gagal mengirim: '+msg);});
