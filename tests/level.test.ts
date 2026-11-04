@@ -37,8 +37,8 @@ describe("level member", () => {
 
   it("naik level butuh poin DAN kualitas 30 hari", () => {
     const days = Array.from({ length: 20 }, (_, i) => hari(`2026-10-${String(10 + i).padStart(2, "0")}`));
-    const r = hitungLevel(days, "2026-11-04"); // 20 x 8 = 160 poin, ach 95%
-    expect(r.poin).toBe(160);
+    const r = hitungLevel(days, "2026-11-04"); // 20 x 8 + 4 bonus streak x 5 = 180 poin, ach 95%
+    expect(r.poin).toBe(180);
     expect(r.level.lv).toBe(3);
     const days20 = Array.from({ length: 26 }, (_, i) => hari(`2026-10-${String(5 + i).padStart(2, "0")}`, { std: 6.6 }));
     const lemah = hitungLevel(days20, "2026-11-04"); // 26 x 6 = 156 poin tapi ach 82.5%
