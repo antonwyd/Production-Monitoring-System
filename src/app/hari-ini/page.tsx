@@ -12,6 +12,7 @@ import { addDays, isValidDate, todayJakarta } from "@/lib/dates";
 import { buildToday, NG_RANK_MIN_QTY } from "@/lib/views";
 import { withDataAge } from "@/lib/reports";
 import DataStatus from "@/components/DataStatus";
+import { ultahHariIni } from "@/lib/sheets/qa";
 
 export const metadata = { title: "Dashboard · QA Production" };
 
@@ -112,7 +113,10 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
   const today = todayJakarta();
   // Laporan hari ini baru diinput sore, jadi Dashboard dibuka di tanggal kemarin.
   const date = isValidDate(q.date) ? q.date : addDays(today, -1);
-  const { value: v, asOf } = await withDataAge(() => buildToday(date, { proc: q.proc, days: Number(q.days) || 7, ngBy: q.ngBy }));
+  const [{ value: v, asOf }, ultah] = await Promise.all([
+    withDataAge(() => buildToday(date, { proc: q.proc, days: Number(q.days) || 7, ngBy: q.ngBy })),
+    ultahHariIni(today),
+  ]);
   const s = v.stats;
   const d = v.dash;
   const canDecide = session.role === "leader" || session.role === "admin";
@@ -161,6 +165,17 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             />
           </div>
         </div>
+
+        {ultah.length > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-pink-200 bg-gradient-to-r from-pink-50 to-amber-50 px-4 py-3 text-sm text-pink-900">
+            <span className="text-2xl" aria-hidden>
+              🎂
+            </span>
+            <span>
+              <b className="text-pink-800">Ulang tahun hari ini:</b> {ultah.join(", ")}. Jangan lupa ucapkan selamat! 🎉
+            </span>
+          </div>
+        )}
 
         {/* KPI */}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
