@@ -1,7 +1,7 @@
 // Pesan penyemangat di layar "Laporan terkirim" (permintaan Anton, 4 Nov 2026).
 // v6.5 (Anton, 4 Nov 2026): tema per hari kerja, Sabtu/Minggu tidak ada pesan.
 //   Senin pantun kehidupan, Selasa pantun penyemangat, Rabu pantun jenaka,
-//   Kamis peribahasa + artinya, Jumat tebak-tebakan lucu.
+//   Kamis fakta unik "Tahukah kamu?" (peribahasa dihapus), Jumat tebak-tebakan lucu.
 // P dan L sama-sama dapat; L memakai pantun yang netral (tanpa wanita/cantik/menawan)
 // (pengingat sholat sudah dihapus). Jenis kelamin kosong: tidak ada pesan.
 
@@ -294,82 +294,82 @@ export const TEBAK: { q: string; a: string }[] = [
   { q: "Apa yang selalu basah walau tidak pernah kehujanan?", a: "Lidah 👅" },
 ];
 
-export const PERIBAHASA: { q: string; a: string }[] = [
-  { q: "Sedikit demi sedikit, lama-lama menjadi bukit.", a: "Hal kecil yang dilakukan terus-menerus lama-lama jadi besar." },
-  { q: "Berakit-rakit ke hulu, berenang-renang ke tepian. Bersakit-sakit dahulu, bersenang-senang kemudian.", a: "Bersusah payah dulu, nanti senangnya belakangan." },
-  { q: "Di mana bumi dipijak, di situ langit dijunjung.", a: "Hormati aturan dan adat tempat kita berada." },
-  { q: "Air beriak tanda tak dalam.", a: "Orang yang banyak omong biasanya ilmunya sedikit." },
-  { q: "Bagai padi, makin berisi makin merunduk.", a: "Makin pandai seseorang, makin rendah hati." },
-  { q: "Ada gula, ada semut.", a: "Di mana ada rezeki, di situ orang berdatangan." },
-  { q: "Berat sama dipikul, ringan sama dijinjing.", a: "Suka dan duka ditanggung bersama." },
-  { q: "Bersatu kita teguh, bercerai kita runtuh.", a: "Kalau kompak kita kuat, kalau pecah kita lemah." },
-  { q: "Hemat pangkal kaya, rajin pangkal pandai.", a: "Kalau hemat jadi kaya, kalau rajin jadi pintar." },
-  { q: "Tak ada rotan, akar pun jadi.", a: "Kalau tidak ada yang terbaik, pakai yang ada." },
-  { q: "Malu bertanya sesat di jalan.", a: "Jangan malu bertanya kalau tidak tahu." },
-  { q: "Nasi sudah menjadi bubur.", a: "Yang sudah terjadi tidak bisa diulang, ambil pelajarannya." },
-  { q: "Sekali dayung, dua tiga pulau terlampaui.", a: "Sekali usaha, beberapa tujuan tercapai." },
-  { q: "Tong kosong nyaring bunyinya.", a: "Orang yang sedikit ilmunya biasanya paling ramai bicara." },
-  { q: "Air susu dibalas air tuba.", a: "Kebaikan dibalas kejahatan. Jangan sampai kita begitu." },
-  { q: "Seperti katak dalam tempurung.", a: "Orang yang pengetahuannya sempit karena tidak mau belajar." },
-  { q: "Gajah di pelupuk mata tak tampak, kuman di seberang lautan tampak.", a: "Kesalahan sendiri tidak terlihat, kesalahan orang lain kelihatan jelas." },
-  { q: "Bagai air di daun talas.", a: "Orang yang pendiriannya mudah berubah-ubah." },
-  { q: "Lain lubuk lain ikannya, lain padang lain belalangnya.", a: "Tiap tempat punya kebiasaan masing-masing." },
-  { q: "Habis manis sepah dibuang.", a: "Setelah tidak berguna lalu ditinggalkan. Jangan begitu ke teman." },
-  { q: "Ringan tangan.", a: "Suka menolong orang lain." },
-  { q: "Besar pasak daripada tiang.", a: "Pengeluaran lebih besar daripada pendapatan. Hati-hati, ya!" },
-  { q: "Tak kenal maka tak sayang.", a: "Kenali dulu, baru bisa sayang." },
-  { q: "Ada udang di balik batu.", a: "Ada maksud tersembunyi di balik sesuatu." },
-  { q: "Bagai pinang dibelah dua.", a: "Dua orang yang sangat mirip atau serasi." },
-  { q: "Rajin pangkal pandai.", a: "Orang yang rajin belajar akan jadi pintar." },
-  { q: "Guru kencing berdiri, murid kencing berlari.", a: "Kelakuan orang yang dicontoh akan ditiru lebih parah oleh yang meniru." },
-  { q: "Diam-diam menghanyutkan.", a: "Orang pendiam ternyata banyak ilmunya." },
-  { q: "Patah tumbuh hilang berganti.", a: "Yang hilang akan ada gantinya." },
-  { q: "Bagai kacang lupa kulitnya.", a: "Orang yang lupa asal-usulnya setelah sukses." },
-  { q: "Air tenang menghanyutkan.", a: "Orang yang tenang biasanya berpikiran dalam." },
-  { q: "Bumi tak selebar daun kelor.", a: "Dunia ini luas, masih banyak kesempatan lain." },
-  { q: "Setinggi-tinggi bangau terbang, surutnya ke kubangan juga.", a: "Sejauh-jauhnya merantau, pasti rindu kampung halaman." },
-  { q: "Sambil menyelam minum air.", a: "Mengerjakan dua hal sekaligus." },
-  { q: "Ibarat menegakkan benang basah.", a: "Mengerjakan hal yang mustahil berhasil." },
-  { q: "Bagai mencari jarum dalam jerami.", a: "Mencari sesuatu yang sangat sulit ditemukan." },
-  { q: "Mulutmu harimaumu.", a: "Hati-hati bicara, ucapan bisa mencelakakan diri sendiri." },
-  { q: "Buah jatuh tak jauh dari pohonnya.", a: "Sifat anak biasanya mirip orang tuanya." },
-  { q: "Kecil-kecil cabai rawit.", a: "Biar kecil tapi hebat." },
-  { q: "Karena nila setitik, rusak susu sebelanga.", a: "Satu kesalahan kecil bisa merusak semua kebaikan." },
-  { q: "Seperti air dengan minyak.", a: "Dua hal yang tidak bisa bersatu." },
-  { q: "Tiada gading yang tak retak.", a: "Tidak ada yang sempurna, semua pasti ada kekurangannya." },
-  { q: "Bagai bumi dan langit.", a: "Perbedaan yang sangat jauh." },
-  { q: "Jauh di mata dekat di hati.", a: "Walau berjauhan, tetap dekat di hati." },
-  { q: "Hujan emas di negeri orang, hujan batu di negeri sendiri, lebih baik di negeri sendiri.", a: "Sesenang-senangnya di tempat orang, lebih enak di rumah sendiri." },
-  { q: "Bagai telur di ujung tanduk.", a: "Keadaan yang sangat genting." },
-  { q: "Ada asap ada api.", a: "Setiap kejadian pasti ada sebabnya." },
-  { q: "Dalam laut dapat diduga, dalam hati siapa tahu.", a: "Isi hati orang sulit ditebak." },
-  { q: "Gali lubang tutup lubang.", a: "Berutang untuk membayar utang lain. Sebaiknya dihindari." },
-  { q: "Rezeki tak akan tertukar.", a: "Setiap orang sudah punya rezekinya masing-masing, jangan iri." },
-  { q: "Sepandai-pandai tupai melompat, akhirnya jatuh juga.", a: "Sepandai-pandainya orang, sekali waktu bisa salah juga." },
-  { q: "Ada uang abang sayang, tak ada uang abang melayang.", a: "Orang yang baik hanya saat ada uang. Jangan begitu, ya!" },
-  { q: "Bagai menggantang asap.", a: "Mengerjakan sesuatu yang sia-sia." },
-  { q: "Siapa menanam, dia menuai.", a: "Siapa berbuat, dia yang akan menerima hasilnya." },
-  { q: "Bagai anjing dan kucing.", a: "Dua orang yang sering bertengkar." },
-  { q: "Lempar batu sembunyi tangan.", a: "Berbuat salah lalu pura-pura tidak tahu." },
-  { q: "Bagai kerakap tumbuh di batu, hidup segan mati tak mau.", a: "Hidup yang serba susah." },
-  { q: "Seperti kerbau dicocok hidung.", a: "Orang yang selalu menurut tanpa berpikir." },
-  { q: "Bagai pungguk merindukan bulan.", a: "Mengharapkan sesuatu yang sangat sulit didapat." },
-  { q: "Duduk sama rendah, berdiri sama tinggi.", a: "Kedudukannya sama, jadi harus saling menghargai." },
-  { q: "Hilang satu tumbuh seribu.", a: "Satu hilang, akan muncul banyak penggantinya." },
-  { q: "Berani karena benar, takut karena salah.", a: "Kejujuran membuat kita berani." },
-  { q: "Bagai menatang minyak yang penuh.", a: "Merawat sesuatu dengan sangat hati-hati." },
-  { q: "Sekali lancung ke ujian, seumur hidup orang tak percaya.", a: "Sekali berbohong, orang sulit percaya lagi." },
-  { q: "Kalah jadi abu, menang jadi arang.", a: "Bertengkar tidak ada untungnya bagi kedua pihak." },
-  { q: "Bagai bulan kesiangan.", a: "Wajah yang pucat dan tidak bersemangat." },
+/** Kamis: fakta unik "Tahukah kamu?" (menggantikan peribahasa, 4 Nov 2026). */
+export const FAKTA: string[] = [
+  "Madu tidak pernah basi. Madu berumur ribuan tahun yang ditemukan di makam Mesir kuno masih bisa dimakan! 🍯",
+  "Gurita punya tiga jantung dan darahnya berwarna biru. 🐙",
+  "Jerapah hanya tidur sekitar 30 menit sampai 2 jam sehari. 🦒",
+  "Sidik jari koala sangat mirip dengan sidik jari manusia. 🐨",
+  "Secara ilmiah pisang termasuk buah beri, sedangkan stroberi justru bukan. 🍌",
+  "Indonesia punya lebih dari 17.000 pulau. 🏝️",
+  "Komodo hanya hidup secara alami di Indonesia. 🦎",
+  "Jantung kita berdetak sekitar 100.000 kali setiap hari. ❤️",
+  "Sekitar 60% tubuh manusia terdiri dari air. 💧",
+  "Kucing bisa tidur 12 sampai 16 jam sehari. 🐱",
+  "Untuk membuat setengah kilogram madu, lebah harus mengunjungi sekitar 2 juta bunga. 🐝",
+  "Rafflesia arnoldii dari Indonesia adalah bunga tunggal terbesar di dunia. 🌺",
+  "Cahaya matahari butuh sekitar 8 menit untuk sampai ke Bumi. ☀️",
+  "Burung kolibri bisa terbang mundur. 🐦",
+  "Danau Toba adalah danau vulkanik terbesar di dunia. 🌋",
+  "Beberapa jenis bambu bisa tumbuh hampir 1 meter dalam sehari. 🎋",
+  "Pada kuda laut, yang mengandung dan melahirkan anak adalah si jantan. 🐴",
+  "Semut bisa mengangkat beban berkali-kali lipat dari berat tubuhnya. 🐜",
+  "Bintang laut tidak punya otak. ⭐",
+  "Tertawa bisa membantu mengurangi stres. 😄",
+  "Tulang paha adalah tulang terpanjang di tubuh manusia. 🦴",
+  "Bayi lahir dengan sekitar 300 tulang, sedangkan orang dewasa punya 206. 👶",
+  "Penguin liar hanya hidup di belahan bumi selatan. 🐧",
+  "Kopi luwak dibuat dari biji kopi yang sudah dimakan dan dikeluarkan lagi oleh luwak. ☕",
+  "Dulu wortel kebanyakan berwarna ungu dan kuning, belum oranye. 🥕",
+  "Mata burung unta lebih besar daripada otaknya. 👀",
+  "Di garis khatulistiwa, Bumi berputar dengan kecepatan sekitar 1.670 km per jam. 🌍",
+  "Jantung udang terletak di kepalanya. 🦐",
+  "Tidur siang singkat 10 sampai 20 menit bisa membuat badan lebih segar dan fokus. 😴",
+  "Lumba-lumba tidur dengan setengah otaknya, setengahnya lagi tetap waspada. 🐬",
+  "Cokelat beracun bagi anjing dan kucing. 🍫",
+  "Secara ilmiah tomat adalah buah, bukan sayur. 🍅",
+  "Kecoak bisa bertahan hidup sekitar seminggu tanpa kepala. 🪳",
+  "Punuk unta berisi lemak, bukan air. 🐫",
+  "Bulan menjauh dari Bumi sekitar 3,8 cm setiap tahun. 🌙",
+  "Orangutan liar hanya ada di Sumatra dan Kalimantan. 🦧",
+  "Minum air putih yang cukup membantu otak tetap fokus. 🥤",
+  "Anak kembar identik pun punya sidik jari yang berbeda. 👆",
+  "Ular tidak punya kelopak mata. 🐍",
+  "Katak menyerap air lewat kulitnya, bukan lewat mulut. 🐸",
+  "Kupu-kupu bisa merasakan rasa makanan dengan kakinya. 🦋",
+  "Pelangi sebenarnya berbentuk lingkaran penuh, dari darat kita hanya melihat sebagian. 🌈",
+  "Gunung Everest masih bertambah tinggi beberapa milimeter setiap tahun. 🏔️",
+  "Rambut kita tumbuh sekitar 1 cm setiap bulan. 💇",
+  "Kuku tangan tumbuh lebih cepat daripada kuku kaki. 💅",
+  "Hiu sudah ada di Bumi sejak sebelum zaman dinosaurus. 🦈",
+  "Pulau Jawa adalah pulau berpenduduk terpadat di dunia. 🏙️",
+  "Beberapa jenis burung beo bisa hidup lebih dari 50 tahun. 🦜",
+  "Ingatan ikan mas koki bukan cuma 3 detik, mereka bisa ingat sesuatu sampai berbulan-bulan. 🐠",
+  "Gurun Sahara dulu pernah hijau dan penuh danau. 🏜️",
+  "Kelelawar adalah satu-satunya mamalia yang benar-benar bisa terbang. 🦇",
+  "Nanas butuh sekitar 2 tahun untuk tumbuh sampai berbuah. 🍍",
+  "Kebanyakan kepiting berjalan ke samping. 🦀",
+  "Lebah bisa belajar mengenali wajah manusia. 🐝",
+  "Indonesia adalah negara kepulauan terbesar di dunia. 🇮🇩",
+  "Paus biru adalah hewan terbesar yang pernah hidup di Bumi, lebih besar dari dinosaurus mana pun. 🐋",
+  "Bunyi guntur berasal dari udara yang memuai sangat cepat karena panasnya petir. ⛈️",
+  "Sapi bisa punya teman dekat dan lebih tenang kalau bersama temannya. 🐄",
+  "Gajah bisa mengenali dirinya sendiri di cermin. 🐘",
+  "Burung hantu tidak bisa menggerakkan bola matanya, jadi ia memutar kepalanya. 🦉",
+  "Pohon bisa \"berkomunikasi\" lewat jaringan jamur di dalam tanah. 🌳",
+  "Mentimun sekitar 95% isinya air. 🥒",
+  "Bunga matahari muda bergerak mengikuti arah matahari. 🌻",
+  "Siput punya ribuan gigi yang sangat kecil. 🐌",
+  "Air laut asin karena mengandung garam dari batuan yang terbawa sungai selama jutaan tahun. 🌊",
 ];
 
 export const PESAN_LAKI = "Woeey jangan lupa sholat woeey 🙏";
 
-export type Tema = "kehidupan" | "semangat" | "jenaka" | "peribahasa" | "tebak";
+export type Tema = "kehidupan" | "semangat" | "jenaka" | "fakta" | "tebak";
 export type Pesan = { pesan: string; tema?: Tema; jawab?: string; sholat?: string };
 
 /** Tema per hari (0 = Minggu ... 6 = Sabtu). Sabtu/Minggu kosong. */
-export const TEMA_HARI: (Tema | null)[] = [null, "kehidupan", "semangat", "jenaka", "peribahasa", "tebak", null];
+export const TEMA_HARI: (Tema | null)[] = [null, "kehidupan", "semangat", "jenaka", "fakta", "tebak", null];
 
 function geser(key: string): number {
   let h = 2166136261;
@@ -390,8 +390,9 @@ export function pilihIsi(key: string, date: string, gender: "L" | "P" | "" = "P"
   const i = Math.floor((n + 3) / 7) + (geser(key) % 1000); // nomor minggu (mulai Senin)
   const ambil = <T,>(xs: T[]) => xs[i % xs.length];
   if (tema === "jenaka") return { pesan: ambil(JENAKA), tema };
-  if (tema === "tebak" || tema === "peribahasa") {
-    const x = ambil(tema === "tebak" ? TEBAK : PERIBAHASA);
+  if (tema === "fakta") return { pesan: ambil(FAKTA), tema };
+  if (tema === "tebak") {
+    const x = ambil(TEBAK);
     return { pesan: x.q, tema, jawab: x.a };
   }
   let daftar = tema === "semangat" ? PANTUN_SEMANGAT : PANTUN_HIDUP;
