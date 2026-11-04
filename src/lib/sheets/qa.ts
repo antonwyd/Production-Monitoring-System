@@ -7,6 +7,7 @@
 import { jenisKelamin, pesanKirim } from "../pantun";
 import { hitungLevel, karakterDari, KARAKTER, type HariMember } from "../level";
 import { tanggalLahir, ucapanUltah, ulangTahun } from "../ultah";
+import { quoteHari } from "../semangat";
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -618,14 +619,14 @@ export async function submitReport(payload: Payload) {
 }
 
 /** Pesan penyemangat setelah kirim: pantun (P) atau pengingat sholat (L), dari tab Users kolom G "Jenis Kelamin". */
-async function pesanUntuk(member: string): Promise<{ pesan: string; jk: "L" | "P" | ""; ultah?: string }> {
+async function pesanUntuk(member: string): Promise<{ pesan: string; jk: "L" | "P" | ""; quote?: string; ultah?: string }> {
   try {
     const nik = (await readMaster()).nik[member] ?? "";
     const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
     const u = g.find((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
     const jk = u ? jenisKelamin(s(u[6])) : "";
     const ultah = u && ulangTahun(tanggalLahir(u[8]), todayJakarta()) ? ucapanUltah(member) : "";
-    return { pesan: pesanKirim(jk, nik || member, todayJakarta()), jk, ...(ultah ? { ultah } : {}) };
+    return { pesan: pesanKirim(jk, nik || member, todayJakarta()), jk, quote: quoteHari(nik || member, todayJakarta()), ...(ultah ? { ultah } : {}) };
   } catch {
     return { pesan: "", jk: "" }; // pesan hanya hiasan, jangan sampai menggagalkan kiriman
   }
