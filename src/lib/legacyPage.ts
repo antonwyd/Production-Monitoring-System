@@ -308,6 +308,15 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .lacts .btn.main{flex:2}
 .ldec{padding:0 14px 12px;font-size:12px;color:var(--muted)}
 .pantun{margin:14px auto 4px;max-width:340px;padding:14px 16px;border-radius:14px;background:#FFF5F5;border:1px solid #F5C2C4;color:#7A1518;font-size:15px;line-height:1.55;white-space:pre-line;font-style:italic;text-align:center}
+.pantun .bloom{font-size:44px;font-style:normal;line-height:1;margin-bottom:8px;display:inline-block;animation:bloom 1.2s ease-out both,sway 3s ease-in-out 1.2s infinite}
+.pantun.laki{background:#F0FDF4;border-color:#BBF7D0;color:#14532D;font-style:normal;font-weight:700;font-size:17px}
+.pantun .bloom.pray{animation:bloom 1s ease-out both}
+#bungaFx{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:60}
+#bungaFx span{position:absolute;top:-40px;animation-name:jatuh;animation-timing-function:linear;animation-fill-mode:forwards}
+@keyframes jatuh{0%{transform:translateY(0) rotate(0);opacity:0}10%{opacity:1}100%{transform:translateY(110vh) rotate(540deg);opacity:.2}}
+@keyframes bloom{0%{transform:scale(0) rotate(-90deg);opacity:0}70%{transform:scale(1.25) rotate(10deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+@keyframes sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+@media (prefers-reduced-motion:reduce){#bungaFx{display:none}.pantun .bloom{animation:none}}
 .missing{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:4px}
 .missing h3{margin:0 0 10px;font-size:15px}.missing h3 span{color:var(--warn)}
 .missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px}
@@ -771,6 +780,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <h2>Laporan terkirim</h2>
   <p id="doneMsg"></p>
   <div class="pantun" id="donePesan" style="display:none"></div>
+  <div id="bungaFx" aria-hidden="true"></div>
   <div class="row">
     <button class="btn ghost" onclick="newReport(true)">Laporan member lain</button>
     <button class="btn" onclick="newReport(false)">Tambah laporan lagi</button>
@@ -1603,14 +1613,28 @@ function send(){
   call('submitReport',[payload],function(r){
     SENDING=false;b.disabled=false;b.textContent='Kirim laporan';closeReview();clearDraft();HIST.member='';
     $('doneMsg').textContent=r.replaced?'Perubahan kiriman '+S.member+' sudah disimpan dan tetap menunggu validasi leader.':r.prod+' part dan '+r.lt+' lost time untuk '+S.member+' sudah terkirim dan menunggu validasi leader. Data masuk ke Dashboard setelah disetujui.';
-    var dp=$('donePesan');if(dp){dp.textContent=r.pesan||'';dp.style.display=r.pesan?'block':'none';}
+    tampilPesan(r);
     S.editId='';HIST.list=null;existCache={};
     $('app').style.display='none';$('bar').style.display='none';$('done').style.display='block';window.scrollTo(0,0);
   },function(msg){SENDING=false;b.disabled=false;b.textContent='Kirim laporan';toast('Gagal mengirim: '+msg);});
 }
+// v6.1: pesan setelah kirim. P = pantun + bunga berjatuhan, L = pengingat sholat.
+function tampilPesan(r){
+  var dp=$('donePesan'),fx=$('bungaFx');if(!dp)return;
+  if(fx)fx.innerHTML='';
+  if(!r||!r.pesan){dp.style.display='none';dp.innerHTML='';return;}
+  var ikon=r.jk==='P'?'<div class="bloom">🌸</div>':r.jk==='L'?'<div class="bloom pray">🕌</div>':'';
+  dp.innerHTML=ikon+'<div class="ptxt"></div>';dp.querySelector('.ptxt').textContent=r.pesan;
+  dp.className='pantun'+(r.jk==='L'?' laki':'');dp.style.display='block';
+  if(r.jk==='P'&&fx){
+    var b=['🌸','🌷','🌺','🌼','💮','🌹'],h='';
+    for(var i=0;i<26;i++){h+='<span style="left:'+(Math.random()*96).toFixed(1)+'%;animation-delay:'+(Math.random()*2.5).toFixed(2)+'s;animation-duration:'+(3.5+Math.random()*3).toFixed(2)+'s;font-size:'+(18+Math.random()*18).toFixed(0)+'px">'+b[i%b.length]+'</span>';}
+    fx.innerHTML=h;setTimeout(function(){if(fx)fx.innerHTML='';},9000);
+  }
+}
 function newReport(otherMember){
   S=freshState(!otherMember);saveDraft();
-  existCache={};$('done').style.display='none';$('app').style.display='block';$('bar').style.display='block';render();window.scrollTo(0,0);
+  existCache={};var fx0=$('bungaFx');if(fx0)fx0.innerHTML='';$('done').style.display='none';$('app').style.display='block';$('bar').style.display='block';render();window.scrollTo(0,0);
 }
 
 /* ---------- init ---------- */
