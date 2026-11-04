@@ -6,6 +6,7 @@
 // Standar MC PF di Master Data BI:BM. v1.8: catatan NG Lain-lain (ngNote) ke AW.
 import { jenisKelamin, pesanKirim } from "../pantun";
 import { hitungLevel, karakterDari, KARAKTER, type HariMember } from "../level";
+import { tanggalLahir, ucapanUltah, ulangTahun } from "../ultah";
 import { newSubmissionId, nowJakarta, serialToText, todayJakarta } from "../dates";
 import { googleSheets, type Cell, type Grid, type SheetsIO } from "./client";
 
@@ -617,15 +618,28 @@ export async function submitReport(payload: Payload) {
 }
 
 /** Pesan penyemangat setelah kirim: pantun (P) atau pengingat sholat (L), dari tab Users kolom G "Jenis Kelamin". */
-async function pesanUntuk(member: string): Promise<{ pesan: string; jk: "L" | "P" | "" }> {
+async function pesanUntuk(member: string): Promise<{ pesan: string; jk: "L" | "P" | ""; ultah?: string }> {
   try {
     const nik = (await readMaster()).nik[member] ?? "";
-    const [g] = await io.get([`${q(SHEET_USERS)}!A2:G`], "FORMATTED_VALUE");
+    const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
     const u = g.find((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
     const jk = u ? jenisKelamin(s(u[6])) : "";
-    return { pesan: pesanKirim(jk, nik || member, todayJakarta()), jk };
+    const ultah = u && ulangTahun(tanggalLahir(u[8]), todayJakarta()) ? ucapanUltah(member) : "";
+    return { pesan: pesanKirim(jk, nik || member, todayJakarta()), jk, ...(ultah ? { ultah } : {}) };
   } catch {
     return { pesan: "", jk: "" }; // pesan hanya hiasan, jangan sampai menggagalkan kiriman
+  }
+}
+
+/** Nama user Aktif yang berulang tahun pada `date` (default hari ini), dari tab Users kolom I. */
+export async function ultahHariIni(date = todayJakarta()): Promise<string[]> {
+  try {
+    const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
+    return g
+      .filter((r) => s(r[1]).trim() && !/non\s*aktif|tidak/i.test(s(r[4])) && ulangTahun(tanggalLahir(r[8]), date))
+      .map((r) => s(r[1]).trim());
+  } catch {
+    return [];
   }
 }
 
@@ -643,7 +657,7 @@ export async function riwayatMember(member: string) {
 /** Baris tab Users milik member (cocok NIK atau nama). row = nomor baris sheet. */
 async function barisUser(member: string) {
   const nik = (await readMaster()).nik[member] ?? "";
-  const [g] = await io.get([`${q(SHEET_USERS)}!A2:H`], "FORMATTED_VALUE");
+  const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
   const i = g.findIndex((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
   return { row: i < 0 ? 0 : i + 2, r: i < 0 ? [] : g[i] };
 }
@@ -697,7 +711,8 @@ export async function levelMember(member: string) {
     if (rated > 0 && std > 0) h.std += qty / std;
   }
   const hasil = hitungLevel([...days.values()], today);
-  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER };
+  const ultah = ulangTahun(tanggalLahir(u.r[8]), today);
+  return { ...hasil, karakter: karakterDari(s(u.r[7]), jenisKelamin(s(u.r[6]))), pilihan: KARAKTER, ultah, ucapan: ultah ? ucapanUltah(member) : "" };
 }
 
 /** Simpan karakter pilihan member ke tab Users kolom H "Karakter". */

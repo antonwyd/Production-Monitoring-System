@@ -792,6 +792,18 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 .lvcel{text-align:center;padding:8px 0 4px}.lvcel .big{font-size:64px;animation:lvpop .6s ease}.lvcel h3{margin:6px 0 4px;font-size:20px}
 @keyframes lvpop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 @media(max-width:380px){.avbar{width:60px}.avt span{display:none}}
+/* ---- v6.4: ulang tahun ---- */
+.ultahc{position:relative;margin:0 0 14px;border-radius:18px;padding:14px 16px;display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#fff1f6 0%,#fff7e6 100%);border:1px solid #f9c5d9;box-shadow:var(--shadow);overflow:hidden}
+.ultahc .kue{font-size:40px;flex:none;animation:lvpop .7s ease}
+.ultahc h3{margin:0;font-size:17px;color:#9d174d}.ultahc p{margin:4px 0 0;font-size:14px;line-height:1.45;color:#3b0a1e}
+.ultahl{margin:12px 0;border-radius:14px;padding:10px 14px;background:linear-gradient(135deg,#fff1f6,#fff7e6);border:1px solid #f9c5d9;color:#831843;font-size:14px;line-height:1.5}
+.ultahl b{color:#9d174d}
+.pantun.ultah{background:linear-gradient(135deg,#fff1f6,#fff7e6);border-color:#f9c5d9;color:#831843;font-style:normal;font-weight:600}
+.av .kh{position:absolute;bottom:-6px;right:-8px;font-size:15px}
+#ultahFx{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:95}
+#ultahFx span{position:absolute;bottom:-60px;animation-name:naik;animation-timing-function:ease-in;animation-fill-mode:forwards}
+@keyframes naik{0%{transform:translateY(0) rotate(-6deg);opacity:0}10%{opacity:1}100%{transform:translateY(-115vh) rotate(8deg);opacity:.3}}
+@media (prefers-reduced-motion:reduce){#ultahFx{display:none}}
 </style>
 </head>
 <body>
@@ -804,6 +816,7 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
   <div class="accent"></div>
 </header>
 
+<div id="ultahFx" aria-hidden="true"></div>
 <main class="wrap" id="app"><div class="loading"><div class="spin"></div>Memuat data master…</div></main>
 
 <section class="done" id="done">
@@ -1053,7 +1066,7 @@ function render(){
   h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="setTgl(this.value);this.closest(\'.idc\').classList.remove(\'err\')"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
-  h+='</div></div><div class="pane">'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
+  h+='</div></div><div class="pane"><div id="ultahBox"></div>'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
@@ -1088,6 +1101,7 @@ function render(){
   updateBar();
   checkExisting();
   loadHist();
+  loadLevel(); // v6.2/6.4: karakter & ucapan ulang tahun (render ulang mengosongkan #ultahBox)
 }
 function pcMin(it){var m=isMc(it)?n(it.mcMin)+n(it.mcOtMin):n(it.normalMin)+n(it.otMin);return m?'<span class="pm"><b>'+fmt(m)+'</b><small>menit</small></span>':IC.right;}
 function partCard(it,ix){
@@ -1439,17 +1453,33 @@ function tipHtml(){
 var LV={member:'',d:null};
 function loadLevel(){
   var w=$('avw');if(!w)return;
-  if(!S||!S.member){LV={member:'',d:null};w.classList.remove('on');return;}
+  if(!S||!S.member){LV={member:'',d:null};w.classList.remove('on');drawUltah();return;}
   if(LV.member===S.member&&LV.d){drawAv();return;}
   var mb=S.member;LV={member:mb,d:null};
   call('levelMember',[mb],function(d){if(LV.member!==mb)return;LV.d=d;drawAv();cekNaikLevel(mb,d);},function(){if(LV.member===mb)w.classList.remove('on');});
 }
-function avHtml(d){return '<span class="av lv'+d.level.lv+'">'+d.karakter.emoji+(d.level.lv===5?'<span class="cr">👑</span>':'')+'</span>';}
+function avHtml(d){return '<span class="av lv'+d.level.lv+'">'+d.karakter.emoji+(d.level.lv===5?'<span class="cr">👑</span>':'')+(d.ultah?'<span class="kh">🎂</span>':'')+'</span>';}
+// v6.4: kartu ucapan + balon saat member berulang tahun (balon sekali per hari per member di perangkat ini).
+function drawUltah(){
+  var b=$('ultahBox'),d=LV.d;if(!b)return;
+  if(!d||!d.ultah){b.innerHTML='';return;}
+  b.innerHTML='<div class="ultahc"><div class="kue">🎂</div><div><h3>Selamat Ulang Tahun! 🎉</h3><p>'+esc(d.ucapan)+'</p></div></div>';
+  var key='qa-ultah-'+LV.member+'-'+((window.M&&M.today)||'');
+  try{if(localStorage.getItem(key))return;localStorage.setItem(key,'1');}catch(e){}
+  balon();
+}
+function balon(){
+  var fx=$('ultahFx');if(!fx)return;
+  var e=['🎈','🎉','🎂','🎁','🎈','🥳','🎊'],h='';
+  for(var i=0;i<24;i++){h+='<span style="left:'+(Math.random()*94).toFixed(1)+'%;animation-delay:'+(Math.random()*2.5).toFixed(2)+'s;animation-duration:'+(4+Math.random()*3).toFixed(2)+'s;font-size:'+(24+Math.random()*20).toFixed(0)+'px">'+e[i%e.length]+'</span>';}
+  fx.innerHTML=h;setTimeout(function(){fx.innerHTML='';},10000);
+}
 function drawAv(){
   var w=$('avw'),d=LV.d;if(!w||!d){if(w)w.classList.remove('on');return;}
   var sub=!d.next?'Level tertinggi':d.poin>=d.next.poin?'Poin cukup, cek syarat':(d.poin+'/'+d.next.poin+' → Lv '+d.next.lv);
   w.innerHTML=avHtml(d)+'<span class="avt"><b>Lv '+d.level.lv+' · '+esc(d.level.nama)+'</b><span>'+esc(sub)+'</span><span class="avbar" style="display:block"><i style="width:'+Math.round(d.progress*100)+'%"></i></span></span>';
   w.classList.add('on');
+  drawUltah();
 }
 function cekNaikLevel(mb,d){
   var key='qa-lv-'+mb,old=0;try{old=Number(localStorage.getItem(key))||0;localStorage.setItem(key,String(d.level.lv));}catch(e){return;}
@@ -1493,11 +1523,10 @@ function simpanKarakterSaya(){
 /* ---------- riwayat member ---------- */
 var HIST={member:'',list:null,open:{},show:false};
 function loadHist(force){
-  if(!S.member){HIST={member:'',list:null,open:{},show:HIST.show};drawHist();loadLevel();return;}
+  if(!S.member){HIST={member:'',list:null,open:{},show:HIST.show};drawHist();return;}
   if(HIST.member===S.member&&HIST.list&&!force){drawHist();return;}
   var mb=S.member;HIST.member=mb;HIST.list=null;drawHist();
   call('riwayatMember',[mb],function(r){if(HIST.member!==mb)return;HIST.list=r;drawHist();},function(){if(HIST.member===mb){HIST.list=[];drawHist();}});
-  loadLevel();
 }
 function histTotals(x){var q=0,mn=0,lt=0;(x.items||[]).forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);});lt=ltSum(x.lostTimes,false);return {q:q,mn:mn,lt:lt};}
 function drawHist(){
@@ -1714,6 +1743,10 @@ function send(){
 function tampilPesan(r){
   var dp=$('donePesan'),fx=$('bungaFx');if(!dp)return;
   if(fx)fx.innerHTML='';
+  if(r&&r.ultah){
+    dp.className='pantun ultah';dp.innerHTML='<div class="bloom">🎂</div><div class="ptxt"></div>'+(r.pesan?'<div class="ptxt2" style="margin-top:10px;font-weight:400;font-style:italic"></div>':'');
+    dp.querySelector('.ptxt').textContent=r.ultah;if(r.pesan)dp.querySelector('.ptxt2').textContent=r.pesan;dp.style.display='block';balon();return;
+  }
   if(!r||!r.pesan){dp.style.display='none';dp.innerHTML='';return;}
   var ikon=r.jk==='P'?'<div class="bloom">🌸</div>':r.jk==='L'?'<div class="bloom pray">🕌</div>':'';
   dp.innerHTML=ikon+'<div class="ptxt"></div>';dp.querySelector('.ptxt').textContent=r.pesan;
@@ -1888,9 +1921,16 @@ function renderQueue(){
       h+='</div>';
     });
   }
-  h+='<div id="belum"></div>';
+  h+='<div id="ultahL"></div><div id="belum"></div>';
   $('app').innerHTML=leaderShell(h);
-  loadBelum();
+  loadBelum();loadUltahL();
+}
+// v6.4: siapa yang berulang tahun hari ini (hanya tampil saat melihat tanggal hari ini).
+var ULTAH=null;
+function loadUltahL(){
+  var draw=function(list){var b=$('ultahL');if(!b)return;b.innerHTML=(list&&list.length&&(L.date||M.today)===M.today)?'<div class="ultahl">🎂 <b>Ulang tahun hari ini:</b> '+list.map(esc).join(', ')+'. Jangan lupa ucapkan selamat ya! 🎉</div>':'';};
+  if(ULTAH){draw(ULTAH);return;}
+  call('ultahHariIni',[L.name,L.pin],function(r){ULTAH=r||[];draw(ULTAH);},function(){});
 }
 // Member yang belum kirim pada tanggal yang dipilih (atau hari ini).
 var BELUM={};
