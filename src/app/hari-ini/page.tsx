@@ -251,6 +251,62 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
           </Kpi>
         </section>
 
+        {/* Bulan ini: akumulasi tanggal 1 s/d tanggal yang dipilih */}
+        <section className="card p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-bold">
+              📅 Bulan ini · {d.bulan.label}
+              <span className="ml-2 text-xs font-normal text-slate-500">
+                1–{Number(d.bulan.to.slice(8, 10))} {d.bulan.label.split(" ")[0].slice(0, 3)} · {d.bulan.days} hari ada laporan disetujui
+              </span>
+            </h2>
+            <a href={`/production-report/rekap?month=${d.bulan.to.slice(0, 7)}`} className={more}>
+              Rekap bulanan ›
+            </a>
+          </div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div className="rounded-xl bg-brand-50 px-3 py-2.5">
+              <div className="text-xs text-slate-500">Total produksi</div>
+              <div className="text-2xl font-bold tabular-nums text-brand-700">
+                {n0(d.bulan.qty)} <span className="text-xs font-semibold text-slate-500">pcs</span>
+              </div>
+              <div className="text-xs text-slate-500">rata-rata {d.bulan.perDay == null ? "-" : n0(d.bulan.perDay)} pcs/hari</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+              <div className="text-xs text-slate-500">Achievement</div>
+              <div className={`text-2xl font-bold tabular-nums ${d.bulan.ach != null && d.bulan.ach * 100 >= s.target ? "text-emerald-700" : "text-brand-600"}`}>{pct(d.bulan.ach)}</div>
+              <div className="text-xs text-slate-500">target {s.target}%</div>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+              <div className="text-xs text-slate-500">NG</div>
+              <div className="text-2xl font-bold tabular-nums">
+                {n0(d.bulan.ng)} <span className="text-xs font-semibold text-slate-500">pcs</span>
+              </div>
+              <div className="text-xs">
+                NG rate <b className={d.bulan.rate != null && d.bulan.rate > ngLimit ? "text-rose-700" : "text-emerald-700"}>{pct(d.bulan.rate, 2)}</b>
+              </div>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+              <div className="text-xs text-slate-500">NG rate per material</div>
+              <div className="mt-1 space-y-0.5 text-xs tabular-nums">
+                {d.bulan.bahan.map((b) => (
+                  <div key={b.name} className="flex justify-between gap-2">
+                    <span className="text-slate-500">{b.name}</span>
+                    <b className={b.rate != null && b.rate > ngLimit ? "text-rose-700" : "text-slate-800"}>{b.rate == null ? "-" : pct(b.rate, 2)}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-2 rounded-xl bg-slate-50 px-3 py-2.5 lg:col-span-1">
+              <div className="text-xs text-slate-500">Lost Time</div>
+              <div className="text-2xl font-bold tabular-nums">
+                {n0(d.bulan.lt)} <span className="text-xs font-semibold text-slate-500">menit</span>
+              </div>
+              <div className="text-xs text-slate-500">≈ {jam(d.bulan.lt)} jam</div>
+            </div>
+          </div>
+        </section>
+
         {/* Perbantuan dari section lain */}
         {d.helpers.length > 0 && (
           <section className="card flex flex-col gap-2 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
