@@ -532,11 +532,13 @@ function nomorHari(date: string): number {
 
 /** Isi hari itu untuk satu orang: tema sesuai hari, isi bergiliran per minggu (geser per orang),
  *  jadi satu orang tidak dapat isi yang sama sebelum daftar tema itu habis. */
-export function pilihIsi(key: string, date: string, gender: "L" | "P" | "" = "P"): Pesan {
+export function pilihIsi(key: string, date: string, gender: "L" | "P" | "" = "P", urut?: number): Pesan {
   const n = nomorHari(date);
   const tema = TEMA_HARI[(((n + 4) % 7) + 7) % 7]; // 1 Jan 1970 = Kamis
   if (!tema) return { pesan: "" };
-  const i = Math.floor((n + 3) / 7) + (geser(key) % 1000); // nomor minggu (mulai Senin)
+  // nomor minggu (mulai Senin) + geser per orang. urut = nomor urut member (QA, urut NIK): orang berbeda di hari yang sama
+  // dapat isi berbeda selama jumlah member <= jumlah isi tema itu. Tanpa urut: geser dari hash NIK.
+  const i = Math.floor((n + 3) / 7) + (urut ?? geser(key) % 1000);
   const ambil = <T,>(xs: T[]) => xs[i % xs.length];
   if (tema === "jenaka") return { pesan: ambil(JENAKA), tema };
   if (tema === "bijak") return { pesan: ambil(BIJAK), tema };
@@ -562,7 +564,7 @@ export function jenisKelamin(v: string): "L" | "P" | "" {
   return "";
 }
 
-export function pesanKirim(gender: "L" | "P" | "", key: string, date: string): Pesan {
+export function pesanKirim(gender: "L" | "P" | "", key: string, date: string, urut?: number): Pesan {
   if (!gender) return { pesan: "" };
-  return pilihIsi(key, date, gender); // pengingat sholat dihapus (Anton, 4 Nov 2026)
+  return pilihIsi(key, date, gender, urut); // pengingat sholat dihapus (Anton, 4 Nov 2026)
 }
