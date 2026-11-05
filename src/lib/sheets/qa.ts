@@ -763,10 +763,23 @@ export async function getAntrian(name: string, pin: string, status: string, date
     if (counts[x.status] !== undefined) counts[x.status]++;
   });
   const waitOther = Object.keys(lain).sort().map((date) => ({ date, count: lain[date] }));
+  // Ditolak tapi belum kirim ulang (tidak ada kiriman Menunggu/Disetujui lain di tanggal yang sama): tampil di tab Menunggu.
+  const aktif = new Set(all.filter((x) => x.status !== ST_NO).map((x) => `${x.member}|${x.date}`));
+  const ditolakMap = new Map<string, QueueEntry>();
+  for (const x of all)
+    if (x.status === ST_NO && (!dateStr || x.date === dateStr) && !aktif.has(`${x.member}|${x.date}`)) {
+      const k = `${x.member}|${x.date}`;
+      const cur = ditolakMap.get(k);
+      if (!cur || cur.decided < x.decided) ditolakMap.set(k, x);
+    }
+  const belumUlang = [...ditolakMap.values()]
+    .sort((a, b) => (a.decided < b.decided ? -1 : 1))
+    .map((x) => ({ id: x.id, member: x.member, date: x.date, leader: x.leader, decided: x.decided, note: x.note }));
+  counts[ST_WAIT] += belumUlang.length;
   let list = all.filter((x) => x.status === status && (!dateStr || x.date === dateStr));
   list.sort((a, b) => (status === ST_WAIT ? (a.sent < b.sent ? -1 : 1) : a.decided > b.decided ? -1 : 1));
   if (status !== ST_WAIT) list = list.slice(0, 100);
-  return { counts, waitOther, list: list.map(pub) };
+  return { counts, waitOther, list: list.map(pub), belumUlang };
 }
 
 export async function putuskan(name: string, pin: string, ids: string[], action: string, note: string) {

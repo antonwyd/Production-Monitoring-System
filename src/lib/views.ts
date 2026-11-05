@@ -188,7 +188,9 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
   const g = new Date(`${date}T00:00:00Z`).getUTCDay();
   const libur = g === 0 || g === 6;
   const expected = master.members.filter((m) => (isQaMember(m) && !libur) || sentToday.has(m.name) || doneToday.has(m.name));
-  const missing = expected.filter((m) => !sentToday.has(m.name) && !doneToday.has(m.name)).map((m) => m.name);
+  // Kiriman yang semuanya Ditolak (belum kirim ulang) dihitung belum kirim.
+  const sentOk = (name: string) => (sentToday.get(name) ?? []).some((x) => x !== "Ditolak");
+  const missing = expected.filter((m) => !sentOk(m.name) && !doneToday.has(m.name)).map((m) => m.name);
   const rejected = openRejections(subs)
     .map((s) => ({ member: s.member, note: s.note }));
   const queue = subs
