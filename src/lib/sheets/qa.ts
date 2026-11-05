@@ -787,7 +787,8 @@ export async function getAntrian(name: string, pin: string, status: string, date
     }
     if (counts[x.status] !== undefined) counts[x.status]++;
   });
-  const waitOther = Object.keys(lain).sort().map((date) => ({ date, count: lain[date] }));
+  // Tanggal sebelumnya sudah ikut di daftar Menunggu; catatan ini tinggal untuk tanggal sesudahnya.
+  const waitOther = Object.keys(lain).filter((d) => !dateStr || d > dateStr).sort().map((date) => ({ date, count: lain[date] }));
   // Ditolak tapi belum kirim ulang: tampil di tab Menunggu (tanggal ini) + catatan tanggal lain (7 hari).
   const terbuka = tolakTerbuka(all);
   const belumUlang = terbuka
@@ -798,8 +799,13 @@ export async function getAntrian(name: string, pin: string, status: string, date
   for (const x of terbuka) if (dateStr && x.date !== dateStr && x.date >= batas7) lainTolak[x.date] = (lainTolak[x.date] || 0) + 1;
   const tolakOther = Object.keys(lainTolak).sort().map((date) => ({ date, count: lainTolak[date] }));
   counts[ST_WAIT] += belumUlang.length;
+  // v6.9: kiriman Menunggu dari tanggal SEBELUMNYA ikut tampil (paling atas) di tab Menunggu dan dihitung di badge,
+  // supaya kiriman ulang yang telat (mis. laporan 3 Nov dikirim ulang 4 Nov malam) tidak terlewat leader.
+  const telat = dateStr ? all.filter((x) => x.status === ST_WAIT && x.date < dateStr) : [];
+  counts[ST_WAIT] += telat.length;
   let list = all.filter((x) => x.status === status && (!dateStr || x.date === dateStr));
   list.sort((a, b) => (status === ST_WAIT ? (a.sent < b.sent ? -1 : 1) : a.decided > b.decided ? -1 : 1));
+  if (status === ST_WAIT) list = [...telat.sort((a, b) => (a.date + a.sent < b.date + b.sent ? -1 : 1)), ...list];
   if (status !== ST_WAIT) list = list.slice(0, 100);
   return { counts, waitOther, tolakOther, list: list.map(pub), belumUlang };
 }
@@ -902,6 +908,20 @@ export function getScriptUrl() {
 // ---------- Untuk Dashboard & Report di Vercel ----------
 
 /** Tab Users: NIK | Nama | Peran | PIN | Status. Peran: operator, leader, manajemen, admin. */
+/** Nama akun aktif dengan peran leader/admin (untuk notifikasi HP ke leader). */
+export async function namaLeader(): Promise<string[]> {
+  const [g] = await io.get([`${q(SHEET_USERS)}!A2:E`], "FORMATTED_VALUE");
+  return g
+    .filter((r) => /^(leader|admin)$/i.test(s(r[2]).trim()) && !/^(nonaktif|tidak aktif|inactive)$/i.test(s(r[4]).trim()))
+    .map((r) => s(r[1]).trim())
+    .filter(Boolean);
+}
+
+/** Kiriman Menunggu dengan tanggal laporan sebelum `hari`. */
+export async function menungguTelat(hari: string) {
+  return (await readQueue()).filter((x) => x.status === ST_WAIT && x.date < hari).map((x) => ({ member: x.member, date: x.date }));
+}
+
 export async function apiLogin(nik: string, pin: string) {
   nik = s(nik).trim();
   pin = s(pin).trim();

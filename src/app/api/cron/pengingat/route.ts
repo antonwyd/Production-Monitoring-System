@@ -1,7 +1,7 @@
 import { handle } from "@/lib/api";
 import { requireApiRole } from "@/lib/auth";
 import { addDays, todayJakarta } from "@/lib/dates";
-import { ditolakBelumUlang } from "@/lib/sheets/qa";
+import { ditolakBelumUlang, menungguTelat, namaLeader } from "@/lib/sheets/qa";
 import { kirimKe } from "@/lib/push";
 import { buildToday } from "@/lib/views";
 
@@ -39,6 +39,17 @@ export async function GET(req: Request) {
         tag: `tolak-${x.date}`,
       });
     }
-    return Response.json({ hari, belum: belum.length, tolak: tolak.length, terkirim });
+    // Leader: kiriman tanggal sebelumnya yang masih Menunggu validasi.
+    const telat = await menungguTelat(hari);
+    if (telat.length) {
+      const fmtTgl = (d: string) => `${Number(d.slice(8, 10))} ${BLN[Number(d.slice(5, 7)) - 1]}`;
+      terkirim += await kirimKe(await namaLeader(), {
+        title: `⏳ ${telat.length} laporan tanggal sebelumnya belum divalidasi`,
+        body: telat.slice(0, 4).map((x) => `${x.member} (${fmtTgl(x.date)})`).join(", ") + (telat.length > 4 ? `, +${telat.length - 4} lagi` : "") + ". Buka halaman leader, tab Menunggu.",
+        url: "/?page=leader",
+        tag: `telat-${hari}`,
+      });
+    }
+    return Response.json({ hari, belum: belum.length, tolak: tolak.length, telat: telat.length, terkirim });
   });
 }

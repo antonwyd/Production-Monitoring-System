@@ -803,6 +803,8 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 @keyframes lvpop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 @media(max-width:380px){.avbar{width:60px}.avt span{display:none}}
 /* ---- v6.4: ulang tahun ---- */
+.telat{margin:14px 0 0;background:#fff4e5;border:2px solid #f0a020;border-radius:12px;padding:10px 14px}.telat b{display:block;color:#8a4b00;font-size:15px}.telat small{display:block;color:#6b4a1a;font-size:13px;margin-top:2px}
+.telat2{margin:18px 0 0;font-weight:700;font-size:14px;color:#555}
 .tolakc{display:flex;gap:12px;align-items:flex-start;background:#fdecec;border:2px solid #d64545;border-radius:14px;padding:12px 14px;margin:0 0 12px;animation:tkp 1.6s ease-in-out 2}
 @keyframes tkp{50%{box-shadow:0 0 0 6px rgba(214,69,69,.18)}}
 .tolakc .tk{font-size:26px;line-height:1}.tolakc .tt{flex:1;min-width:0}.tolakc .tt b{display:block;color:#9b1b1f;font-size:15px}
@@ -1977,12 +1979,15 @@ function renderQueue(){
       var nok=list.filter(function(s){return !perluCek(s);}).length;
       h+='<div class="lrow"><button class="btn green" '+(nok?'':'disabled')+' onclick="approveAllOk()">Setujui semua yang lengkap ('+nok+')</button></div>';
     } else h+='<div style="height:14px"></div>';
+    var nTel=pend&&L.date?list.filter(function(s){return s.date<L.date;}).length:0,sudahJudul=false;
+    if(nTel)h+='<div class="telat"><b>⏳ '+nTel+' kiriman dari tanggal sebelumnya belum divalidasi</b><small>Biasanya kiriman ulang setelah ditolak. Mohon divalidasi dulu.</small></div>';
     list.forEach(function(s){
+      if(nTel&&!sudahJudul&&s.date>=L.date){sudahJudul=true;h+='<div class="telat2">Kiriman '+esc(hari)+'</div>';}
       var t=subTotals(s),ms=masalah(s),w=ms.list,id=esc(s.id),tot=t.mn+t.lt,open=L.open[s.id]!==undefined?L.open[s.id]:pend;
       var hp=helperOf(s.member),lbr=isLibur(s.date),info=[];if(lbr)info.push('Hari libur: semua kerja dihitung OT, tidak perlu '+M.normalMin+' menit');else if(hp)info.push('Perbantuan dari section '+hp+': menit tidak harus '+M.normalMin);else if(Math.abs(tot-M.normalMin)>=1&&tot<M.normalMin)info.push('Total menit '+fmt(tot)+', kurang '+fmt(M.normalMin-tot)+' dari '+M.normalMin+' (cek apakah ada kiriman lain hari ini)');
       var cats={};s.items.forEach(function(it){cats[it.category]=1;});
       var bdg=pend?(w.length?'<span class="bdg no">'+w.length+' kesalahan</span>':'<span class="bdg">Lengkap</span>'):(s.status==='Disetujui'?'<span class="bdg">Disetujui</span>':'<span class="bdg no">Ditolak</span>');
-      var sub=(L.date?'':fmtDate(s.date)+' · ')+'Kirim '+esc(s.sent.slice(11,16).replace(':','.'))+(Object.keys(cats).length?' · '+esc(Object.keys(cats).join(', ')):'')+' · '+(s.items.length?s.items.length+' part':'hanya lost time');
+      var sub=(L.date&&s.date===L.date?'':'<b style="color:#9b1b1f">'+esc(fmtDate(s.date))+'</b> · ')+'Kirim '+esc(s.sent.slice(11,16).replace(':','.'))+(Object.keys(cats).length?' · '+esc(Object.keys(cats).join(', ')):'')+' · '+(s.items.length?s.items.length+' part':'hanya lost time');
       var pct=t.q+t.ng>0&&t.ng?(t.ng/(t.q+t.ng)*100).toLocaleString('id-ID',{maximumFractionDigits:2})+'%':'';
       h+='<div class="lc'+(open?' open':'')+'" id="sc'+id+'"><div class="lc-h" onclick="toggleSc(\''+id+'\')"><span class="av">'+esc(inisial(s.member))+'</span><div class="grow"><b>'+esc(s.member)+'</b><small>'+sub+'</small></div>'+bdg+'</div>';
       h+='<div class="st3"><div><small>Hasil</small><b>'+fmt(t.q)+'</b></div><div><small>NG</small><b>'+fmt(t.ng)+(pct?' <em>'+pct+'</em>':'')+'</b></div><div><small>Menit</small><b'+(Math.abs(tot-M.normalMin)>=1&&!((hp||lbr)&&tot<M.normalMin)?' class="wc"':'')+'>'+fmt(tot)+(t.ot?' <em>+OT '+fmt(t.ot)+'</em>':'')+'</b></div></div>';
