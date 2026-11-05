@@ -323,6 +323,10 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 @keyframes bloom{0%{transform:scale(0) rotate(-90deg);opacity:0}70%{transform:scale(1.25) rotate(10deg);opacity:1}100%{transform:scale(1) rotate(0)}}
 @keyframes sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
 @media (prefers-reduced-motion:reduce){#bungaFx{display:none}.pantun .bloom{animation:none}}
+.bulang{margin-top:14px;background:#fff4f4;border:1px solid #f2c4c4;border-radius:14px;padding:12px 14px}
+.bulang h3{margin:0 0 8px;font-size:15px;color:#9b1b1f}.bulang h3 span{font-weight:500;color:#64748b}
+.bulang .bu{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f6dede}.bulang .bu:first-of-type{border-top:0}
+.bulang .bu small{display:block;color:#64748b;font-size:12px;white-space:normal}.bulang .grow{flex:1;min-width:0}
 .missing{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:4px}
 .missing h3{margin:0 0 10px;font-size:15px}.missing h3 span{color:var(--warn)}
 .missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px}
@@ -1938,8 +1942,15 @@ function fmtDate(d){try{return new Date(d+'T00:00:00').toLocaleDateString('id-ID
 function inisial(nm){var w=String(nm||'').trim().split(/\s+/);return ((w[0]||'').charAt(0)+(w[1]||'').charAt(0)).toUpperCase()||'?';}
 function renderQueue(){
   var list=L.data.list,h=tglLain(),pend=L.tab==='Menunggu',hari=L.date===M.today?'hari ini':fmtDate(L.date);
+  // v6.7: yang ditolak tapi belum kirim ulang ikut tampil di tab Menunggu (tidak dihitung sudah kirim).
+  var bu=pend?(L.data.belumUlang||[]):[];
+  if(bu.length){
+    h+='<div class="bulang"><h3>Ditolak, belum kirim ulang <span>('+bu.length+')</span></h3>'+bu.map(function(x){
+      return '<div class="bu"><span class="av">'+esc(inisial(x.member))+'</span><div class="grow"><b>'+esc(x.member)+'</b><small>'+(L.date?'':esc(fmtDate(x.date))+' · ')+'Ditolak '+esc(x.leader)+' '+esc(String(x.decided||'').slice(11,16))+(x.note?' · '+esc(x.note):'')+'</small></div><span class="bdg no">Belum kirim ulang</span></div>';
+    }).join('')+'</div>';
+  }
   if(!list.length){
-    h+='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi untuk '+esc(hari)+'.':'Belum ada kiriman '+L.tab.toLowerCase()+' untuk '+esc(hari)+'.')+'</div></div>';
+    if(!bu.length)h+='<div class="card" style="margin-top:14px"><div class="empty" style="padding:28px 0">'+(pend?'Tidak ada kiriman yang menunggu validasi untuk '+esc(hari)+'.':'Belum ada kiriman '+L.tab.toLowerCase()+' untuk '+esc(hari)+'.')+'</div></div>';
   } else {
     if(pend){
       var nok=list.filter(function(s){return !perluCek(s);}).length;
