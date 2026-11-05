@@ -754,6 +754,26 @@ export async function leaderLogin(name: string, pin: string) {
   return { name };
 }
 
+/** Kiriman Ditolak yang belum dikirim ulang (tidak ada kiriman Menunggu/Disetujui lain untuk member & tanggal yang sama). */
+function tolakTerbuka(all: QueueEntry[]): QueueEntry[] {
+  const aktif = new Set(all.filter((x) => x.status !== ST_NO).map((x) => `${x.member}|${x.date}`));
+  const m = new Map<string, QueueEntry>();
+  for (const x of all)
+    if (x.status === ST_NO && !aktif.has(`${x.member}|${x.date}`)) {
+      const k = `${x.member}|${x.date}`;
+      const cur = m.get(k);
+      if (!cur || cur.decided < x.decided) m.set(k, x);
+    }
+  return [...m.values()].sort((a, b) => (a.decided < b.decided ? -1 : 1));
+}
+
+/** Untuk pengingat: ditolak & belum kirim ulang dalam 7 hari terakhir. */
+export async function ditolakBelumUlang(sejak: string) {
+  return tolakTerbuka(await readQueue())
+    .filter((x) => x.date >= sejak)
+    .map((x) => ({ member: x.member, date: x.date, note: x.note }));
+}
+
 export async function getAntrian(name: string, pin: string, status: string, dateStr: string) {
   await cekLeader(name, pin);
   const all = await readQueue();
@@ -768,23 +788,20 @@ export async function getAntrian(name: string, pin: string, status: string, date
     if (counts[x.status] !== undefined) counts[x.status]++;
   });
   const waitOther = Object.keys(lain).sort().map((date) => ({ date, count: lain[date] }));
-  // Ditolak tapi belum kirim ulang (tidak ada kiriman Menunggu/Disetujui lain di tanggal yang sama): tampil di tab Menunggu.
-  const aktif = new Set(all.filter((x) => x.status !== ST_NO).map((x) => `${x.member}|${x.date}`));
-  const ditolakMap = new Map<string, QueueEntry>();
-  for (const x of all)
-    if (x.status === ST_NO && (!dateStr || x.date === dateStr) && !aktif.has(`${x.member}|${x.date}`)) {
-      const k = `${x.member}|${x.date}`;
-      const cur = ditolakMap.get(k);
-      if (!cur || cur.decided < x.decided) ditolakMap.set(k, x);
-    }
-  const belumUlang = [...ditolakMap.values()]
-    .sort((a, b) => (a.decided < b.decided ? -1 : 1))
+  // Ditolak tapi belum kirim ulang: tampil di tab Menunggu (tanggal ini) + catatan tanggal lain (7 hari).
+  const terbuka = tolakTerbuka(all);
+  const belumUlang = terbuka
+    .filter((x) => !dateStr || x.date === dateStr)
     .map((x) => ({ id: x.id, member: x.member, date: x.date, leader: x.leader, decided: x.decided, note: x.note }));
+  const batas7 = todayJakarta(new Date(Date.now() - 7 * 864e5));
+  const lainTolak: Record<string, number> = {};
+  for (const x of terbuka) if (dateStr && x.date !== dateStr && x.date >= batas7) lainTolak[x.date] = (lainTolak[x.date] || 0) + 1;
+  const tolakOther = Object.keys(lainTolak).sort().map((date) => ({ date, count: lainTolak[date] }));
   counts[ST_WAIT] += belumUlang.length;
   let list = all.filter((x) => x.status === status && (!dateStr || x.date === dateStr));
   list.sort((a, b) => (status === ST_WAIT ? (a.sent < b.sent ? -1 : 1) : a.decided > b.decided ? -1 : 1));
   if (status !== ST_WAIT) list = list.slice(0, 100);
-  return { counts, waitOther, list: list.map(pub), belumUlang };
+  return { counts, waitOther, tolakOther, list: list.map(pub), belumUlang };
 }
 
 export async function putuskan(name: string, pin: string, ids: string[], action: string, note: string) {

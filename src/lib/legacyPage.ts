@@ -803,6 +803,11 @@ body.ldr .lband::before{content:"";position:absolute;top:0;bottom:0;left:50%;wid
 @keyframes lvpop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
 @media(max-width:380px){.avbar{width:60px}.avt span{display:none}}
 /* ---- v6.4: ulang tahun ---- */
+.tolakc{display:flex;gap:12px;align-items:flex-start;background:#fdecec;border:2px solid #d64545;border-radius:14px;padding:12px 14px;margin:0 0 12px;animation:tkp 1.6s ease-in-out 2}
+@keyframes tkp{50%{box-shadow:0 0 0 6px rgba(214,69,69,.18)}}
+.tolakc .tk{font-size:26px;line-height:1}.tolakc .tt{flex:1;min-width:0}.tolakc .tt b{display:block;color:#9b1b1f;font-size:15px}
+.tolakc .tt small{display:block;font-size:13px;color:#5b2121;margin-top:2px}
+.tolakc .tbtn{margin-top:8px;border:0;border-radius:10px;padding:9px 14px;background:#9b1b1f;color:#fff;font-weight:700;font-size:14px;cursor:pointer}
 .notifc{display:flex;align-items:center;gap:12px;background:#fff7e6;border:1px solid #f3d38a;border-radius:14px;padding:12px 14px;margin:0 0 12px}
 .notifc.ok{background:#ecf8ef;border-color:#a8dcb5}
 .notifc .nk{font-size:26px;line-height:1}
@@ -1083,7 +1088,7 @@ function render(){
   h+='<label class="idc" data-k="date">'+IC.cal+'<div class="tx"><small>Tanggal</small><input type="date" value="'+esc(S.date)+'" onclick="try{this.showPicker()}catch(e){}" onchange="setTgl(this.value);this.closest(\'.idc\').classList.remove(\'err\')"></div></label>';
   if(LOCK)h+='<div class="idc" data-k="member">'+IC.user+'<div class="tx"><small>Nama member</small><b>'+esc(ME.name)+'</b></div></div>';
   else h+='<button type="button" class="idc" data-k="member" onclick="pickMember()">'+IC.user+'<div class="tx"><small>Nama member</small><b'+(S.member?'':' class="ph"')+'>'+esc(S.member||'Pilih nama Anda')+'</b></div></button>';
-  h+='</div></div><div class="pane"><div id="ultahBox"></div><div id="notifBox"></div>'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
+  h+='</div></div><div class="pane"><div id="tolakBox"></div><div id="ultahBox"></div><div id="notifBox"></div>'+tipHtml()+'<div class="meter" id="meter"></div><div id="existing"></div><div id="hist" class="subs" style="margin-top:12px"></div>';
   if(S.editId)h+='<div class="notice" style="margin-top:14px">'+IC.warn+'<div style="flex:1"><b>Sedang mengedit kiriman '+esc(fmtDate(S.date))+'</b> yang masih menunggu leader. Simpan untuk mengganti kiriman lama.<br><button class="btn ghost sm-btn" onclick="batalEdit()">Batal edit</button></div></div>';
 
   h+='<div class="sec-h"><h2>Pekerjaan produksi</h2><span class="cnt">'+S.items.length+' part</span></div>';
@@ -1486,19 +1491,19 @@ function drawNotif(){
   if(!notifBisa())return;
   if(Notification.permission==='granted'){if(!NOTIF.sent){NOTIF.sent=true;langgan();}return;}
   if(Notification.permission==='denied')return;
-  try{if(localStorage.getItem('qa-notif-tutup'))return;}catch(e){}
+  try{var tt=Number(localStorage.getItem('qa-notif-tutup'))||0;if(tt&&Date.now()-tt<3*864e5)return;}catch(e){}
   b.innerHTML='<div class="notifc"><div class="nk">🔔</div><div class="nt"><b>Aktifkan notifikasi</b><small>Dapat kabar saat laporan disetujui / ditolak, dan pengingat kalau belum kirim.</small></div>'
     +'<div class="nb"><button class="ya" onclick="aktifNotif()">Aktifkan</button><button class="no" onclick="tutupNotif()">Nanti</button></div></div>';
 }
 function aktifNotif(){
   var b=$('notifBox');
   Notification.requestPermission().then(function(p){
-    if(p!=='granted'){if(b)b.innerHTML='';try{localStorage.setItem('qa-notif-tutup','1');}catch(e){}return;}
+    if(p!=='granted'){if(b)b.innerHTML='';try{localStorage.setItem('qa-notif-tutup',String(Date.now()));}catch(e){}return;}
     if(b)b.innerHTML='<div class="notifc"><div class="nk">⏳</div><div class="nt"><b>Mengaktifkan…</b></div></div>';
     langgan(function(err){if(!b)return;b.innerHTML=err?'<div class="notifc"><div class="nk">⚠️</div><div class="nt"><b>Belum berhasil</b><small>'+esc(err)+'</small></div></div>':'<div class="notifc ok"><div class="nk">✅</div><div class="nt"><b>Notifikasi aktif</b><small>Kabar laporan akan muncul di HP ini.</small></div></div>';if(!err)setTimeout(function(){if(b)b.innerHTML='';},4000);});
   });
 }
-function tutupNotif(){try{localStorage.setItem('qa-notif-tutup','1');}catch(e){}var b=$('notifBox');if(b)b.innerHTML='';}
+function tutupNotif(){try{localStorage.setItem('qa-notif-tutup',String(Date.now()));}catch(e){}var b=$('notifBox');if(b)b.innerHTML='';}
 function loadLevel(){
   var w=$('avw');if(!w)return;
   if(!S||!S.member){LV={member:'',d:null};w.classList.remove('on');drawUltah();return;}
@@ -1577,7 +1582,20 @@ function loadHist(force){
   call('riwayatMember',[mb],function(r){if(HIST.member!==mb)return;HIST.list=r;drawHist();},function(){if(HIST.member===mb){HIST.list=[];drawHist();}});
 }
 function histTotals(x){var q=0,mn=0,lt=0;(x.items||[]).forEach(function(it){q+=n(it.normalQty)+n(it.otQty);mn+=n(it.normalMin);});lt=ltSum(x.lostTimes,false);return {q:q,mn:mn,lt:lt};}
+// v6.8: laporan yang ditolak & belum dikirim ulang (7 hari) tampil mencolok di atas form, apa pun tanggal yang dipilih.
+function drawTolak(){
+  var b=$('tolakBox');if(!b)return;
+  var L0=(HIST.member===S.member&&HIST.list)||[],aktif={},buka={};
+  L0.forEach(function(x){if(x.status!=='Ditolak')aktif[x.date]=1;});
+  L0.forEach(function(x){if(x.status==='Ditolak'&&!aktif[x.date]&&!buka[x.date])buka[x.date]=x;});
+  var ks=Object.keys(buka).sort();
+  b.innerHTML=ks.map(function(d){var x=buka[d];
+    return '<div class="tolakc"><div class="tk">⚠️</div><div class="tt"><b>Laporan '+esc(fmtDate(d))+' DITOLAK</b><small>'+(x.note?'Alasan: '+esc(x.note):'Hubungi leader untuk alasannya.')+(x.leader?' · oleh '+esc(x.leader):'')+'</small><small>Belum dikirim ulang. Laporan ini belum dihitung sampai dikirim ulang.</small>'
+      +((x.items&&x.items.length)||(x.lostTimes&&x.lostTimes.length)?'<button class="tbtn" onclick="pakaiUlang(\''+esc(x.id)+'\')">Perbaiki &amp; kirim ulang</button>':'')+'</div></div>';
+  }).join('');
+}
 function drawHist(){
+  drawTolak();
   var box=$('hist');if(!box)return;
   if(!S.member){box.innerHTML='';return;}
   var L0=HIST.list,h='<button class="hist-t" onclick="HIST.show=!HIST.show;drawHist()"><span>Riwayat saya (7 hari)</span><span class="cnt">'+(L0?L0.length+' kiriman':'memuat…')+'</span>'+IC.chev+'</button>';
@@ -1929,8 +1947,11 @@ function leaderShell(body){
 // Geser tanggal validasi satu hari (tidak lewat hari ini).
 function geserTgl(d){var t=new Date(L.date+'T00:00:00');t.setDate(t.getDate()+d);var v=t.getFullYear()+'-'+('0'+(t.getMonth()+1)).slice(-2)+'-'+('0'+t.getDate()).slice(-2);if(v>M.today)return;L.date=v;loadQueue();}
 function tglLain(){
-  var w=(L.data&&L.data.waitOther)||[];if(!w.length)return '';
-  return '<div class="lwarn" style="margin:14px 0 0">Masih ada kiriman <b>Menunggu</b> di tanggal lain: '+w.map(function(x){return '<button class="lnk2" onclick="L.date=\''+x.date+'\';L.tab=\'Menunggu\';loadQueue()">'+esc(fmtDate(x.date))+' ('+x.count+')</button>';}).join(' ')+'</div>';
+  var w=(L.data&&L.data.waitOther)||[],t=(L.data&&L.data.tolakOther)||[],h='';
+  var btn=function(x){return '<button class="lnk2" onclick="L.date=\''+x.date+'\';L.tab=\'Menunggu\';loadQueue()">'+esc(fmtDate(x.date))+' ('+x.count+')</button>';};
+  if(w.length)h+='<div class="lwarn" style="margin:14px 0 0">Masih ada kiriman <b>Menunggu</b> di tanggal lain: '+w.map(btn).join(' ')+'</div>';
+  if(t.length)h+='<div class="lwarn" style="margin:10px 0 0;background:#fff4f4;border-color:#f2c4c4;color:#9b1b1f">Ada yang <b>ditolak & belum kirim ulang</b> di tanggal lain: '+t.map(btn).join(' ')+'</div>';
+  return h;
 }
 function subTotals(s){
   var n=function(v){var x=parseFloat(v);return isNaN(x)?0:x;},q=0,mn=0,ot=0,ng=0,lt=0;

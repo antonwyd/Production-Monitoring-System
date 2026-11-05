@@ -1,6 +1,7 @@
 import { handle } from "@/lib/api";
 import { requireApiRole } from "@/lib/auth";
-import { todayJakarta } from "@/lib/dates";
+import { addDays, todayJakarta } from "@/lib/dates";
+import { ditolakBelumUlang } from "@/lib/sheets/qa";
 import { kirimKe } from "@/lib/push";
 import { buildToday } from "@/lib/views";
 
@@ -17,8 +18,7 @@ export async function GET(req: Request) {
     if (!isCron) await requireApiRole(["admin"]);
     const hari = todayJakarta();
     const libur = [0, 6].includes(new Date(`${hari}T00:00:00Z`).getUTCDay());
-    if (libur) return Response.json({ hari, libur: true, terkirim: 0 });
-    const belum = (await buildToday(hari)).missing;
+    const belum = libur ? [] : (await buildToday(hari)).missing;
     let terkirim = 0;
     for (const nama of belum) {
       terkirim += await kirimKe([nama], {
@@ -28,6 +28,17 @@ export async function GET(req: Request) {
         tag: `ingat-${hari}`,
       });
     }
-    return Response.json({ hari, belum: belum.length, terkirim });
+    // Laporan hari sebelumnya yang ditolak dan belum dikirim ulang (7 hari terakhir).
+    const tolak = (await ditolakBelumUlang(addDays(hari, -7))).filter((x) => x.date < hari);
+    const BLN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    for (const x of tolak) {
+      terkirim += await kirimKe([x.member], {
+        title: `❌ Laporan ${Number(x.date.slice(8, 10))} ${BLN[Number(x.date.slice(5, 7)) - 1]} masih ditolak`,
+        body: `${x.note ? `Alasan: ${x.note}. ` : ""}Belum dikirim ulang. Buka aplikasi, tekan "Perbaiki & kirim ulang".`,
+        url: "/",
+        tag: `tolak-${x.date}`,
+      });
+    }
+    return Response.json({ hari, belum: belum.length, tolak: tolak.length, terkirim });
   });
 }
