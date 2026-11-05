@@ -10,6 +10,8 @@ import {
   lostSplit,
   loadFacts,
   ngLabeler,
+  ngPerBahan,
+  type BahanRate,
   type Fact,
   type Kpi,
   type LostFact,
@@ -328,6 +330,8 @@ export type Dash = {
   /** Kiriman tertua yang masih menunggu, "HH:MM", dan berapa jam sudah menunggu (hari ini saja). */
   oldest: { sent: string; hours: number | null } | null;
   trend: { date: string; label: string; qty: number; ach: number | null; rate: number | null; lt: number }[];
+  /** NG rate Press PT (lot 31..) / Press JPN (lot 01..) / Plastik pada tanggal itu. */
+  bahan: BahanRate[];
   byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number; split: { plastik: number; iron: number } | null }[];
   machines: { key: string; mc: string; category: string; categoryId: number; proc: string; line: string; status: "jalan" | "kosong"; qty: number; ng: number; rate: number | null; alert: boolean }[];
   topNg: { mc: string; category: string; categoryId: number; proc: string; qty: number; ng: number; rate: number | null }[];
@@ -509,6 +513,7 @@ function buildDash(a: {
       return { date: d, label: formatDateId(d).split(" ").slice(0, 2).join(" "), qty: x.qty, ach: x.ach, rate: x.rate, lt: Math.round(ltOf(lost.filter((l) => l.workDate === d)).lt) };
     }),
     byProc,
+    bahan: ngPerBahan(today),
     machines,
     topNg,
     ngSkipped: a.ngBy === "rate" ? ran.filter((m) => m.ng > 0 && m.qty < NG_RANK_MIN_QTY).length : 0,
