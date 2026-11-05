@@ -46,3 +46,12 @@ describe("pesan setelah kirim (v6.5: tema per hari)", () => {
     expect(jenisKelamin("")).toBe("");
   });
 });
+
+describe("teman satu hari dapat pesan berbeda", () => {
+  it("40 member (nomor urut) di hari yang sama dapat isi berbeda untuk semua tema", () => {
+    for (const d of ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"]) {
+      const isi = Array.from({ length: 40 }, (_, u) => pesanKirim("P", `nik${u}`, d, u).pesan);
+      expect(new Set(isi).size).toBe(40);
+    }
+  });
+});

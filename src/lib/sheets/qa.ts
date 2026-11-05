@@ -621,12 +621,17 @@ export async function submitReport(payload: Payload) {
 /** Pesan setelah kirim: pantun mutiara / jenaka / tebak-tebakan (L & P), plus pengingat sholat untuk L, dari tab Users kolom G "Jenis Kelamin". */
 async function pesanUntuk(member: string): Promise<Pesan & { jk: "L" | "P" | ""; ultah?: string }> {
   try {
-    const nik = (await readMaster()).nik[member] ?? "";
+    const mst = await readMaster();
+    const nik = mst.nik[member] ?? "";
+    // Nomor urut di antara member QA (urut NIK) supaya teman satu hari tidak dapat pesan yang sama.
+    const qa = mst.members.filter((x) => !mst.section[x] || /^qa$/i.test(mst.section[x])).sort((a, b) => (mst.nik[a] ?? a).localeCompare(mst.nik[b] ?? b));
+    const pos = qa.indexOf(member);
+    const urut = pos >= 0 ? pos : undefined;
     const [g] = await io.get([`${q(SHEET_USERS)}!A2:I`], "FORMATTED_VALUE");
     const u = g.find((r) => (nik && s(r[0]).trim() === nik) || s(r[1]).trim() === member);
     const jk = u ? jenisKelamin(s(u[6])) : "";
     const ultah = u && ulangTahun(tanggalLahir(u[8]), todayJakarta()) ? ucapanUltah(member) : "";
-    return { ...pesanKirim(jk, nik || member, todayJakarta()), jk, ...(ultah ? { ultah } : {}) };
+    return { ...pesanKirim(jk, nik || member, todayJakarta(), urut), jk, ...(ultah ? { ultah } : {}) };
   } catch {
     return { pesan: "", jk: "" }; // pesan hanya hiasan, jangan sampai menggagalkan kiriman
   }
