@@ -101,6 +101,8 @@ export type MachineExtra = {
 
 /** Data tambahan untuk tampilan Kualitas (grafik kecil & panel part). Excel/PDF tetap memakai tables. */
 export type QualityExtra = {
+  /** NG rate Press PT / Press JPN / Plastik. */
+  bahan: BahanRate[];
   days: string[];
   ng: number;
   qty: number;
@@ -298,6 +300,31 @@ export function add(a: Agg, f: Fact) {
   a.count++;
 }
 
+/** Kelompok NG rate untuk laporan atasan: Plastik (kategori berisi "Plastik"), lalu lot material 31... = Press PT, 01... = Press JPN. */
+export const BAHAN = ["Press PT", "Press JPN", "Plastik"] as const;
+export type BahanRate = { name: (typeof BAHAN)[number]; qty: number; ng: number; rate: number | null };
+export function bahanOf(f: Pick<Fact, "categoryName" | "lot">): (typeof BAHAN)[number] | null {
+  if (/plastik/i.test(f.categoryName)) return "Plastik";
+  const lot = f.lot.trim();
+  if (lot.startsWith("31")) return "Press PT";
+  if (lot.startsWith("01")) return "Press JPN";
+  return null;
+}
+export function ngPerBahan(facts: Fact[]): BahanRate[] {
+  const m = new Map(BAHAN.map((b) => [b, { qty: 0, ng: 0 }]));
+  for (const f of facts) {
+    const b = bahanOf(f);
+    if (!b) continue;
+    const e = m.get(b)!;
+    e.qty += f.qty;
+    e.ng += f.ng.reduce((a, v) => a + v, 0);
+  }
+  return BAHAN.map((name) => {
+    const e = m.get(name)!;
+    return { name, qty: e.qty, ng: e.ng, rate: ngRate(e.ng, e.qty) };
+  });
+}
+
 export function groupBy<K extends string | number>(facts: Fact[], key: (f: Fact) => K) {
   const m = new Map<K, { first: Fact; agg: Agg }>();
   for (const f of facts) {
@@ -482,6 +509,7 @@ async function qualityExtra(master: MasterData, from: string, to: string, p: Rep
     }
   }
   return {
+    bahan: ngPerBahan(facts),
     days: days.map(dayLabel),
     ng: now.ng,
     qty: now.qty,
@@ -1080,6 +1108,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         { label: "NG (pcs)", value: total, format: "int" },
         { label: "NG rate", value: all.ngRate, format: "pct", target: `maks ${ngMaxText(st)}`, status: vsTarget(all.ngRate as number | null, ngMax(st), true) },
         { label: "Hasil diperiksa (pcs)", value: all.qty, format: "int" },
+        ...quality.bahan.map((b) => ({ label: `NG rate ${b.name}`, value: b.rate, format: "pct" as const })),
       ],
       charts: [
         { type: "pareto", title: "Pareto NG per jenis (pcs)", xKey: "ng", series: [{ key: "qty", label: "NG", format: "int" }], data: withCum(rows, "qty").slice(0, 12) },

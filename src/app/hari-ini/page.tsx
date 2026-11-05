@@ -194,13 +194,21 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               {s.complete ? <Delta now={s.qty} prev={d.prevQty} kind="pct" good="up" vs={vs} /> : <span>sementara</span>}
             </div>
           </Kpi>
-          <Kpi icon={ICON.shield} title="NG Quantity" help="NG (pcs) dari laporan disetujui. NG rate = NG ÷ (OK + NG).">
+          <Kpi icon={ICON.shield} title="NG Quantity" help="NG (pcs) dari laporan disetujui. NG rate = NG ÷ (OK + NG). Press PT = lot material diawali 31, Press JPN = lot diawali 01, Plastik = semua kategori Plastik.">
             <div className="text-[28px] font-bold leading-none tabular-nums">
               {n0(s.ng)} <span className="text-sm font-semibold text-slate-500">pcs</span>
             </div>
             <div className="text-sm">
               NG rate <b className={s.rate != null && s.rate > ngLimit ? "text-rose-700" : "text-emerald-700"}>{pct(s.rate, 2)}</b>
               <span className="text-xs text-slate-500"> · batas {pct(ngLimit, 2)}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-50 px-2 py-1.5 text-center text-[11px] leading-tight">
+              {d.bahan.map((b) => (
+                <div key={b.name} title={`${b.name}: NG ${n0(b.ng)} dari ${n0(b.qty + b.ng)} pcs`}>
+                  <div className="text-slate-500">{b.name}</div>
+                  <b className={`text-[13px] tabular-nums ${b.rate != null && b.rate > ngLimit ? "text-rose-700" : "text-slate-800"}`}>{b.rate == null ? "-" : pct(b.rate, 2)}</b>
+                </div>
+              ))}
             </div>
             {s.complete ? <Delta now={s.rate} prev={d.prevRate} kind="pt" good="down" vs={vs} /> : <span className="text-xs text-slate-500">sementara</span>}
           </Kpi>

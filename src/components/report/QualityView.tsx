@@ -78,6 +78,23 @@ export default function QualityView({ report, query, ngLimit }: { report: Report
   const over = (r: number | null) => r != null && r > ngLimit;
   const daily = q.days.map((_, i) => q.types.reduce((a, t) => a + t.spark[i], 0));
 
+  const bahan = (
+    <section className="card px-4 py-3 sm:px-5">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-base font-bold">NG rate per material</h2>
+        <span className="text-xs text-slate-500">Press PT = lot diawali 31 · Press JPN = lot diawali 01 · Plastik = kategori Plastik</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {(q.bahan ?? []).map((b) => (
+          <div key={b.name} className="rounded-xl border border-slate-200 px-3 py-2">
+            <div className="text-[13px] text-slate-500">{b.name}</div>
+            <div className={`text-xl font-bold tabular-nums ${over(b.rate) ? "text-rose-700" : "text-slate-900"}`}>{pct(b.rate)}</div>
+            <div className="text-xs text-slate-500 tabular-nums">NG {n0(b.ng)} / {n0(b.qty + b.ng)} pcs</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
   const kpis =
     report.kind === "ng-type" ? (
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -100,6 +117,7 @@ export default function QualityView({ report, query, ngLimit }: { report: Report
     return (
       <>
         {kpis}
+        {bahan}
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           <section className="card p-4 sm:p-5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
