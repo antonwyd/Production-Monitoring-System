@@ -165,7 +165,8 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
   const days = opts.days === 14 || opts.days === 30 ? opts.days : 7;
   // Minimal 14 hari ke belakang: untuk tren "vs kemarin" dan daftar member yang biasanya lapor.
   const [{ facts, lost }, allSubs] = await Promise.all([
-    loadFacts(master, addDays(date, -Math.max(14, days)), date, procCats?.map((c) => c.id)),
+    // ...dan sejak tanggal 1 bulan itu untuk ringkasan "Bulan ini".
+    loadFacts(master, [addDays(date, -Math.max(14, days)), `${date.slice(0, 8)}01`].sort()[0], date, procCats?.map((c) => c.id)),
     callBackend<RawSubmission[]>("queue", { date }),
   ]);
   const procNames = new Set(procCats?.map((c) => c.name));
@@ -332,6 +333,8 @@ export type Dash = {
   trend: { date: string; label: string; qty: number; ach: number | null; rate: number | null; lt: number }[];
   /** NG rate Press PT (lot 31..) / Press JPN (lot 01..) / Plastik pada tanggal itu. */
   bahan: BahanRate[];
+  /** Akumulasi tanggal 1 bulan itu s/d tanggal yang dipilih (laporan disetujui). */
+  bulan: { label: string; from: string; to: string; days: number; qty: number; ng: number; rate: number | null; ach: number | null; perDay: number | null; lt: number; bahan: BahanRate[] };
   byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number; split: { plastik: number; iron: number } | null }[];
   machines: { key: string; mc: string; category: string; categoryId: number; proc: string; line: string; status: "jalan" | "kosong"; qty: number; ng: number; rate: number | null; alert: boolean }[];
   topNg: { mc: string; category: string; categoryId: number; proc: string; qty: number; ng: number; rate: number | null }[];
@@ -514,6 +517,26 @@ function buildDash(a: {
     }),
     byProc,
     bahan: ngPerBahan(today),
+    bulan: (() => {
+      const from = `${date.slice(0, 8)}01`;
+      const fs = facts.filter((f) => f.workDate >= from && f.workDate <= date);
+      const x = totals(fs, st);
+      const hari = new Set(fs.map((f) => f.workDate)).size;
+      const BLN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      return {
+        label: `${BLN[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`,
+        from,
+        to: date,
+        days: hari,
+        qty: x.qty,
+        ng: x.ng,
+        rate: x.rate,
+        ach: x.ach,
+        perDay: hari ? x.qty / hari : null,
+        lt: Math.round(ltOf(lost.filter((l) => l.workDate >= from && l.workDate <= date)).lt),
+        bahan: ngPerBahan(fs),
+      };
+    })(),
     machines,
     topNg,
     ngSkipped: a.ngBy === "rate" ? ran.filter((m) => m.ng > 0 && m.qty < NG_RANK_MIN_QTY).length : 0,
