@@ -337,7 +337,8 @@ async function readQueue(): Promise<QueueEntry[]> {
         row: i + 2,
         id: s(r[0]),
         sent: timeOf(r[1]),
-        date: s(data.date) || dayOf(r[2]),
+        // Kolom C (Tanggal) diutamakan: kalau admin membetulkan tanggal langsung di Sheet, halaman ikut berubah.
+        date: dayOf(r[2]) || s(data.date),
         member: s(r[3]),
         parts: Number(r[4]) || 0,
         qty: Number(r[5]) || 0,
