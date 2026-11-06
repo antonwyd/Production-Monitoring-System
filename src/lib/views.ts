@@ -95,6 +95,8 @@ export type TodayView = {
   missing: string[];
   topNg: { name: string; qty: number; bar: number; share: number }[];
   expected: number;
+  /** Member section lain (perbantuan) yang ikut dihitung karena hari itu lapor. */
+  bantu: { name: string; section: string }[];
   /** Ringkas untuk kartu dashboard. */
   stats: {
     qty: number;
@@ -247,6 +249,7 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
     missing,
     topNg: topNg(today, master, 5),
     expected: expected.length,
+    bantu: expected.filter((m) => !isQaMember(m)).map((m) => ({ name: m.name, section: m.area.trim() })),
     stats: {
       qty: t.qty,
       ng: t.ng,
