@@ -91,7 +91,7 @@ export default function ForecastUpload({
     onSaved(customer.trim());
   }
 
-  const exists = p && versions.includes(p.versi) && customer === defaultCustomer;
+  const exists = p && versions.includes(`${p.versi}|${customer.trim()}`);
   const s = p?.summary;
   const pct = s?.actual != null && s.forecast ? s.actual / s.forecast - 1 : null;
   const counts = p ? p.months.reduce((a, m) => ((a[m.jenis] = (a[m.jenis] ?? 0) + 1), a), {} as Record<string, number>) : {};

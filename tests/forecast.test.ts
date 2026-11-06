@@ -63,17 +63,20 @@ describe("Forecast vs PO", () => {
       { part: TOTAL, jenis: "Forecast", bulan: "2027-01", qty: 700 },
     ]);
     const all = [...st("2026-11"), ...st("2026-12", dec)];
-    const nov = buildForecastReport(all, [], "NSK", "2026-11");
+    const nov = buildForecastReport(all, [], { customer: "NSK", month: "2026-11" });
     expect(nov.sel?.actual).toBe(400);
     expect(nov.sel?.forecast).toBe(540);
     expect(nov.sel?.pct).toBeCloseTo(-140 / 540);
     expect(nov.sel?.mom).toBeCloseTo(400 / 330 - 1);
-    const r = buildForecastReport(all, [], "NSK");
+    const r = buildForecastReport(all, [], { customer: "NSK" });
     expect(r.selected).toBe("2026-12");
     expect(r.sel?.actual).toBe(450);
     expect(r.sel?.forecast).toBe(550); // forecast Des dari versi Nov
     expect(r.parts.find((x) => x.part === "GDD627*D1 J")?.forecast).toBe(500);
-    expect(r.revisions).toEqual([{ bulan: "2027-01", now: 700, prev: 660, diff: 40, pct: 40 / 660, prevVersi: "2026-11" }]);
+    expect(r.revisions).toEqual([{ bulan: "2027-01", now: 700, prev: 660, diff: 40, pct: 40 / 660 }]);
+    expect(r.fy).toBe(2026);
+    expect(r.fySum.months).toBe(5); // Agu..Des
+    expect(r.fySum.matched).toBe(4); // Agu, Sep, Nov, Des (Okt tanpa forecast)
     expect(addMonths("2026-12", 1)).toBe("2027-01");
   });
 
@@ -91,7 +94,8 @@ describe("Forecast vs PO", () => {
     expect(p.versi).toBe("2026-11");
     expect(p.summary.actual).toBe(25897200);
     expect(p.summary.forecast).toBe(32954400);
-    const r = buildForecastReport(p.rows.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), p.daily.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), "NSK");
+    const r = buildForecastReport(p.rows.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), p.daily.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), { customer: "NSK" });
+    console.log(r.fy, r.fySum, r.perCustomer);
     console.log(r.sel, r.stats, r.parts.slice(0, 3), r.daily.slice(0, 4), r.months.length);
   });
 });

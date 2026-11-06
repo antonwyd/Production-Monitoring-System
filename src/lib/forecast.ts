@@ -258,19 +258,27 @@ export function parseForecastBook(sheets: XSheet[], versiOverride?: string): Par
 }
 
 // ---------- analisa ----------
+export const ALL = "Semua customer";
+export const ALL_PARTS = "Semua part";
+/** Fiscal year Apr–Mar: FY2026 = Apr 2026 – Mar 2027. */
+export const fyOf = (ym: string) => (Number(ym.slice(5, 7)) >= 4 ? Number(ym.slice(0, 4)) : Number(ym.slice(0, 4)) - 1);
+export const fyMonths = (fy: number) => Array.from({ length: 12 }, (_, i) => addMonths(`${fy}-04`, i));
+export const fyLabel = (fy: number) => `FY${fy} (Apr ${fy} – Mar ${fy + 1})`;
+
 export type MonthPoint = {
   bulan: string;
-  kind: "actual" | "plan" | "forecast";
+  kind: "actual" | "plan" | "forecast" | "none";
   actual: number | null;
   forecast: number | null;
   diff: number | null;
   pct: number | null;
+  /** Achievement = PO / forecast. */
+  ach: number | null;
   /** Kenaikan PO dibanding bulan sebelumnya / bulan yang sama tahun lalu. */
   mom: number | null;
   yoy: number | null;
   /** Untuk bulan depan: forecast versi sebelumnya (revisi forecast). */
   prevForecast: number | null;
-  versi: string;
 };
 export type PartPoint = {
   part: string;
@@ -284,11 +292,36 @@ export type PartPoint = {
   next: number | null;
   spark: (number | null)[];
 };
+export type FySummary = {
+  months: number;
+  matched: number;
+  forecast: number | null;
+  actual: number | null;
+  achievement: number | null;
+  gap: number | null;
+  gapPct: number | null;
+  actualAll: number;
+  prevActual: number | null;
+  prevForecast: number | null;
+  actualGrowth: number | null;
+  forecastGrowth: number | null;
+  /** Forecast bulan sisa FY (belum ada PO). */
+  remaining: number | null;
+  remainingMonths: number;
+  last: MonthPoint | null;
+};
 export type ForecastReport = {
   customer: string;
   customers: string[];
-  versions: { versi: string; by: string; at: string; sumber: string }[];
+  part: string;
+  partsList: string[];
+  fy: number;
+  fys: number[];
+  versions: { versi: string; customer: string; by: string; at: string; sumber: string }[];
   months: MonthPoint[];
+  fyPoints: MonthPoint[];
+  fySum: FySummary;
+  perCustomer: { customer: string; actual: number; forecast: number | null; ach: number | null }[];
   selected: string | null;
   sel: MonthPoint | null;
   nextMonth: MonthPoint | null;
@@ -296,89 +329,180 @@ export type ForecastReport = {
   daily: { tanggal: string; qty: number; cum: number; pace: number | null }[];
   dailyParts: { part: string; days: Record<string, number>; total: number }[];
   stats: { n: number; accuracy: number | null; bias: number | null; below: number; above: number; within: number; growth12: number | null };
-  revisions: { bulan: string; now: number; prev: number; diff: number; pct: number | null; prevVersi: string }[];
+  revisions: { bulan: string; now: number; prev: number; diff: number; pct: number | null }[];
 };
 
 const pctOf = (a: number | null, b: number | null) => (a === null || b === null || !b ? null : (a - b) / b);
 
-export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored[], customerIn?: string, selectedIn?: string): ForecastReport {
-  const customers = [...new Set(rowsAll.map((r) => r.customer))].sort();
-  const customer = customerIn && customers.includes(customerIn) ? customerIn : customers[0] ?? "";
-  const rows = rowsAll.filter((r) => r.customer === customer);
-  const verSet = [...new Set(rows.map((r) => r.versi))].sort();
-  const versions = verSet.map((v) => {
-    const r = rows.find((x) => x.versi === v)!;
-    return { versi: v, by: r.by ?? "", at: r.at ?? "", sumber: r.sumber ?? "" };
-  });
+type Src = { kind: "actual" | "plan" | "forecast"; act: Map<string, number> | null; fc: Map<string, number> | null; fcTotal: number | null; prevFc: Map<string, number> | null };
 
-  // Indeks: versi -> jenis -> bulan -> part -> qty
+/** Sumber angka per bulan untuk satu customer (lihat aturan di atas file). */
+function sourcesFor(rows: FcStored[]) {
+  const verSet = [...new Set(rows.map((r) => r.versi))].sort();
   const idx = new Map<string, Map<string, number>>();
   const key = (v: string, j: Jenis, b: string) => `${v}|${j}|${b}`;
-  const boxOf = new Map<string, number>();
   for (const r of rows) {
     const k = key(r.versi, r.jenis, r.bulan);
     const m = idx.get(k) ?? idx.set(k, new Map()).get(k)!;
     m.set(r.part, (m.get(r.part) ?? 0) + r.qty);
-    if (r.box && r.part !== TOTAL) boxOf.set(r.part, r.box);
   }
   const get = (v: string, j: Jenis, b: string) => idx.get(key(v, j, b));
-  const allMonths = [...new Set(rows.map((r) => r.bulan))].sort();
-
-  type Src = { kind: MonthPoint["kind"]; versi: string; act: Map<string, number> | null; fc: Map<string, number> | null; fcTotal: number | null; prevFc: number | null };
   const srcOf = new Map<string, Src>();
-  for (const b of allMonths) {
+  for (const b of [...new Set(rows.map((r) => r.bulan))].sort()) {
     // PO aktual: versi terbaru yang mencatat bulan ini sebagai Actual/Plan.
     let vA: string | null = null,
       jA: Jenis = "Actual";
-    for (let i = verSet.length - 1; i >= 0 && !vA; i--) {
-      for (const j of ["Plan", "Actual"] as Jenis[]) if (!vA && get(verSet[i], j, b)?.has(TOTAL)) (vA = verSet[i]), (jA = j);
-    }
+    for (let i = verSet.length - 1; i >= 0 && !vA; i--) for (const j of ["Plan", "Actual"] as Jenis[]) if (!vA && get(verSet[i], j, b)?.has(TOTAL)) (vA = verSet[i]), (jA = j);
     if (vA) {
-      const act = get(vA, jA, b)!;
       // Forecast: forecast lama di versi itu, atau forecast bulan ini dari versi sebelumnya yang terbaru.
       let fc = get(vA, "Forecast lama", b) ?? null;
       if (!fc) for (let i = verSet.indexOf(vA) - 1; i >= 0 && !fc; i--) fc = get(verSet[i], "Forecast", b) ?? null;
       const fcTotal = get(vA, "Forecast total", b)?.get(TOTAL) ?? fc?.get(TOTAL) ?? null;
-      srcOf.set(b, { kind: jA === "Plan" ? "plan" : "actual", versi: vA, act, fc, fcTotal, prevFc: null });
+      srcOf.set(b, { kind: jA === "Plan" ? "plan" : "actual", act: get(vA, jA, b)!, fc, fcTotal, prevFc: null });
     } else {
       const vs = verSet.filter((v) => get(v, "Forecast", b)?.has(TOTAL));
       if (!vs.length) continue;
-      const v = vs[vs.length - 1];
-      const fc = get(v, "Forecast", b)!;
-      const prev = vs.length > 1 ? get(vs[vs.length - 2], "Forecast", b)!.get(TOTAL) ?? null : null;
-      srcOf.set(b, { kind: "forecast", versi: v, act: null, fc, fcTotal: fc.get(TOTAL) ?? null, prevFc: prev });
+      const fc = get(vs[vs.length - 1], "Forecast", b)!;
+      srcOf.set(b, { kind: "forecast", act: null, fc, fcTotal: fc.get(TOTAL) ?? null, prevFc: vs.length > 1 ? get(vs[vs.length - 2], "Forecast", b)! : null });
     }
   }
+  return srcOf;
+}
 
-  const months: MonthPoint[] = [];
-  for (const b of allMonths) {
+function addMap(a: Map<string, number> | null, b: Map<string, number> | null) {
+  if (!a) return b ? new Map(b) : null;
+  if (!b) return a;
+  const out = new Map(a);
+  b.forEach((v, k) => out.set(k, (out.get(k) ?? 0) + v));
+  return out;
+}
+
+/** Gabung beberapa customer: angka dijumlah per bulan. */
+function mergeSources(list: Map<string, Src>[]): Map<string, Src> {
+  if (list.length === 1) return list[0];
+  const out = new Map<string, Src>();
+  for (const src of list)
+    for (const [b, s] of src) {
+      const o = out.get(b);
+      if (!o) {
+        out.set(b, { ...s, act: s.act && new Map(s.act), fc: s.fc && new Map(s.fc), prevFc: s.prevFc && new Map(s.prevFc) });
+        continue;
+      }
+      o.kind = o.kind === "plan" || s.kind === "plan" ? "plan" : o.kind === "actual" || s.kind === "actual" ? "actual" : "forecast";
+      o.act = addMap(o.act, s.act);
+      o.fc = addMap(o.fc, s.fc);
+      o.prevFc = addMap(o.prevFc, s.prevFc);
+      o.fcTotal = o.fcTotal === null && s.fcTotal === null ? null : (o.fcTotal ?? 0) + (s.fcTotal ?? 0);
+    }
+  return out;
+}
+
+export function buildForecastReport(
+  rowsAll: FcStored[],
+  dailyAll: FcDailyStored[],
+  opts: { customer?: string; month?: string; fy?: number | string; part?: string } = {},
+): ForecastReport {
+  const customers = [...new Set(rowsAll.map((r) => r.customer))].sort();
+  const customer = opts.customer && customers.includes(opts.customer) ? opts.customer : customers.length > 1 ? ALL : customers[0] ?? ALL;
+  const picked = customer === ALL ? customers : [customer];
+  const perCust = new Map(picked.map((c) => [c, sourcesFor(rowsAll.filter((r) => r.customer === c))]));
+  const srcOf = mergeSources([...perCust.values()]);
+  const rows = rowsAll.filter((r) => picked.includes(r.customer));
+  const versions = [...new Set(rows.map((r) => `${r.versi}|${r.customer}`))].sort().map((k) => {
+    const [versi, c] = k.split("|");
+    const r = rows.find((x) => x.versi === versi && x.customer === c)!;
+    return { versi, customer: c, by: r.by ?? "", at: r.at ?? "", sumber: r.sumber ?? "" };
+  });
+  const boxOf = new Map<string, number>();
+  for (const r of rows) if (r.box && r.part !== TOTAL) boxOf.set(r.part, r.box);
+  const partsList = [...new Set(rows.filter((r) => r.part !== TOTAL).map((r) => r.part))].sort();
+  const part = opts.part && partsList.includes(opts.part) ? opts.part : ALL_PARTS;
+  const one = part !== ALL_PARTS;
+
+  const actOf = (s: Src | undefined) => (!s?.act ? null : one ? s.act.get(part) ?? 0 : s.act.get(TOTAL) ?? null);
+  const fcOf = (s: Src | undefined) => (!s ? null : one ? (s.fc ? s.fc.get(part) ?? 0 : null) : s.fcTotal);
+  const point = (b: string): MonthPoint => {
     const s = srcOf.get(b);
-    if (!s) continue;
-    const actual = s.act?.get(TOTAL) ?? null;
-    const forecast = s.fcTotal;
-    const prevAct = srcOf.get(addMonths(b, -1))?.act?.get(TOTAL) ?? null;
-    const yAct = srcOf.get(addMonths(b, -12))?.act?.get(TOTAL) ?? null;
-    const base = actual ?? (s.kind === "forecast" ? forecast : null);
-    months.push({
+    const actual = actOf(s);
+    const forecast = fcOf(s);
+    const base = actual ?? (s?.kind === "forecast" ? forecast : null);
+    const prevFc = s?.prevFc ? (one ? s.prevFc.get(part) ?? 0 : s.prevFc.get(TOTAL) ?? null) : null;
+    return {
       bulan: b,
-      kind: s.kind,
+      kind: s?.kind ?? "none",
       actual,
       forecast,
       diff: actual !== null && forecast !== null ? actual - forecast : null,
       pct: pctOf(actual, forecast),
-      mom: pctOf(base, prevAct),
-      yoy: pctOf(base, yAct),
-      prevForecast: s.prevFc,
-      versi: s.versi,
-    });
-  }
+      ach: actual !== null && forecast ? actual / forecast : null,
+      mom: pctOf(base, actOf(srcOf.get(addMonths(b, -1)))),
+      yoy: pctOf(base, actOf(srcOf.get(addMonths(b, -12)))),
+      prevForecast: prevFc,
+    };
+  };
+  const months = [...srcOf.keys()].sort().map(point);
 
+  // Bulan terpilih (untuk detail part & harian) dan fiscal year.
   const withAct = months.filter((m) => m.actual !== null);
-  const latestVer = verSet[verSet.length - 1];
-  const defaultSel = (latestVer && months.find((m) => m.bulan === latestVer && m.actual !== null)?.bulan) || withAct[withAct.length - 1]?.bulan || null;
-  const selected = selectedIn && months.some((m) => m.bulan === selectedIn) ? selectedIn : defaultSel;
+  const latest = withAct[withAct.length - 1]?.bulan ?? null;
+  const fys = [...new Set(months.map((m) => fyOf(m.bulan)))].sort((a, b) => b - a);
+  const fyIn = Number(opts.fy);
+  const selIn = opts.month && withAct.some((m) => m.bulan === opts.month) ? opts.month : null;
+  const fy = fys.includes(fyIn) ? fyIn : selIn ? fyOf(selIn) : latest ? fyOf(latest) : fys[0] ?? fyOf(new Date().toISOString().slice(0, 7));
+  const inFy = withAct.filter((m) => fyOf(m.bulan) === fy);
+  const selected = selIn && fyOf(selIn) === fy ? selIn : inFy[inFy.length - 1]?.bulan ?? latest;
   const sel = months.find((m) => m.bulan === selected) ?? null;
   const nextMonth = selected ? months.find((m) => m.bulan === addMonths(selected, 1)) ?? null : null;
+
+  // Ringkasan FY: PO & forecast s/d bulan PO terakhir di FY; achievement hanya bulan yang punya keduanya.
+  const fyPoints = fyMonths(fy).map((b) => months.find((m) => m.bulan === b) ?? { ...point(b), kind: "none" as const });
+  const done = fyPoints.filter((m) => m.actual !== null);
+  const pairs = done.filter((m) => m.forecast !== null);
+  const sum = (xs: (number | null)[]) => xs.reduce<number>((a, v) => a + (v ?? 0), 0);
+  const fcM = pairs.length ? sum(pairs.map((m) => m.forecast)) : null;
+  // Belum ada forecast sama sekali di FY ini: PO tetap ditampilkan (semua bulan).
+  const base = pairs.length ? pairs : done;
+  const acM = base.length ? sum(base.map((m) => m.actual)) : null;
+  const prevYear = (m: MonthPoint) => srcOf.get(addMonths(m.bulan, -12));
+  // Pembanding FY lalu = bulan yang sama dengan bulan yang dibandingkan (ada PO & forecast).
+  const prevAct = base.length && base.every((m) => actOf(prevYear(m)) !== null) ? sum(base.map((m) => actOf(prevYear(m)))) : null;
+  const prevFc = pairs.length && pairs.every((m) => fcOf(prevYear(m)) !== null) ? sum(pairs.map((m) => fcOf(prevYear(m)))) : null;
+  const rest = fyPoints.filter((m) => m.actual === null && m.forecast !== null);
+  const fySum: FySummary = {
+    months: done.length,
+    matched: pairs.length,
+    forecast: fcM,
+    actual: acM,
+    achievement: fcM ? acM! / fcM : null,
+    gap: fcM !== null ? acM! - fcM : null,
+    gapPct: fcM !== null ? pctOf(acM, fcM) : null,
+    actualAll: sum(done.map((m) => m.actual)),
+    prevActual: prevAct,
+    prevForecast: prevFc,
+    actualGrowth: pctOf(acM, prevAct),
+    forecastGrowth: pctOf(fcM, prevFc),
+    remaining: rest.length ? sum(rest.map((m) => m.forecast)) : null,
+    remainingMonths: rest.length,
+    last: done[done.length - 1] ?? null,
+  };
+
+  // Per customer (FY s/d bulan terakhir).
+  const perCustomer = [...perCust].map(([c, src]) => {
+    let a = 0,
+      aM = 0,
+      f = 0,
+      n = 0;
+    for (const b of fyMonths(fy)) {
+      const s = src.get(b);
+      const av = actOf(s);
+      if (av === null) continue;
+      a += av;
+      const fv = fcOf(s);
+      if (fv !== null) (f += fv), (aM += av), n++;
+    }
+    return { customer: c, actual: a, forecast: n ? f : null, ach: n && f ? aM / f : null };
+  });
+  perCustomer.sort((x, y) => y.actual - x.actual);
 
   // Per part untuk bulan terpilih.
   const parts: PartPoint[] = [];
@@ -390,10 +514,10 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
     for (const m of [s.act, s.fc, nextS?.act ?? nextS?.fc ?? null]) m?.forEach((_, p) => p !== TOTAL && names.add(p));
     const sparkMonths = Array.from({ length: 12 }, (_, i) => addMonths(selected, i - 11));
     for (const p of names) {
+      if (one && p !== part) continue;
       const actual = s.act ? s.act.get(p) ?? 0 : null;
       const forecast = s.fc ? s.fc.get(p) ?? 0 : null;
       const prevActual = prevS?.act ? prevS.act.get(p) ?? 0 : null;
-      const nm = nextS ? (nextS.act ?? nextS.fc)?.get(p) ?? 0 : null;
       parts.push({
         part: p,
         box: boxOf.get(p) ?? 0,
@@ -403,7 +527,7 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
         pct: pctOf(actual, forecast),
         prevActual,
         mom: pctOf(actual, prevActual),
-        next: nm,
+        next: nextS ? (nextS.act ?? nextS.fc)?.get(p) ?? 0 : null,
         spark: sparkMonths.map((b) => {
           const x = srcOf.get(b);
           return x?.act ? x.act.get(p) ?? 0 : null;
@@ -413,13 +537,16 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
     parts.sort((a, b) => Math.abs(b.diff ?? 0) - Math.abs(a.diff ?? 0) || (b.actual ?? 0) - (a.actual ?? 0) || a.part.localeCompare(b.part));
   }
 
-  // Harian bulan terpilih: dari versi terbaru yang punya data harian bulan itu.
+  // Harian bulan terpilih: per customer dari versi terbaru yang punya data harian bulan itu.
   let daily: ForecastReport["daily"] = [];
   let dailyParts: ForecastReport["dailyParts"] = [];
   if (selected) {
-    const ds = dailyAll.filter((d) => d.customer === customer && d.tanggal.startsWith(selected));
-    const v = [...new Set(ds.map((d) => d.versi))].sort().pop();
-    const mine = ds.filter((d) => d.versi === v);
+    const mine: FcDailyStored[] = [];
+    for (const c of picked) {
+      const ds = dailyAll.filter((d) => d.customer === c && d.tanggal.startsWith(selected) && (!one || d.part === part));
+      const v = [...new Set(ds.map((d) => d.versi))].sort().pop();
+      mine.push(...ds.filter((d) => d.versi === v));
+    }
     if (mine.length) {
       const per = new Map<string, number>();
       const pp = new Map<string, Record<string, number>>();
@@ -430,8 +557,7 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
       }
       const [y, m] = selected.split("-").map(Number);
       const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-      const poDays = [...per.keys()].length;
-      const fcDay = sel?.forecast && poDays ? sel.forecast / poDays : null;
+      const fcDay = sel?.forecast && per.size ? sel.forecast / per.size : null;
       let cum = 0,
         cumPace = 0;
       for (let d = 1; d <= last; d++) {
@@ -441,7 +567,7 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
         if (q && fcDay) cumPace += fcDay;
         daily.push({ tanggal: t, qty: q, cum, pace: fcDay ? cumPace : null });
       }
-      dailyParts = [...pp].map(([part, days]) => ({ part, days, total: Object.values(days).reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
+      dailyParts = [...pp].map(([p, days]) => ({ part: p, days, total: Object.values(days).reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
     }
   }
 
@@ -457,31 +583,25 @@ export function buildForecastReport(rowsAll: FcStored[], dailyAll: FcDailyStored
     within: hist.filter((m) => Math.abs(m.pct!) <= tol).length,
     growth12: (() => {
       if (!selected) return null;
-      const sum = (from: number) => {
+      const total = (from: number) => {
         let t = 0;
         for (let i = 0; i < 12; i++) {
-          const a = srcOf.get(addMonths(selected, from - i))?.act?.get(TOTAL);
-          if (a === undefined) return null;
+          const a = actOf(srcOf.get(addMonths(selected, from - i)));
+          if (a === null) return null;
           t += a;
         }
         return t;
       };
-      return pctOf(sum(0), sum(-12));
+      return pctOf(total(0), total(-12));
     })(),
   };
 
   // Revisi forecast: bulan ke depan, forecast versi terbaru vs versi sebelumnya.
-  const revisions: ForecastReport["revisions"] = [];
-  for (const m of months) {
-    if (m.kind !== "forecast" || m.forecast === null) continue;
-    const vs = verSet.filter((v) => get(v, "Forecast", m.bulan)?.has(TOTAL));
-    if (vs.length < 2) continue;
-    const prevV = vs[vs.length - 2];
-    const prev = get(prevV, "Forecast", m.bulan)!.get(TOTAL)!;
-    revisions.push({ bulan: m.bulan, now: m.forecast, prev, diff: m.forecast - prev, pct: pctOf(m.forecast, prev), prevVersi: prevV });
-  }
+  const revisions = months
+    .filter((m) => m.kind === "forecast" && m.forecast !== null && m.prevForecast !== null)
+    .map((m) => ({ bulan: m.bulan, now: m.forecast!, prev: m.prevForecast!, diff: m.forecast! - m.prevForecast!, pct: pctOf(m.forecast, m.prevForecast) }));
 
-  return { customer, customers, versions, months, selected, sel, nextMonth, parts, daily, dailyParts, stats, revisions };
+  return { customer, customers, part, partsList, fy, fys, versions, months, fyPoints, fySum, perCustomer, selected, sel, nextMonth, parts, daily, dailyParts, stats, revisions };
 }
 
 /** Status selisih PO vs forecast: dalam ±10% dianggap sesuai. */

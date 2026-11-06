@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { formatDateId, nowJakarta } from "./dates";
-import { addMonths, diffStatus, ymLabel, type ForecastReport, type XCell, type XSheet } from "./forecast";
+import { addMonths, ALL_PARTS, diffStatus, fyLabel, ymLabel, type ForecastReport, type XCell, type XSheet } from "./forecast";
 import { LOGO_PNG_BASE64, LOGO_RATIO } from "./logo";
 
 // Baca file forecast customer, buat template kosong, dan Excel laporan Forecast vs PO.
@@ -172,8 +172,8 @@ export async function reportXlsx(r: ForecastReport): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "QA Production";
   const sel = r.sel;
-  const title = `Forecast vs PO Aktual · ${r.customer}`;
-  const sub = sel ? `Bulan ${ymLabel(sel.bulan, true)}` : "";
+  const title = `Forecast vs Actual PO · ${r.customer}${r.part !== ALL_PARTS ? ` · ${r.part}` : ""}`;
+  const sub = `${fyLabel(r.fy)}${sel ? ` · detail bulan ${ymLabel(sel.bulan, true)}` : ""}`;
 
   const head = (ws: ExcelJS.Worksheet, row: number, cols: string[]) => {
     cols.forEach((h, i) => {
@@ -209,20 +209,22 @@ export async function reportXlsx(r: ForecastReport): Promise<Buffer> {
   // Ringkasan
   const s = wb.addWorksheet("Ringkasan");
   let row = kop(s, 6, title);
-  const kpi: [string, number | null, string][] = sel
-    ? [
-        ["Forecast", sel.forecast, "#,##0"],
-        ["PO aktual", sel.actual, "#,##0"],
-        ["Selisih (PO - forecast)", sel.diff, "#,##0;[Red]-#,##0"],
-        ["Selisih %", sel.pct, "0.0%;[Red]-0.0%"],
-        ["PO vs bulan lalu", sel.mom, "0.0%;[Red]-0.0%"],
-        ["PO vs tahun lalu", sel.yoy, "0.0%;[Red]-0.0%"],
-        [`Forecast ${r.nextMonth ? ymLabel(r.nextMonth.bulan) : "bulan depan"}`, r.nextMonth?.forecast ?? r.nextMonth?.actual ?? null, "#,##0"],
-        [`Akurasi forecast (${r.stats.n} bln)`, r.stats.accuracy, "0.0%"],
-        ["Rata-rata selisih (bias)", r.stats.bias, "0.0%;[Red]-0.0%"],
-        ["Pertumbuhan PO 12 bln", r.stats.growth12, "0.0%;[Red]-0.0%"],
-      ]
-    : [];
+  const f = r.fySum;
+  const P = "0.0%;[Red]-0.0%";
+  const N = "#,##0;[Red]-#,##0";
+  const kpi: [string, number | null, string][] = [
+    [`Total Forecast FY${r.fy}`, f.forecast, N],
+    [`Total Actual PO FY${r.fy}`, f.actual, N],
+    ["Achievement (PO ÷ forecast)", f.achievement, "0.0%"],
+    ["Gap (PO - forecast)", f.gap, N],
+    ["Gap % dari forecast", f.gapPct, P],
+    [`Forecast vs FY${r.fy - 1}`, f.forecastGrowth, P],
+    [`Actual PO vs FY${r.fy - 1}`, f.actualGrowth, P],
+    [f.last ? `Tren PO ${ymLabel(f.last.bulan)} vs bulan lalu` : "Tren vs bulan lalu", f.last?.mom ?? null, P],
+    [`Sisa forecast FY (${f.remainingMonths} bln)`, f.remaining, N],
+    [`Akurasi forecast (${r.stats.n} bln)`, r.stats.accuracy, "0.0%"],
+    ["Rata-rata selisih (bias)", r.stats.bias, P],
+  ];
   head(s, row, ["Indikator", "Nilai"]);
   row++;
   for (const [k, v, f] of kpi) {
@@ -239,8 +241,58 @@ export async function reportXlsx(r: ForecastReport): Promise<Buffer> {
   s.getColumn(1).width = 34;
   s.getColumn(2).width = 18;
 
+  if (f.matched < f.months) {
+    s.getCell(row + 1, 1).value = `Forecast/Achievement hanya bulan yang punya forecast (${f.matched} dari ${f.months} bulan). PO semua bulan FY: ${Math.round(f.actualAll).toLocaleString("id-ID")} pcs.`;
+    s.getCell(row + 1, 1).font = { italic: true, size: 9, color: { argb: MUTED } };
+  }
+
+  // Rekap bulanan FY
+  const k = wb.addWorksheet(`Rekap FY${r.fy}`, { views: [{ state: "frozen", ySplit: 4 }] });
+  row = kop(k, 6, `Rekap Bulanan Forecast vs Actual · FY${r.fy}`);
+  head(k, row, ["Bulan", "Forecast (pcs)", "Actual PO (pcs)", "Gap (pcs)", "Achievement", "Tren vs bulan lalu"]);
+  row++;
+  for (const m of r.fyPoints.filter((x) => x.actual !== null || x.forecast !== null)) {
+    const vals = [utc(m.bulan), m.forecast, m.actual, m.diff, m.ach, m.actual !== null ? m.mom : null];
+    vals.forEach((v, i) => {
+      const c = k.getCell(row, i + 1);
+      c.value = v;
+      c.border = box;
+      c.numFmt = i === 0 ? "mmm yyyy" : i === 4 ? "0.0%" : i === 5 ? P : N;
+      if (m.actual === null) c.font = { color: { argb: MUTED }, italic: true };
+    });
+    if (m.ach != null) k.getCell(row, 5).font = { bold: true, color: { argb: m.ach >= 0.95 ? "FF047857" : m.ach >= 0.85 ? "FFB45309" : "FFB91C1C" } };
+    if (m.bulan === sel?.bulan) for (let i = 1; i <= 6; i++) k.getCell(row, i).fill = fill(TINT);
+    row++;
+  }
+  ["Total (YTD)", f.forecast, f.actual, f.gap, f.achievement, null].forEach((v, i) => {
+    const c = k.getCell(row, i + 1);
+    c.value = v as ExcelJS.CellValue;
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = fill("FF1E293B");
+    c.numFmt = i === 4 ? "0.0%" : N;
+  });
+  [14, 16, 16, 15, 13, 16].forEach((w, i) => (k.getColumn(i + 1).width = w));
+
+  // Per customer
+  if (r.perCustomer.length) {
+    const c2 = wb.addWorksheet("Per customer");
+    row = kop(c2, 4, `Actual PO per Customer · FY${r.fy}`);
+    head(c2, row, ["Customer", "Actual PO (pcs)", "Forecast (pcs)", "Achievement"]);
+    row++;
+    for (const c of r.perCustomer) {
+      [c.customer, c.actual, c.forecast, c.ach].forEach((v, i) => {
+        const cell = c2.getCell(row, i + 1);
+        cell.value = v;
+        cell.border = box;
+        if (i) cell.numFmt = i === 3 ? "0.0%" : N;
+      });
+      row++;
+    }
+    [30, 16, 16, 13].forEach((w, i) => (c2.getColumn(i + 1).width = w));
+  }
+
   // Tren bulanan
-  const t = wb.addWorksheet("Tren bulanan", { views: [{ state: "frozen", ySplit: 4 }] });
+  const t = wb.addWorksheet("Tren semua bulan", { views: [{ state: "frozen", ySplit: 4 }] });
   row = kop(t, 8, `Tren Forecast vs PO · ${r.customer}`);
   head(t, row, ["Bulan", "Status", "Forecast", "PO aktual", "Selisih", "Selisih %", "Naik vs bln lalu", "Naik vs thn lalu"]);
   t.autoFilter = { from: { row, column: 1 }, to: { row, column: 8 } };

@@ -1,7 +1,7 @@
 import { handle } from "@/lib/api";
 import { HttpError, requireApiRole } from "@/lib/auth";
 import { todayJakarta } from "@/lib/dates";
-import { buildForecastReport, isYm, TOTAL } from "@/lib/forecast";
+import { ALL, buildForecastReport, isYm, TOTAL } from "@/lib/forecast";
 import { reportXlsx, templateXlsx } from "@/lib/forecastXlsx";
 import { readForecast } from "@/lib/sheets/forecast";
 
@@ -19,7 +19,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
       const versi = isYm(v) ? v : todayJakarta().slice(0, 7);
       const c = u.get("c") ?? "";
       // Daftar part dari versi terakhir customer ini (urutan sesuai file terakhir).
-      const mine = rows.filter((r) => r.customer === c || !c);
+      const mine = rows.filter((r) => r.customer === c || !c || c === ALL);
       const last = [...new Set(mine.map((r) => r.versi))].sort().pop();
       const seen = new Map<string, number>();
       for (const r of mine) if (r.versi === last && r.part !== TOTAL && !seen.has(r.part)) seen.set(r.part, r.box ?? 0);
@@ -27,7 +27,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
       return new Response(new Uint8Array(buf), { headers: { "Content-Type": XLSX, "Content-Disposition": `attachment; filename="Template-Forecast-${versi}.xlsx"` } });
     }
     if (file === "forecast-vs-po.xlsx") {
-      const r = buildForecastReport(rows, daily, u.get("c") ?? undefined, u.get("m") ?? undefined);
+      const r = buildForecastReport(rows, daily, { customer: u.get("c") ?? undefined, month: u.get("m") ?? undefined, fy: u.get("fy") ?? undefined, part: u.get("p") ?? undefined });
       if (!r.sel) throw new HttpError(404, "Belum ada data forecast.");
       const buf = await reportXlsx(r);
       return new Response(new Uint8Array(buf), { headers: { "Content-Type": XLSX, "Content-Disposition": `attachment; filename="Forecast-vs-PO-${r.sel.bulan}.xlsx"` } });

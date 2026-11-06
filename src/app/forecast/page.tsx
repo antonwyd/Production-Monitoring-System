@@ -14,7 +14,7 @@ export default async function ForecastPage({ searchParams }: { searchParams: Pro
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const q = await searchParams;
   const [{ rows, daily }, customers] = await Promise.all([readForecast(), customerList()]);
-  const r = buildForecastReport(rows, daily, q.c, q.m);
+  const r = buildForecastReport(rows, daily, { customer: q.c, month: q.m, fy: q.fy, part: q.p });
   return (
     <AppShell session={session} active="forecast">
       <ForecastView r={r} canEdit={session.role === "leader" || session.role === "admin"} isAdmin={session.role === "admin"} customers={customers} />
