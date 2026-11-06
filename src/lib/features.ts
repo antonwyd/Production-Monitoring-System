@@ -7,6 +7,8 @@ export const FEATURES = {
   planActual: false,
   /** Rencana Lembur (/overtime). */
   overtime: false,
+  /** Forecast vs PO customer (/forecast). */
+  forecast: true,
 };
 
 export const REPORT_HOME = FEATURES.planActual ? "/production-report" : "/production-report/rekap";
