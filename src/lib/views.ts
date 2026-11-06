@@ -323,6 +323,24 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
 /** Produksi mesin di bawah ini tidak diranking NG rate-nya: angkanya belum bisa dipercaya. */
 export const NG_RANK_MIN_QTY = 500;
 
+/** nOrang/otOrang = orang berbeda (satu hari) atau orang-hari (rentang beberapa hari). */
+export type JamKerja = { nJam: number; otJam: number; nOrang: number; otOrang: number };
+
+/** Jam kerja orang: menit normal/OT dari Input - Production + Lost Time/Another Job (OT bila ditandai OT). */
+export function jamKerja(facts: Fact[], lost: LostFact[]): JamKerja {
+  const n = new Map<string, number>();
+  const o = new Map<string, number>();
+  const add = (m: Map<string, number>, k: string, v: number) => v > 0 && m.set(k, (m.get(k) ?? 0) + v);
+  for (const f of facts) {
+    const k = `${f.workDate}|${f.memberName}`;
+    add(n, k, f.minNormal);
+    add(o, k, f.minOt);
+  }
+  for (const l of lost) add(l.ot ? o : n, `${l.workDate}|${l.memberName}`, l.minutes);
+  const sum = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0) / 60;
+  return { nJam: sum(n), otJam: sum(o), nOrang: n.size, otOrang: o.size };
+}
+
 export type Dash = {
   procs: string[];
   proc: string;
@@ -330,6 +348,8 @@ export type Dash = {
   ngBy: "rate" | "qty";
   /** Lost Time (grup Lost Time) & Another Job dalam menit, plus menit kerja orang (normal + OT + lost + another job). */
   lost: { lt: number; aj: number; work: number; pct: number | null; prevLt: number | null; vs: string };
+  /** Jam kerja orang hari itu: normal / OT (produksi + lost time + another job) dan jumlah orangnya. */
+  jam: JamKerja;
   prevQty: number | null;
   prevRate: number | null;
   prevAch: number | null;
@@ -339,7 +359,7 @@ export type Dash = {
   /** NG rate Press PT (lot 31..) / Press JPN (lot 01..) / Plastik pada tanggal itu. */
   bahan: BahanRate[];
   /** Akumulasi tanggal 1 bulan itu s/d tanggal yang dipilih (laporan disetujui). */
-  bulan: { label: string; from: string; to: string; days: number; qty: number; ng: number; rate: number | null; ach: number | null; perDay: number | null; lt: number; bahan: BahanRate[] };
+  bulan: { label: string; from: string; to: string; days: number; qty: number; ng: number; rate: number | null; ach: number | null; perDay: number | null; lt: number; bahan: BahanRate[]; jam: JamKerja };
   byProc: { proc: string; qty: number; ng: number; rate: number | null; ach: number | null; lt: number; members: number; split: { plastik: number; iron: number } | null }[];
   machines: { key: string; mc: string; category: string; categoryId: number; proc: string; line: string; status: "jalan" | "kosong"; qty: number; ng: number; rate: number | null; alert: boolean }[];
   topNg: { mc: string; category: string; categoryId: number; proc: string; qty: number; ng: number; rate: number | null }[];
@@ -511,6 +531,7 @@ function buildDash(a: {
       prevLt: prevLt == null ? null : Math.round(prevLt),
       vs: prevDate === addDays(date, -1) ? "vs kemarin" : prevDate ? `vs ${formatDateId(prevDate).slice(0, -5)}` : "",
     },
+    jam: jamKerja(today, todayLost),
     prevQty: p ? p.qty : null,
     prevRate: p ? p.rate : null,
     prevAch: p ? p.ach : null,
@@ -540,6 +561,7 @@ function buildDash(a: {
         perDay: hari ? x.qty / hari : null,
         lt: Math.round(ltOf(lost.filter((l) => l.workDate >= from && l.workDate <= date)).lt),
         bahan: ngPerBahan(fs),
+        jam: jamKerja(fs, lost.filter((l) => l.workDate >= from && l.workDate <= date)),
       };
     })(),
     machines,
