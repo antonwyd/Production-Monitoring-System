@@ -453,3 +453,24 @@ describe("Tahap 1: keandalan", () => {
     expect(st.mcHrsCat).toEqual({ "PF Iron Cage": 16 });
   });
 });
+
+describe("Tanya AI: tool data", () => {
+  it("menghitung produksi, NG per jenis, dan lost time dari laporan disetujui", async () => {
+    const { makeTools } = await import("@/lib/ai");
+    const r = await qa.submitReport(payload());
+    await qa.putuskan("Dian Kartika", "4139", [r.id], "ok", "");
+    clearReportCache();
+    const tools = makeTools(await loadMaster());
+    const run = async (name: string, input: Record<string, unknown>) => JSON.parse(String(await tools.find((t) => t.name === name)!.run(input as never)));
+    const prod = await run("data_produksi", { from: DATE, to: DATE, group_by: "member" });
+    expect(prod.rows).toHaveLength(1);
+    expect(prod.rows[0]).toMatchObject({ kelompok: "Harjuki", qty_ok: 7920, ng: 8, hari_kerja: 1 });
+    const kosong = await run("data_produksi", { from: DATE, to: DATE, group_by: "total", proses: "Seiretsu" });
+    expect(kosong.rows).toEqual([]);
+    const ng = await run("data_ng_per_jenis", { from: DATE, to: DATE });
+    expect(ng.rows[0]).toMatchObject({ jenis_ng: "Kizu", ng: 5 });
+    const lt = await run("data_lost_time", { from: DATE, to: DATE, group_by: "jenis" });
+    expect(lt.rows[0]).toMatchObject({ menit: 30 });
+    await expect(run("data_produksi", { from: "2025-01-01", to: DATE, group_by: "total" })).rejects.toThrow(/maksimal/);
+  });
+});

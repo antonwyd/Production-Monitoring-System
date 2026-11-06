@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/auth";
 import Sidebar, { type NavGroup } from "./Sidebar";
+import AskAi from "./AskAi";
 import { FEATURES, REPORT_HOME } from "@/lib/features";
 
 const ROLE_LABEL: Record<Session["role"], string> = {
@@ -52,6 +53,7 @@ export default function AppShell({ session, active, children }: { session: Sessi
     <div className="min-h-screen pb-20 transition-[padding] duration-200 ease-out lg:pb-0 lg:pl-[var(--sb-w)]">
       <Sidebar groups={navFor(session.role)} active={active} user={{ name: session.name, role: ROLE_LABEL[session.role] }} />
       <div className="anim-page w-full">{children}</div>
+      {FEATURES.ai && session.role !== "operator" && <AskAi />}
     </div>
   );
 }

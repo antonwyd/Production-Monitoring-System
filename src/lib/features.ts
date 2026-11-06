@@ -9,6 +9,8 @@ export const FEATURES = {
   overtime: false,
   /** Forecast vs PO customer (/forecast). */
   forecast: true,
+  /** Tanya AI (chat Claude) di semua halaman web untuk leader/manajemen/admin. Butuh env ANTHROPIC_API_KEY. */
+  ai: true,
 };
 
 export const REPORT_HOME = FEATURES.planActual ? "/production-report" : "/production-report/rekap";
