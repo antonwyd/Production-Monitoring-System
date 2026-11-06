@@ -1,9 +1,9 @@
 import ExcelJS from "exceljs";
 import { formatDateId, nowJakarta } from "./dates";
-import { addMonths, ALL_PARTS, diffStatus, fyLabel, ymLabel, type ForecastReport, type XCell, type XSheet } from "./forecast";
+import { ALL_PARTS, dayLabel, isOff, monthDays, ymLabel, type ForecastReport, type XCell, type XSheet } from "./forecast";
 import { LOGO_PNG_BASE64, LOGO_RATIO } from "./logo";
 
-// Baca file forecast customer, buat template kosong, dan Excel laporan Forecast vs PO.
+// Baca file forecast harian, buat template kosong, dan Excel laporan Forecast vs PO harian.
 
 function plain(v: ExcelJS.CellValue): XCell {
   if (v === null || v === undefined) return null;
@@ -58,108 +58,50 @@ const box = { top: thin, left: thin, bottom: thin, right: thin };
 const utc = (ym: string, d = 1) => new Date(`${ym}-${String(d).padStart(2, "0")}T00:00:00Z`);
 
 /**
- * Template kosong dengan format sama seperti file customer:
- * sheet "monthly forecast" (No | Part | qty/box | bulan-bulan dengan label actual/plan/forecast | forecast lama)
- * dan sheet "daily forecast" (No | Part | qty/box | Total | tanggal 1..akhir bulan).
+ * Template forecast harian (satu sheet): No | Part | Pcs/box | Total | tanggal 1..akhir bulan.
+ * Sama dengan sheet harian file customer, jadi file customer juga bisa langsung di-upload.
  */
-export async function templateXlsx(versi: string, parts: { part: string; box: number }[]): Promise<Buffer> {
+export async function templateXlsx(versi: string, parts: { part: string; box: number }[], customer = ""): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "QA Production";
-  const list = parts.length ? parts : Array.from({ length: 10 }, () => ({ part: "", box: 0 }));
-
-  const m = wb.addWorksheet(`monthly forecast`, { views: [{ state: "frozen", xSplit: 4, ySplit: 3 }] });
-  const months: { ym: string; label: string }[] = [];
-  for (let i = -12; i <= 4; i++) months.push({ ym: addMonths(versi, i), label: i < 0 ? "actual" : i === 0 ? "plan" : "forecast" });
-  months.push({ ym: versi, label: "forecast" }); // forecast lama untuk bulan versi
-  m.getCell(1, 2).value = "Isi qty pcs. Label baris 2: actual = PO sudah terjadi, plan = PO firm bulan ini, forecast = perkiraan. Kolom terakhir = forecast lama bulan ini.";
-  m.getCell(1, 2).font = { italic: true, size: 9, color: { argb: MUTED } };
-  m.getCell(2, 4).value = "qty";
-  m.getCell(3, 4).value = "box";
-  m.getCell(3, 2).value = "No";
-  m.getCell(3, 3).value = "Part";
-  months.forEach((x, i) => {
-    const c = 5 + i + (i === months.length - 1 ? 1 : 0); // satu kolom kosong sebelum forecast lama
-    m.getCell(2, c).value = x.label;
-    const d = m.getCell(3, c);
-    d.value = utc(x.ym);
-    d.numFmt = "mmm-yy";
-    for (const r of [2, 3]) {
-      const cell = m.getCell(r, c);
-      cell.font = { bold: true, color: { argb: x.label === "actual" ? "FF334155" : "FFFFFFFF" } };
-      cell.fill = fill(x.label === "actual" ? "FFE2E8F0" : x.label === "plan" ? MAROON : "FF64748B");
-      cell.alignment = { horizontal: "center" };
-    }
+  const list = parts.length ? parts : Array.from({ length: 15 }, () => ({ part: "", box: 0 }));
+  const d = wb.addWorksheet(`daily forecast ${ymLabel(versi)}`, { views: [{ state: "frozen", xSplit: 5, ySplit: 3 }] });
+  const days = monthDays(versi);
+  d.getCell(1, 2).value = `Forecast harian ${ymLabel(versi, true)}${customer ? ` · ${customer}` : ""}`;
+  d.getCell(1, 2).font = { bold: true, size: 13, color: { argb: MAROON } };
+  d.getCell(2, 2).value = "Isi qty pcs per tanggal. Jangan ubah baris tanggal (baris 3). Baris part boleh ditambah di bawah.";
+  d.getCell(2, 2).font = { italic: true, size: 9, color: { argb: MUTED } };
+  ["No", "Part", "Pcs/box", "Total"].forEach((h, i) => {
+    const c = d.getCell(3, 2 + i);
+    c.value = h;
+    c.font = { bold: true };
+    c.fill = fill(TINT);
+    c.border = box;
   });
-  for (const r of [2, 3]) for (const c of [2, 3, 4]) (m.getCell(r, c).font = { bold: true }), (m.getCell(r, c).fill = fill(TINT));
-  const lastCol = 5 + months.length;
-  list.forEach((p, i) => {
-    const r = 4 + i;
-    m.getCell(r, 2).value = i + 1;
-    m.getCell(r, 3).value = p.part;
-    m.getCell(r, 4).value = p.box || null;
-    for (let c = 2; c <= lastCol; c++) {
-      m.getCell(r, c).border = box;
-      if (c >= 4) m.getCell(r, c).numFmt = "#,##0";
-    }
-  });
-  const totR = 4 + list.length;
-  const colL = (c: number) => m.getColumn(c).letter;
-  for (let c = 5; c <= lastCol; c++) {
-    if (c === lastCol - 1) continue;
-    const t = m.getCell(totR, c);
-    t.value = { formula: `SUM(${colL(c)}4:${colL(c)}${totR - 1})` };
-    t.numFmt = "#,##0";
-    t.font = { bold: true };
-  }
-  m.getCell(totR + 1, 4).value = "plan";
-  m.getCell(totR + 2, 4).value = "diff";
-  m.getCell(totR + 3, 4).value = "%";
-  for (let c = 5; c <= lastCol; c++) {
-    if (c === lastCol - 1) continue;
-    const L = colL(c);
-    m.getCell(totR + 1, c).numFmt = "#,##0";
-    m.getCell(totR + 2, c).value = { formula: `IF(${L}${totR + 1}="","",${L}${totR}-${L}${totR + 1})` };
-    m.getCell(totR + 2, c).numFmt = "#,##0";
-    m.getCell(totR + 3, c).value = { formula: `IF(N(${L}${totR + 1})=0,"",${L}${totR + 2}/${L}${totR + 1})` };
-    m.getCell(totR + 3, c).numFmt = "0.0%";
-  }
-  m.getCell(totR + 1, 3).value = "← forecast total yang dulu diberikan (boleh kosong)";
-  m.getCell(totR + 1, 3).font = { italic: true, size: 9, color: { argb: MUTED } };
-  m.getColumn(2).width = 5;
-  m.getColumn(3).width = 30;
-  m.getColumn(4).width = 9;
-  for (let c = 5; c <= lastCol; c++) m.getColumn(c).width = 12;
-  m.getColumn(lastCol - 1).width = 3;
-
-  const d = wb.addWorksheet(`daily forecast`, { views: [{ state: "frozen", xSplit: 5, ySplit: 3 }] });
-  const [y, mo] = versi.split("-").map(Number);
-  const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-  d.getCell(3, 2).value = "No";
-  d.getCell(3, 3).value = "Part";
-  d.getCell(3, 4).value = "qty/box";
-  d.getCell(3, 5).value = "Total";
-  for (let i = 1; i <= days; i++) {
-    const c = d.getCell(3, 5 + i);
-    c.value = utc(versi, i);
+  days.forEach((t, i) => {
+    const c = d.getCell(3, 6 + i);
+    c.value = utc(versi, i + 1);
     c.numFmt = "d-mmm";
-    const wd = utc(versi, i).getUTCDay();
-    c.fill = fill(wd === 0 || wd === 6 ? "FFE2E8F0" : TINT);
+    c.fill = fill(isOff(t) ? "FFE2E8F0" : TINT);
     c.font = { bold: true };
     c.alignment = { horizontal: "center" };
-    d.getColumn(5 + i).width = 9;
-  }
-  for (const c of [2, 3, 4, 5]) (d.getCell(3, c).font = { bold: true }), (d.getCell(3, c).fill = fill(TINT));
+    c.border = box;
+    d.getColumn(6 + i).width = 9;
+  });
+  const lastL = d.getColumn(5 + days.length).letter;
   list.forEach((p, i) => {
     const r = 4 + i;
     d.getCell(r, 2).value = i + 1;
-    d.getCell(r, 3).value = p.part;
+    d.getCell(r, 3).value = p.part || null;
     d.getCell(r, 4).value = p.box || null;
-    d.getCell(r, 5).value = { formula: `SUM(F${r}:${d.getColumn(5 + days).letter}${r})` };
-    for (let c = 2; c <= 5 + days; c++) {
+    d.getCell(r, 5).value = { formula: `SUM(F${r}:${lastL}${r})` };
+    d.getCell(r, 5).font = { bold: true };
+    for (let c = 2; c <= 5 + days.length; c++) {
       d.getCell(r, c).border = box;
       if (c >= 4) d.getCell(r, c).numFmt = "#,##0";
     }
   });
+  d.getColumn(1).width = 2;
   d.getColumn(2).width = 5;
   d.getColumn(3).width = 30;
   d.getColumn(4).width = 9;
@@ -167,13 +109,17 @@ export async function templateXlsx(versi: string, parts: { part: string; box: nu
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-/** Excel laporan: Ringkasan + Tren bulanan + Per part + Harian. */
+/** Excel laporan: Ringkasan + Harian + Per part + Matriks PO vs forecast + Per customer + Tren bulanan. */
 export async function reportXlsx(r: ForecastReport): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "QA Production";
-  const sel = r.sel;
+  const month = r.month!;
+  const k = r.kpi;
   const title = `Forecast vs Actual PO · ${r.customer}${r.part !== ALL_PARTS ? ` · ${r.part}` : ""}`;
-  const sub = `${fyLabel(r.fy)}${sel ? ` · detail bulan ${ymLabel(sel.bulan, true)}` : ""}`;
+  const sub = `${ymLabel(month, true)}${r.upto ? ` · s/d ${dayLabel(r.upto)}` : ""}`;
+  const N = "#,##0;[Red]-#,##0";
+  const P = "0.0%;[Red]-0.0%";
+  const achFont = (v: number | null) => ({ bold: true, color: { argb: v == null ? MUTED : v >= 0.95 ? "FF047857" : v >= 0.85 ? "FFB45309" : "FFB91C1C" } });
 
   const head = (ws: ExcelJS.Worksheet, row: number, cols: string[]) => {
     cols.forEach((h, i) => {
@@ -200,162 +146,126 @@ export async function reportXlsx(r: ForecastReport): Promise<Buffer> {
     ws.pageSetup = { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
     return 4;
   };
-  const colorPct = (c: ExcelJS.Cell, v: number | null) => {
-    const st = diffStatus(v);
-    if (st === "naik") c.font = { color: { argb: "FF047857" }, bold: true };
-    if (st === "turun") c.font = { color: { argb: "FFB91C1C" }, bold: true };
-  };
+  const line = (ws: ExcelJS.Worksheet, row: number, vals: (ExcelJS.CellValue | null)[], fmts: (string | null)[]) =>
+    vals.forEach((v, i) => {
+      const c = ws.getCell(row, i + 1);
+      c.value = v;
+      c.border = box;
+      if (fmts[i]) c.numFmt = fmts[i]!;
+    });
 
   // Ringkasan
   const s = wb.addWorksheet("Ringkasan");
   let row = kop(s, 6, title);
-  const f = r.fySum;
-  const P = "0.0%;[Red]-0.0%";
-  const N = "#,##0;[Red]-#,##0";
+  const upto = r.upto ? dayLabel(r.upto) : "-";
   const kpi: [string, number | null, string][] = [
-    [`Total Forecast FY${r.fy}`, f.forecast, N],
-    [`Total Actual PO FY${r.fy}`, f.actual, N],
-    ["Achievement (PO ÷ forecast)", f.achievement, "0.0%"],
-    ["Gap (PO - forecast)", f.gap, N],
-    ["Gap % dari forecast", f.gapPct, P],
-    [`Forecast vs FY${r.fy - 1}`, f.forecastGrowth, P],
-    [`Actual PO vs FY${r.fy - 1}`, f.actualGrowth, P],
-    [f.last ? `Tren PO ${ymLabel(f.last.bulan)} vs bulan lalu` : "Tren vs bulan lalu", f.last?.mom ?? null, P],
-    [`Sisa forecast FY (${f.remainingMonths} bln)`, f.remaining, N],
-    [`Akurasi forecast (${r.stats.n} bln)`, r.stats.accuracy, "0.0%"],
-    ["Rata-rata selisih (bias)", r.stats.bias, P],
+    [`Forecast ${ymLabel(month)} (sebulan)`, k.fcMonth, N],
+    [`Forecast s/d ${upto}`, k.fcUpto, N],
+    [`Actual PO s/d ${upto}`, k.poUpto, N],
+    ["Achievement (PO ÷ forecast)", k.ach, "0.0%"],
+    ["Gap (PO - forecast)", k.gap, N],
+    ["Gap % dari forecast", k.gapPct, P],
+    ["Achievement 7 hari terakhir", k.ach7, "0.0%"],
+    ["Achievement 7 hari sebelumnya", k.ach7prev, "0.0%"],
+    [`PO bulan lalu s/d tanggal sama`, k.poPrevMonth, N],
+    ["Sisa forecast bulan ini", k.fcRest, N],
+    ["Hari ada PO", k.poDays, "0"],
   ];
   head(s, row, ["Indikator", "Nilai"]);
   row++;
-  for (const [k, v, f] of kpi) {
-    s.getCell(row, 1).value = k;
+  for (const [label, v, f] of kpi) {
+    line(s, row, [label, v], [null, f]);
     s.getCell(row, 1).font = { bold: true };
-    const c = s.getCell(row, 2);
-    c.value = v;
-    c.numFmt = f;
-    c.font = { bold: true, size: 12 };
-    s.getCell(row, 1).border = box;
-    c.border = box;
+    s.getCell(row, 2).font = { bold: true, size: 12 };
     row++;
   }
-  s.getColumn(1).width = 34;
+  s.getColumn(1).width = 36;
   s.getColumn(2).width = 18;
 
-  if (f.matched < f.months) {
-    s.getCell(row + 1, 1).value = `Forecast/Achievement hanya bulan yang punya forecast (${f.matched} dari ${f.months} bulan). PO semua bulan FY: ${Math.round(f.actualAll).toLocaleString("id-ID")} pcs.`;
-    s.getCell(row + 1, 1).font = { italic: true, size: 9, color: { argb: MUTED } };
-  }
-
-  // Rekap bulanan FY
-  const k = wb.addWorksheet(`Rekap FY${r.fy}`, { views: [{ state: "frozen", ySplit: 4 }] });
-  row = kop(k, 6, `Rekap Bulanan Forecast vs Actual · FY${r.fy}`);
-  head(k, row, ["Bulan", "Forecast (pcs)", "Actual PO (pcs)", "Gap (pcs)", "Achievement", "Tren vs bulan lalu"]);
+  // Harian
+  const h = wb.addWorksheet(`Harian ${ymLabel(month)}`, { views: [{ state: "frozen", ySplit: 4 }] });
+  row = kop(h, 8, `Forecast vs PO per Hari · ${ymLabel(month, true)}`);
+  head(h, row, ["Tanggal", "Forecast", "Actual PO", "Gap", "Forecast kumulatif", "PO kumulatif", "Gap kumulatif", "Achievement kumulatif"]);
   row++;
-  for (const m of r.fyPoints.filter((x) => x.actual !== null || x.forecast !== null)) {
-    const vals = [utc(m.bulan), m.forecast, m.actual, m.diff, m.ach, m.actual !== null ? m.mom : null];
-    vals.forEach((v, i) => {
-      const c = k.getCell(row, i + 1);
-      c.value = v;
-      c.border = box;
-      c.numFmt = i === 0 ? "mmm yyyy" : i === 4 ? "0.0%" : i === 5 ? P : N;
-      if (m.actual === null) c.font = { color: { argb: MUTED }, italic: true };
-    });
-    if (m.ach != null) k.getCell(row, 5).font = { bold: true, color: { argb: m.ach >= 0.95 ? "FF047857" : m.ach >= 0.85 ? "FFB45309" : "FFB91C1C" } };
-    if (m.bulan === sel?.bulan) for (let i = 1; i <= 6; i++) k.getCell(row, i).fill = fill(TINT);
+  for (const d of r.days) {
+    line(h, row, [utc(d.tanggal.slice(0, 7), Number(d.tanggal.slice(8))), d.fc || null, d.po, d.po !== null && !d.future ? d.po - d.fc : null, d.cumFc, d.cumPo, d.cumPo !== null ? d.cumPo - d.cumFc : null, d.ach], ["ddd d mmm", N, N, N, N, N, N, "0.0%"]);
+    if (d.ach != null) h.getCell(row, 8).font = achFont(d.ach);
+    if (d.future) for (let i = 1; i <= 8; i++) h.getCell(row, i).font = { color: { argb: MUTED }, italic: true };
+    else if (isOff(d.tanggal)) for (let i = 1; i <= 8; i++) h.getCell(row, i).fill = fill("FFF1F5F9");
     row++;
   }
-  ["Total (YTD)", f.forecast, f.actual, f.gap, f.achievement, null].forEach((v, i) => {
-    const c = k.getCell(row, i + 1);
-    c.value = v as ExcelJS.CellValue;
-    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    c.fill = fill("FF1E293B");
-    c.numFmt = i === 4 ? "0.0%" : N;
-  });
-  [14, 16, 16, 15, 13, 16].forEach((w, i) => (k.getColumn(i + 1).width = w));
+  [16, 13, 13, 13, 15, 15, 15, 14].forEach((w, i) => (h.getColumn(i + 1).width = w));
+
+  // Per part
+  const p = wb.addWorksheet("Per part", { views: [{ state: "frozen", ySplit: 4 }] });
+  row = kop(p, 9, `Per Part · ${sub}`);
+  head(p, row, ["Part", "Pcs/box", "Forecast sebulan", `Forecast s/d ${upto}`, `PO s/d ${upto}`, "Gap pcs", "Gap box", "Gap %", "Achievement"]);
+  p.autoFilter = { from: { row, column: 1 }, to: { row, column: 9 } };
+  row++;
+  for (const x of r.parts) {
+    line(p, row, [x.part, x.box || null, x.fcMonth, x.fcUpto, x.poUpto, x.diff, x.box ? x.diff / x.box : null, x.pct, x.ach], [null, N, N, N, N, N, "#,##0.0;[Red]-#,##0.0", P, "0.0%"]);
+    p.getCell(row, 9).font = achFont(x.ach);
+    row++;
+  }
+  [30, 9, 15, 15, 15, 14, 11, 10, 12].forEach((w, i) => (p.getColumn(i + 1).width = w));
+
+  // Matriks per part per hari
+  if (r.heat.length) {
+    const dates = r.days.map((d) => d.tanggal);
+    const m = wb.addWorksheet("Per part per hari", { views: [{ state: "frozen", xSplit: 3, ySplit: 4 }] });
+    row = kop(m, 12, `Forecast & PO per Part per Hari · ${ymLabel(month, true)}`);
+    head(m, row, ["Part", "Jenis", "Total", ...dates.map((t) => String(Number(t.slice(8))))]);
+    row++;
+    for (const x of r.heat) {
+      for (const [label, rec, total] of [
+        ["Forecast", x.fc, x.fcTotal],
+        ["PO", x.po, x.poTotal],
+      ] as const) {
+        line(m, row, [label === "Forecast" ? x.part : "", label, total, ...dates.map((t) => rec[t] || null)], [null, null, ...Array(dates.length + 1).fill("#,##0")]);
+        if (label === "PO") {
+          for (let i = 0; i < dates.length; i++) {
+            const f = x.fc[dates[i]] ?? 0;
+            const q = x.po[dates[i]] ?? 0;
+            if (q && f && q < f) m.getCell(row, 4 + i).font = { color: { argb: "FFB91C1C" }, bold: true };
+            if (q && q > f) m.getCell(row, 4 + i).font = { color: { argb: "FF047857" }, bold: true };
+          }
+          for (let i = 1; i <= 3 + dates.length; i++) m.getCell(row, i).fill = fill(TINT);
+        }
+        row++;
+      }
+    }
+    m.getColumn(1).width = 28;
+    m.getColumn(2).width = 9;
+    m.getColumn(3).width = 12;
+    dates.forEach((_, i) => (m.getColumn(4 + i).width = 8));
+  }
 
   // Per customer
-  if (r.perCustomer.length) {
+  if (r.perCustomer.length > 1) {
     const c2 = wb.addWorksheet("Per customer");
-    row = kop(c2, 4, `Actual PO per Customer · FY${r.fy}`);
-    head(c2, row, ["Customer", "Actual PO (pcs)", "Forecast (pcs)", "Achievement"]);
+    row = kop(c2, 5, `Per Customer · ${sub}`);
+    head(c2, row, ["Customer", "Forecast sebulan", `Forecast s/d ${upto}`, `PO s/d ${upto}`, "Achievement"]);
     row++;
     for (const c of r.perCustomer) {
-      [c.customer, c.actual, c.forecast, c.ach].forEach((v, i) => {
-        const cell = c2.getCell(row, i + 1);
-        cell.value = v;
-        cell.border = box;
-        if (i) cell.numFmt = i === 3 ? "0.0%" : N;
-      });
+      line(c2, row, [c.customer, c.fcMonth, c.fcUpto, c.poUpto, c.ach], [null, N, N, N, "0.0%"]);
+      c2.getCell(row, 5).font = achFont(c.ach);
       row++;
     }
-    [30, 16, 16, 13].forEach((w, i) => (c2.getColumn(i + 1).width = w));
+    [30, 16, 16, 16, 13].forEach((w, i) => (c2.getColumn(i + 1).width = w));
   }
 
   // Tren bulanan
-  const t = wb.addWorksheet("Tren semua bulan", { views: [{ state: "frozen", ySplit: 4 }] });
-  row = kop(t, 8, `Tren Forecast vs PO · ${r.customer}`);
-  head(t, row, ["Bulan", "Status", "Forecast", "PO aktual", "Selisih", "Selisih %", "Naik vs bln lalu", "Naik vs thn lalu"]);
-  t.autoFilter = { from: { row, column: 1 }, to: { row, column: 8 } };
-  row++;
-  for (const m of r.months) {
-    const vals: (string | number | Date | null)[] = [utc(m.bulan), m.kind === "actual" ? "Aktual" : m.kind === "plan" ? "PO firm" : "Forecast", m.forecast, m.actual, m.diff, m.pct, m.mom, m.yoy];
-    vals.forEach((v, i) => {
-      const c = t.getCell(row, i + 1);
-      c.value = v;
-      c.border = box;
-      c.numFmt = i === 0 ? "mmm yyyy" : i >= 5 ? "0.0%;[Red]-0.0%" : i >= 2 ? "#,##0;[Red]-#,##0" : "@";
-    });
-    colorPct(t.getCell(row, 6), m.pct);
-    if (m.bulan === sel?.bulan) for (let i = 1; i <= 8; i++) t.getCell(row, i).fill = fill(TINT);
+  if (r.monthly.length) {
+    const t = wb.addWorksheet("Tren bulanan");
+    row = kop(t, 6, `Tren Bulanan Forecast vs PO · ${r.customer}`);
+    head(t, row, ["Bulan", "Forecast sebulan", "Forecast s/d batas", "PO s/d batas", "Achievement", "Keterangan"]);
     row++;
-  }
-  [12, 10, 14, 14, 14, 11, 13, 13].forEach((w, i) => (t.getColumn(i + 1).width = w));
-
-  // Per part
-  if (sel) {
-    const p = wb.addWorksheet(`Per part ${ymLabel(sel.bulan)}`, { views: [{ state: "frozen", ySplit: 4 }] });
-    row = kop(p, 10, `Per Part · ${ymLabel(sel.bulan, true)}`);
-    head(p, row, ["Part", "Pcs/box", "Forecast", "PO aktual", "Selisih", "Selisih %", "Selisih box", "PO bln lalu", "Naik vs bln lalu", `Bulan depan`]);
-    p.autoFilter = { from: { row, column: 1 }, to: { row, column: 10 } };
-    row++;
-    for (const x of r.parts) {
-      const vals = [x.part, x.box || null, x.forecast, x.actual, x.diff, x.pct, x.box && x.diff !== null ? x.diff / x.box : null, x.prevActual, x.mom, x.next];
-      vals.forEach((v, i) => {
-        const c = p.getCell(row, i + 1);
-        c.value = v as ExcelJS.CellValue;
-        c.border = box;
-        if (i > 0) c.numFmt = i === 5 || i === 8 ? "0.0%;[Red]-0.0%" : i === 6 ? "#,##0.0;[Red]-#,##0.0" : "#,##0;[Red]-#,##0";
-      });
-      colorPct(p.getCell(row, 6), x.pct);
+    for (const x of r.monthly) {
+      line(t, row, [utc(x.bulan), x.fc, x.fcUpto, x.poUpto, x.ach, x.partial && x.upto ? `s/d ${dayLabel(x.upto)}` : "sebulan penuh"], ["mmm yyyy", N, N, N, "0.0%", null]);
+      t.getCell(row, 5).font = achFont(x.ach);
       row++;
     }
-    [30, 9, 14, 14, 14, 11, 11, 14, 13, 14].forEach((w, i) => (p.getColumn(i + 1).width = w));
-  }
-
-  // Harian
-  if (sel && r.dailyParts.length) {
-    const days = r.daily.map((d) => d.tanggal);
-    const h = wb.addWorksheet(`Harian ${ymLabel(sel.bulan)}`, { views: [{ state: "frozen", xSplit: 2, ySplit: 4 }] });
-    row = kop(h, 12, `PO Harian · ${ymLabel(sel.bulan, true)}`);
-    head(h, row, ["Part", "Total", ...days.map((d) => String(Number(d.slice(8))))]);
-    row++;
-    const write = (label: string, total: number, get: (d: string) => number, bold = false) => {
-      h.getCell(row, 1).value = label;
-      h.getCell(row, 2).value = total;
-      days.forEach((d, i) => (h.getCell(row, 3 + i).value = get(d) || null));
-      for (let c = 1; c <= 2 + days.length; c++) {
-        const cell = h.getCell(row, c);
-        cell.border = box;
-        if (c > 1) cell.numFmt = "#,##0";
-        if (bold) (cell.font = { bold: true }), (cell.fill = fill(TINT));
-      }
-      row++;
-    };
-    write("TOTAL", r.daily.reduce((a, d) => a + d.qty, 0), (d) => r.daily.find((x) => x.tanggal === d)?.qty ?? 0, true);
-    for (const x of r.dailyParts) write(x.part, x.total, (d) => x.days[d] ?? 0);
-    h.getColumn(1).width = 28;
-    h.getColumn(2).width = 13;
-    days.forEach((_, i) => (h.getColumn(3 + i).width = 9));
+    [12, 16, 16, 16, 13, 16].forEach((w, i) => (t.getColumn(i + 1).width = w));
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

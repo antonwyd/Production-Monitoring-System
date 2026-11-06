@@ -1,101 +1,114 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { addMonths, buildForecastReport, mergeManual, parseForecastBook, TOTAL, type FcStored, type XSheet } from "@/lib/forecast";
-import { readBook, templateXlsx } from "@/lib/forecastXlsx";
+import { buildForecastReport, forecastFromGrid, ForecastParseError, parseForecastBook, toQty, type FcDailyStored, type PoDaily, type XSheet } from "@/lib/forecast";
+import { readBook, reportXlsx, templateXlsx } from "@/lib/forecastXlsx";
 
 const FILE = process.env.FC_FILE ?? "";
 const d = (ym: string, day = 1) => new Date(`${ym}-${String(day).padStart(2, "0")}T00:00:00Z`);
 
-/** Buku kecil berformat sama dengan file customer. */
+/** Buku kecil: sheet bulanan (diabaikan) + sheet harian, format sama dengan file customer. */
 function book(): XSheet[] {
-  const months = ["2026-08", "2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
-  const labels = ["actual", "actual", "plan", "plan", "forecast", "forecast"];
-  const head2: (string | null)[] = [null, null, null, "qty", ...labels, "forecast"];
-  const head3: (string | Date | null)[] = [null, null, null, "box", ...months.map((m) => d(m)), d("2026-11")];
-  const cells = [
-    [],
-    head2,
-    head3,
-    [null, 1, "GDD627*D1     J", 21600, 100, 200, 300, 400, 500, 600, 500],
-    [null, 2, "GDD629*D2     J", 6000, 10, 20, 30, 0, 50, 60, 40],
-    [null, null, null, null, 110, 220, 330, 400, 550, 660, 540],
-    [null, null, null, "plan", 100, 250, 330, 540, 550, 660, 540],
-  ];
-  const formula = cells.map((r) => r.map(() => false));
-  formula[6][6] = true; // Okt: =total (bukan forecast)
+  const monthly = [[], [null, null, null, "qty", "plan", "plan", "forecast"], [null, null, null, "box", d("2026-10"), d("2026-11"), d("2026-12")], [null, 1, "GDD627*D1 J", 21600, 1, 2, 3]];
   const daily = [
     [],
     [],
     [null, null, null, null, "Total", ...Array.from({ length: 30 }, (_, i) => d("2026-11", i + 1))],
-    [null, 1, "GDD627*D1 J", 21600, 400, 0, 200, 200, ...Array(27).fill(0)],
-    [null, 2, "GDD629 beda", 6000, 0, ...Array(30).fill(0)],
+    [null, 1, "GDD627*D1     J", 21600, 600, 100, 200, 300, ...Array(27).fill(0)],
+    [null, 2, "GDD629*D2 J", 6000, 60, 0, 30, 30, ...Array(27).fill(0)],
+    [null, 3, "GDD698*D1 J", 13500, 0, ...Array(30).fill(0)],
   ];
   return [
-    { name: "monthly", cells, formula },
-    { name: "daily", cells: daily },
+    { name: "monthly forecast (Oct26)", cells: monthly },
+    { name: "daily forecast Nov", cells: daily },
   ];
 }
 
-describe("Forecast vs PO", () => {
-  it("membaca format file customer", () => {
+const fc = (part: string, tanggal: string, qty: number, versi = tanggal.slice(0, 7), customer = "NSK"): FcDailyStored => ({ part, tanggal, qty, versi, customer });
+const po = (part: string, tanggal: string, qty: number, customer = "NSK"): PoDaily => ({ part, tanggal, qty, customer });
+
+describe("Forecast harian vs PO harian", () => {
+  it("membaca sheet harian dan mengabaikan sheet bulanan", () => {
     const p = parseForecastBook(book());
     expect(p.versi).toBe("2026-11");
-    expect(p.parts.map((x) => x.part)).toEqual(["GDD627*D1 J", "GDD629*D2 J"]);
-    const tot = (j: string, b: string) => p.rows.find((r) => r.part === TOTAL && r.jenis === j && r.bulan === b)?.qty;
-    expect(tot("Plan", "2026-11")).toBe(400);
-    expect(tot("Forecast lama", "2026-11")).toBe(540);
-    expect(tot("Forecast total", "2026-09")).toBe(250);
-    expect(tot("Forecast total", "2026-10")).toBeUndefined(); // rumus
-    expect(p.daily.reduce((a, x) => a + x.qty, 0)).toBe(400);
-    expect(p.summary.actual).toBe(400);
-    expect(p.summary.forecast).toBe(540);
+    expect(p.sheet).toBe("daily forecast Nov");
+    expect(p.parts.map((x) => x.part)).toEqual(["GDD627*D1 J", "GDD629*D2 J", "GDD698*D1 J"]);
+    expect(p.parts[0].box).toBe(21600);
+    expect(p.summary.total).toBe(660);
+    expect(p.daily.find((x) => x.part === "GDD627*D1 J" && x.tanggal === "2026-11-02")?.qty).toBe(200);
+    expect(p.warnings.some((w) => w.includes("bulanan diabaikan"))).toBe(true);
   });
 
-  it("menghitung selisih, tren, dan revisi antar versi", () => {
-    const p = parseForecastBook(book());
-    const st = (versi: string, rows = p.rows): FcStored[] => rows.map((r) => ({ ...r, versi, customer: "NSK" }));
-    // versi Desember: Desember jadi PO firm 450 (forecast di versi Nov = 550), Jan direvisi 700.
-    const dec = mergeManual([], "2026-12", [
-      { part: "GDD627*D1 J", actual: 400, forecast: null },
-      { part: "GDD629*D2 J", actual: 50, forecast: null },
-    ]).concat([
-      { part: "GDD627*D1 J", jenis: "Forecast", bulan: "2027-01", qty: 700 },
-      { part: TOTAL, jenis: "Forecast", bulan: "2027-01", qty: 700 },
-    ]);
-    const all = [...st("2026-11"), ...st("2026-12", dec)];
-    const nov = buildForecastReport(all, [], { customer: "NSK", month: "2026-11" });
-    expect(nov.sel?.actual).toBe(400);
-    expect(nov.sel?.forecast).toBe(540);
-    expect(nov.sel?.pct).toBeCloseTo(-140 / 540);
-    expect(nov.sel?.mom).toBeCloseTo(400 / 330 - 1);
-    const r = buildForecastReport(all, [], { customer: "NSK" });
-    expect(r.selected).toBe("2026-12");
-    expect(r.sel?.actual).toBe(450);
-    expect(r.sel?.forecast).toBe(550); // forecast Des dari versi Nov
-    expect(r.parts.find((x) => x.part === "GDD627*D1 J")?.forecast).toBe(500);
-    expect(r.revisions).toEqual([{ bulan: "2027-01", now: 700, prev: 660, diff: 40, pct: 40 / 660 }]);
-    expect(r.fy).toBe(2026);
-    expect(r.fySum.months).toBe(5); // Agu..Des
-    expect(r.fySum.matched).toBe(4); // Agu, Sep, Nov, Des (Okt tanpa forecast)
-    expect(addMonths("2026-12", 1)).toBe("2027-01");
+  it("menolak file yang hanya punya sheet bulanan", () => {
+    expect(() => parseForecastBook([book()[0]])).toThrow(ForecastParseError);
   });
 
-  it("template bisa dibaca lagi", async () => {
-    const buf = await templateXlsx("2026-11", [{ part: "GDD627*D1 J", box: 21600 }]);
+  it("template harian bisa dibaca lagi", async () => {
+    const buf = await templateXlsx("2026-11", [{ part: "627-J D1", box: 21600 }], "PT NSK INDONESIA");
     const p = parseForecastBook(await readBook(buf));
     expect(p.versi).toBe("2026-11");
-    expect(p.parts[0].part).toBe("GDD627*D1 J");
-    expect(p.months.find((m) => m.bulan === "2026-10")?.jenis).toBe("Actual");
+    expect(p.parts[0]).toMatchObject({ part: "627-J D1", box: 21600 });
+  });
+
+  it("input grid dan angka tempelan", () => {
+    expect(toQty("12.000")).toBe(12000);
+    expect(toQty("1,234,567")).toBe(1234567);
+    expect(toQty("")).toBeNull();
+    expect(Number.isNaN(toQty("abc"))).toBe(true);
+    const g = forecastFromGrid("2026-11", [{ part: " A  1 ", days: [10, null, 5] }, { part: "", days: [] }]);
+    expect(g.parts).toHaveLength(1);
+    expect(g.parts[0].part).toBe("A 1");
+    expect(g.daily.map((x) => x.tanggal)).toEqual(["2026-11-01", "2026-11-03"]);
+  });
+
+  it("membandingkan s/d batas (PO besok sudah masuk)", () => {
+    const F = [fc("A", "2026-11-05", 100), fc("A", "2026-11-06", 100), fc("A", "2026-11-07", 100), fc("A", "2026-11-20", 100), fc("B", "2026-11-06", 50)];
+    const P = [po("A", "2026-11-05", 80), po("A", "2026-11-06", 120), po("A", "2026-11-07", 90), po("B", "2026-11-06", 50), po("A", "2026-10-07", 200)];
+    const r = buildForecastReport(F, P, { today: "2026-11-06" });
+    expect(r.month).toBe("2026-11");
+    expect(r.upto).toBe("2026-11-07"); // PO kirim besok sudah diinput
+    expect(r.kpi.fcUpto).toBe(350);
+    expect(r.kpi.poUpto).toBe(340);
+    expect(r.kpi.ach).toBeCloseTo(340 / 350);
+    expect(r.kpi.fcMonth).toBe(450);
+    expect(r.kpi.fcRest).toBe(100);
+    expect(r.kpi.poPrevMonth).toBe(200);
+    const a = r.parts.find((p) => p.part === "A")!;
+    expect(a).toMatchObject({ fcUpto: 300, poUpto: 290, diff: -10, lastPo: 90, lastFc: 100 });
+    expect(r.days.find((x) => x.tanggal === "2026-11-08")).toMatchObject({ future: true, po: null });
+    expect(r.days.find((x) => x.tanggal === "2026-11-07")?.cumPo).toBe(340);
+    expect(r.months).toEqual(["2026-11", "2026-10"]);
+    expect(r.monthly.map((m) => m.bulan)).toEqual(["2026-10", "2026-11"]);
+    // Filter part
+    const rb = buildForecastReport(F, P, { today: "2026-11-06", part: "B" });
+    expect(rb.kpi.fcUpto).toBe(50);
+    expect(rb.kpi.ach).toBe(1);
+  });
+
+  it("forecast versi terbaru menimpa, customer bisa digabung", () => {
+    const F = [fc("A", "2026-11-02", 100, "2026-11"), fc("A", "2026-11-02", 70, "2026-12"), fc("X", "2026-11-02", 10, "2026-11", "KOR")];
+    const P = [po("A", "2026-11-02", 70), po("X", "2026-11-02", 20, "KOR")];
+    const r = buildForecastReport(F, P, { today: "2026-11-10" });
+    expect(r.customer).toBe("Semua customer");
+    expect(r.kpi.fcUpto).toBe(80);
+    expect(r.kpi.poUpto).toBe(90);
+    expect(r.perCustomer.map((c) => c.customer)).toEqual(["NSK", "KOR"]);
+    const one = buildForecastReport(F, P, { today: "2026-11-10", customer: "KOR" });
+    expect(one.kpi.ach).toBe(2);
+  });
+
+  it("bulan lampau dibandingkan sebulan penuh; tanpa data = kosong", async () => {
+    const r = buildForecastReport([fc("A", "2026-10-31", 10)], [], { today: "2026-11-06" });
+    expect(r.upto).toBe("2026-10-31");
+    expect(r.kpi.ach).toBe(0);
+    expect((await reportXlsx(r)).length).toBeGreaterThan(1000);
+    const e = buildForecastReport([], [], { today: "2026-11-06" });
+    expect(e.month).toBeNull();
   });
 
   it.skipIf(!FILE || !existsSync(FILE))("file asli customer", async () => {
     const p = parseForecastBook(await readBook(readFileSync(FILE)));
-    console.log(p.versi, p.summary, p.warnings, p.rows.length, p.daily.length);
     expect(p.versi).toBe("2026-11");
-    expect(p.summary.actual).toBe(25897200);
-    expect(p.summary.forecast).toBe(32954400);
-    const r = buildForecastReport(p.rows.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), p.daily.map((x) => ({ ...x, versi: p.versi, customer: "NSK" })), { customer: "NSK" });
-    console.log(r.fy, r.fySum, r.perCustomer);
-    console.log(r.sel, r.stats, r.parts.slice(0, 3), r.daily.slice(0, 4), r.months.length);
+    expect(p.summary.total).toBe(25897200);
+    console.log(p.summary, p.warnings, p.parts.slice(0, 3));
   });
 });
