@@ -107,6 +107,8 @@ function Section({ title, right, children, className = "" }: { title: React.Reac
 
 const more = "text-sm font-semibold text-brand-600 hover:underline";
 
+const jam1 = (h: number) => h.toLocaleString("id-ID", { maximumFractionDigits: 1 });
+
 export default async function HariIniPage({ searchParams }: { searchParams: Promise<{ date?: string; proc?: string; days?: string; ngBy?: string }> }) {
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const q = await searchParams;
@@ -193,6 +195,14 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               <span>Achievement · target {s.target}%</span>
               {s.complete ? <Delta now={s.qty} prev={d.prevQty} kind="pct" good="up" vs={vs} /> : <span>sementara</span>}
             </div>
+            <div className="text-[11px] leading-snug text-slate-500">
+              Jam kerja: Normal <b className="text-slate-700">{jam1(d.jam.nJam)} jam</b> · {d.jam.nOrang} orang
+              {d.jam.otJam > 0 && (
+                <>
+                  {" "}· OT <b className="text-slate-700">{jam1(d.jam.otJam)} jam</b> · {d.jam.otOrang} orang
+                </>
+              )}
+            </div>
           </Kpi>
           <Kpi icon={ICON.shield} title="NG Quantity" help="NG (pcs) dari laporan disetujui. NG rate = NG ÷ (OK + NG). Press PT = lot material diawali 31, Press JPN = lot diawali 01, Plastik = semua kategori Plastik.">
             <div className="text-[28px] font-bold leading-none tabular-nums">
@@ -276,6 +286,9 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
                 {n0(d.bulan.qty)} <span className="text-xs font-semibold text-slate-500">pcs</span>
               </div>
               <div className="text-xs text-slate-500">rata-rata {d.bulan.perDay == null ? "-" : n0(d.bulan.perDay)} pcs/hari</div>
+              <div className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                Normal {jam1(d.bulan.jam.nJam)} jam ({d.bulan.jam.nOrang} orang-hari) · OT {jam1(d.bulan.jam.otJam)} jam ({d.bulan.jam.otOrang} orang-hari)
+              </div>
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2.5">
               <div className="text-xs text-slate-500">Achievement</div>
