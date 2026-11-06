@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { TOTAL, ymLabel, type ParsedForecast } from "@/lib/forecast";
+import { dayLabel, ymLabel, type ParsedForecast } from "@/lib/forecast";
 
 const n0 = (v: number | null | undefined) => (v == null ? "-" : Math.round(v).toLocaleString("id-ID"));
 
@@ -38,6 +38,19 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   );
 }
 
+/** Pilihan customer (dari Master Customer) dipakai bersama oleh semua form forecast. */
+export function CustomerSelect({ id, value, onChange, customers }: { id: string; value: string; onChange: (v: string) => void; customers: string[] }) {
+  const list = customers.includes(value) || !value ? customers : [value, ...customers];
+  return (
+    <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+      {!value && <option value="">Pilih customer…</option>}
+      {list.map((c) => (
+        <option key={c}>{c}</option>
+      ))}
+    </select>
+  );
+}
+
 export default function ForecastUpload({
   customers,
   defaultCustomer,
@@ -49,23 +62,22 @@ export default function ForecastUpload({
   defaultCustomer: string;
   versions: string[];
   onClose: () => void;
-  onSaved: (customer: string) => void;
+  onSaved: (customer: string, month: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<"" | "read" | "save">("");
   const [err, setErr] = useState("");
   const [p, setP] = useState<ParsedForecast | null>(null);
-  const [customer, setCustomer] = useState(defaultCustomer || customers.find((c) => /NSK INDONESIA/i.test(c)) || customers[0] || "PT NSK INDONESIA");
+  const [customer, setCustomer] = useState(defaultCustomer || customers.find((c) => /NSK INDONESIA/i.test(c)) || "");
   const input = useRef<HTMLInputElement>(null);
 
-  async function read(f: File, versi?: string) {
+  async function read(f: File) {
     setFile(f);
     setErr("");
     setBusy("read");
     const fd = new FormData();
     fd.append("file", f);
-    if (versi) fd.append("versi", versi);
     const res = await fetch("/api/forecast/parse", { method: "POST", body: fd });
     const body = await res.json().catch(() => ({}));
     setBusy("");
@@ -83,22 +95,20 @@ export default function ForecastUpload({
     const res = await fetch("/api/forecast", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "save", versi: p.versi, customer: customer.trim(), rows: p.rows, daily: p.daily }),
+      body: JSON.stringify({ action: "forecast", versi: p.versi, customer: customer.trim(), daily: p.daily }),
     });
     const body = await res.json().catch(() => ({}));
     setBusy("");
     if (!res.ok) return setErr(body.error ?? "Gagal menyimpan.");
-    onSaved(customer.trim());
+    onSaved(customer.trim(), p.versi);
   }
 
   const exists = p && versions.includes(`${p.versi}|${customer.trim()}`);
   const s = p?.summary;
-  const pct = s?.actual != null && s.forecast ? s.actual / s.forecast - 1 : null;
-  const counts = p ? p.months.reduce((a, m) => ((a[m.jenis] = (a[m.jenis] ?? 0) + 1), a), {} as Record<string, number>) : {};
-  const topParts = p ? p.rows.filter((r) => r.part !== TOTAL && r.bulan === p.versi && (r.jenis === "Plan" || r.jenis === "Actual")).sort((a, b) => b.qty - a.qty).slice(0, 6) : [];
+  const top = p ? [...p.parts].sort((a, b) => b.total - a.total).slice(0, 6) : [];
 
   return (
-    <Modal title="Upload file forecast" onClose={onClose} wide={!!p}>
+    <Modal title="Upload forecast harian" onClose={onClose} wide={!!p}>
       <div className="flex flex-col gap-4 overflow-y-auto px-5 py-4">
         {!p && (
           <>
@@ -117,7 +127,7 @@ export default function ForecastUpload({
                 <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5zM14 3v5h5M12 18v-6M9 15l3-3 3 3" />
               </svg>
               <span className="font-semibold">{busy === "read" ? "Membaca file…" : file ? file.name : "Pilih atau tarik file Excel ke sini"}</span>
-              <span className="text-sm text-slate-500">File forecast customer (.xlsx), mis. &quot;11. TKI Nov 2026.xlsx&quot;</span>
+              <span className="text-sm text-slate-500">Forecast harian (.xlsx): Part × tanggal 1–31</span>
               <input
                 ref={input}
                 type="file"
@@ -130,14 +140,13 @@ export default function ForecastUpload({
               />
             </label>
             <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-              <b>Format yang dibaca:</b> sheet bulanan (No · Part · qty/box · kolom bulan dengan label <i>actual / plan / forecast</i>, kolom bulan ganda di kanan = forecast lama, baris &quot;plan&quot; di bawah total = forecast total dulu) dan sheet harian (Part · tanggal 1–31).{" "}
-              <a className="font-semibold text-brand-600 underline" href={`/api/forecast/template.xlsx?c=${encodeURIComponent(defaultCustomer)}`}>
+              <b>Format:</b> satu sheet harian, kolom No · Part · Pcs/box · Total · tanggal 1 s/d akhir bulan. Sheet harian dari file customer juga bisa langsung di-upload; sheet bulanan diabaikan.{" "}
+              <a className="font-semibold text-brand-600 underline" href={`/api/forecast/template.xlsx?c=${encodeURIComponent(customer)}`}>
                 Unduh template
               </a>
             </div>
           </>
         )}
-        {busy === "read" && p && <p className="text-sm text-slate-500">Membaca ulang…</p>}
         {err && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>}
 
         {p && s && (
@@ -145,35 +154,26 @@ export default function ForecastUpload({
             <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">✓</span>
               <div>
-                <b>{file?.name}</b> terbaca. Periksa ringkasan di bawah, lalu simpan.
+                <b>{file?.name}</b> terbaca (sheet &quot;{p.sheet}&quot;). Pilih customer lalu simpan.
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="fc-cust">
-                  Customer
-                </label>
-                <input id="fc-cust" className="input" list="fc-cust-list" value={customer} onChange={(e) => setCustomer(e.target.value)} />
-                <datalist id="fc-cust-list">
-                  {customers.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              </div>
-              <div>
-                <label className="label" htmlFor="fc-ver">
-                  Versi file (bulan berjalan di file)
-                </label>
-                <input id="fc-ver" type="month" className="input" value={p.versi} onChange={(e) => e.target.value && file && read(file, e.target.value)} />
-              </div>
+            <div>
+              <label className="label" htmlFor="fc-cust">
+                Customer
+              </label>
+              <CustomerSelect id="fc-cust" value={customer} onChange={setCustomer} customers={customers} />
             </div>
-            {exists && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Versi {ymLabel(p.versi, true)} untuk {customer} sudah pernah di-upload. Menyimpan akan <b>menimpa</b> data versi itu.</div>}
+            {exists && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Forecast {ymLabel(p.versi, true)} untuk {customer} sudah ada. Menyimpan akan <b>menimpa</b> forecast bulan itu (PO yang sudah diinput tidak berubah).
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-slate-200 ring-1 ring-slate-200 sm:grid-cols-4">
               {[
-                [`PO ${ymLabel(p.versi)}`, n0(s.actual), "pcs"],
-                [`Forecast ${ymLabel(p.versi)}`, n0(s.forecast), pct == null ? "tidak ada" : `PO ${pct > 0 ? "+" : ""}${(pct * 100).toFixed(1).replace(".", ",")}%`],
-                ["Part", String(s.parts), `${s.dailyDays} hari PO harian`],
-                ["Rentang bulan", `${ymLabel(s.from)} – ${ymLabel(s.to)}`, `${counts.Actual ?? 0} actual · ${counts.Plan ?? 0} plan · ${counts.Forecast ?? 0} forecast`],
+                ["Bulan", ymLabel(p.versi, true), `${dayLabel(s.from)} – ${dayLabel(s.to)}`],
+                ["Total forecast", n0(s.total), "pcs"],
+                ["Part", String(s.parts), `${p.parts.filter((x) => x.total).length} ada forecast`],
+                ["Hari", String(s.days), `rata-rata ${n0(s.days ? s.total / s.days : 0)}/hari`],
               ].map(([k, v, h]) => (
                 <div key={k} className="bg-white px-4 py-3">
                   <div className="text-xs text-slate-500">{k}</div>
@@ -189,15 +189,15 @@ export default function ForecastUpload({
                 ))}
               </ul>
             )}
-            {topParts.length > 0 && (
+            {top.length > 0 && (
               <div>
-                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">PO terbesar {ymLabel(p.versi)}</div>
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Forecast terbesar</div>
                 <table className="w-full text-sm">
                   <tbody>
-                    {topParts.map((r) => (
+                    {top.map((r) => (
                       <tr key={r.part} className="border-t border-slate-100">
                         <td className="py-1.5">{r.part}</td>
-                        <td className="py-1.5 text-right tabular-nums">{n0(r.qty)}</td>
+                        <td className="py-1.5 text-right tabular-nums">{n0(r.total)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -218,7 +218,7 @@ export default function ForecastUpload({
         </button>
         <button className="btn-primary" onClick={save} disabled={!p || !customer.trim() || !!busy}>
           {busy === "save" && <span className="spinner" />}
-          {busy === "save" ? "Menyimpan…" : "Simpan ke database"}
+          {busy === "save" ? "Menyimpan…" : "Simpan forecast"}
         </button>
       </div>
     </Modal>

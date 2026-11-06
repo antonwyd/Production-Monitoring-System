@@ -1,16 +1,16 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ALL, ALL_PARTS, addMonths, diffStatus, fyLabel, fyOf, ymLabel, type ForecastReport, type MonthPoint, type PartPoint } from "@/lib/forecast";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, CartesianGrid, Cell, ComposedChart, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ALL, ALL_PARTS, dayLabel, diffStatus, isOff, ymLabel, type DayPoint, type ForecastReport, type PartRow } from "@/lib/forecast";
 import DownloadMenu from "@/components/report/DownloadMenu";
 import ForecastUpload from "./ForecastUpload";
-import ForecastManual from "./ForecastManual";
+import { ForecastInput, PoInput } from "./ForecastInput";
 
-// Forecast vs Actual PO (mengikuti mockup Anton 6 Nov 2026):
-// filter FY / customer / part · 5 KPI · tren FY + achievement · gauge · per customer · rekap bulanan · insight,
-// lalu detail per part dan PO harian untuk bulan terpilih.
+// Forecast harian vs Actual PO harian (per tanggal kirim), satu bulan:
+// filter bulan / customer / part · 5 KPI s/d batas · grafik harian & kumulatif · gauge · per customer ·
+// rekap harian · insight · per part · matriks per part per hari · tren bulanan.
 
 const MAROON = "#9b1b1f";
 const RED = "#d62a32";
@@ -26,11 +26,17 @@ const big = (v: number | null | undefined) =>
   v == null ? "-" : Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 2 })} jt` : Math.abs(v) >= 1e4 ? `${Math.round(v / 1e3).toLocaleString("id-ID")} rb` : n0(v);
 const pc = (v: number | null | undefined, d = 1) => (v == null ? "-" : v > 9.99 ? ">+999%" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d).replace(".", ",")}%`);
 const pct = (v: number | null | undefined, d = 1) => (v == null ? "-" : `${(v * 100).toFixed(d).replace(".", ",")}%`);
+const pts = (v: number) => `${v > 0 ? "+" : ""}${(v * 100).toFixed(1).replace(".", ",")} poin`;
 const axisBig = (v: number) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 1 })}jt` : Math.abs(v) >= 1e3 ? `${Math.round(v / 1e3)}rb` : String(v));
 const tone = (v: number | null | undefined) => (v == null ? "text-slate-500" : v > 0.0005 ? "text-emerald-700" : v < -0.0005 ? "text-red-700" : "text-slate-600");
 /** Achievement: >=95% hijau, 85-95% kuning, <85% merah. */
 const achTone = (v: number | null | undefined) => (v == null ? "text-slate-500" : v >= 0.95 ? "text-emerald-700" : v >= 0.85 ? "text-amber-600" : "text-red-700");
 const achColor = (v: number | null | undefined) => (v == null ? "#94a3b8" : v >= 0.95 ? "#16a34a" : v >= 0.85 ? "#d97706" : "#dc2626");
+const addDay = (t: string, n: number) => {
+  const d = new Date(`${t}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 
 function Ico({ d, className = "h-5 w-5" }: { d: string; className?: string }) {
   return (
@@ -51,26 +57,42 @@ const I = {
   warn: "M12 3l10 18H2L12 3zM12 10v4M12 18h.01",
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   check: "M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
-  down: "M12 3v12M7 10l5 5 5-5M5 21h14",
+  plus: "M12 5v14M5 12h14",
+  up: "M12 16V4M7 9l5-5 5 5M5 20h14",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
 };
 
 export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: ForecastReport; canEdit: boolean; isAdmin: boolean; customers: string[] }) {
   const router = useRouter();
-  const [upload, setUpload] = useState(false);
-  const [manual, setManual] = useState(false);
-  const go = (q: { c?: string; m?: string; fy?: number; p?: string }) => {
+  const [modal, setModal] = useState<"" | "upload" | "fcInput" | "po">("");
+  const [fcMenu, setFcMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!fcMenu) return;
+    const close = (e: MouseEvent) => !menuRef.current?.contains(e.target as Node) && setFcMenu(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [fcMenu]);
+  const go = (q: { c?: string; m?: string; p?: string }) => {
     const p = new URLSearchParams();
-    p.set("fy", String(q.fy ?? (q.m ? fyOf(q.m) : r.fy)));
+    const m = q.m ?? r.month;
+    if (m) p.set("m", m);
     p.set("c", q.c ?? r.customer);
     const part = q.p ?? r.part;
     if (part !== ALL_PARTS) p.set("p", part);
-    if (q.m) p.set("m", q.m);
     router.push(`/forecast?${p}`, { scroll: false });
   };
-  const sel = r.sel;
-  const allCustomers = [...new Set([...r.customers, ...customers])].sort();
-  const lastVer = r.versions[r.versions.length - 1];
+  const allCustomers = [...new Set([...customers, ...r.customers])].sort();
   const custQ = encodeURIComponent(r.customer);
+  const defCust = r.customer === ALL ? "" : r.customer;
+  const tomorrow = addDay(r.today, 1);
+  // Default tanggal kirim: hari berikutnya yang ada forecast (PO Jumat biasanya untuk Senin), maks 7 hari.
+  const nextFc = r.days.find((d) => d.tanggal >= tomorrow && d.tanggal <= addDay(r.today, 7) && d.fc > 0)?.tanggal ?? tomorrow;
+  const saved = (c: string, m: string) => {
+    setModal("");
+    go({ c, m: m.slice(0, 7), p: ALL_PARTS });
+    router.refresh();
+  };
 
   const Filter = ({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) => (
     <label className="relative flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-sm focus-within:border-brand-600 focus-within:ring-4 focus-within:ring-brand-100">
@@ -84,6 +106,34 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
   const selCls = "w-full min-w-0 cursor-pointer appearance-none truncate bg-transparent pr-5 text-sm font-semibold text-slate-900 outline-none";
   const chevron = <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">▾</span>;
 
+  const editButtons = canEdit && (
+    <>
+      <div ref={menuRef} className="relative flex-1 sm:flex-none">
+        <button className="btn-secondary h-12 w-full whitespace-nowrap rounded-xl px-3" onClick={() => setFcMenu((v) => !v)} aria-expanded={fcMenu} aria-haspopup="menu">
+          <Ico d={I.grid} />
+          Forecast ▾
+        </button>
+        {fcMenu && (
+          <div role="menu" className="anim-fade absolute left-0 top-14 z-30 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl sm:left-auto sm:right-0">
+            {[
+              { k: "upload" as const, label: "Upload file forecast harian", hint: "Template atau sheet harian dari customer (.xlsx)" },
+              { k: "fcInput" as const, label: "Input forecast sekaligus", hint: "Isi / tempel tabel Part × tanggal 1–31 dari Excel" },
+            ].map((x) => (
+              <button key={x.k} role="menuitem" className="flex w-full flex-col px-4 py-2.5 text-left hover:bg-slate-50" onClick={() => (setFcMenu(false), setModal(x.k))}>
+                <span className="text-sm font-semibold">{x.label}</span>
+                <span className="text-xs text-slate-500">{x.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button className="btn-primary h-12 flex-1 rounded-xl px-4 sm:flex-none" onClick={() => setModal("po")}>
+        <Ico d={I.plus} />
+        Input PO
+      </button>
+    </>
+  );
+
   const header = (
     <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
       <div className="flex items-center gap-3">
@@ -92,16 +142,16 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
         </div>
         <div>
           <h1 className="text-2xl font-bold sm:whitespace-nowrap sm:text-3xl">Forecast vs Actual PO</h1>
-          <p className="text-sm text-slate-500">Perbandingan rencana (Forecast) dan realisasi PO customer</p>
+          <p className="text-sm text-slate-500">Forecast harian customer vs PO per tanggal kirim</p>
         </div>
       </div>
       <div className="no-print grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-        {r.fys.length > 0 && (
-          <Filter label="Fiscal Year" icon={I.cal}>
-            <select className={selCls} value={r.fy} onChange={(e) => go({ fy: Number(e.target.value) })} aria-label="Fiscal year">
-              {r.fys.map((f) => (
-                <option key={f} value={f}>
-                  {fyLabel(f)}
+        {r.months.length > 0 && (
+          <Filter label="Bulan" icon={I.cal}>
+            <select className={selCls} value={r.month ?? ""} onChange={(e) => go({ m: e.target.value })} aria-label="Bulan">
+              {r.months.map((m) => (
+                <option key={m} value={m}>
+                  {ymLabel(m, true)}
                 </option>
               ))}
             </select>
@@ -121,7 +171,7 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
         )}
         {r.partsList.length > 0 && (
           <Filter label="Part No.">
-            <select className={selCls} value={r.part} onChange={(e) => go({ p: e.target.value, m: r.selected ?? undefined })} aria-label="Part">
+            <select className={selCls} value={r.part} onChange={(e) => go({ p: e.target.value })} aria-label="Part">
               <option value={ALL_PARTS}>{ALL_PARTS}</option>
               {r.partsList.map((p) => (
                 <option key={p}>{p}</option>
@@ -131,23 +181,13 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
           </Filter>
         )}
         <div className="col-span-2 flex flex-wrap items-center gap-2">
-          {canEdit && (
-            <>
-              <button className="btn-secondary h-12 flex-1 rounded-xl px-3 sm:flex-none" onClick={() => setManual(true)}>
-                ✎ Input
-              </button>
-              <button className="btn-primary h-12 flex-1 rounded-xl px-4 sm:flex-none" onClick={() => setUpload(true)}>
-                <Ico d="M12 16V4M7 9l5-5 5 5M5 20h14" />
-                Upload
-              </button>
-            </>
-          )}
+          {editButtons}
           <DownloadMenu
             compact
             className="[&>button]:h-12 [&>button]:rounded-xl"
             links={[
-              ...(sel ? [{ label: "Excel laporan (.xlsx)", hint: "Ringkasan FY, rekap bulanan, per part, PO harian", href: `/api/forecast/forecast-vs-po.xlsx?c=${custQ}&fy=${r.fy}&m=${sel.bulan}${r.part !== ALL_PARTS ? `&p=${encodeURIComponent(r.part)}` : ""}` }] : []),
-              { label: "Template upload (.xlsx)", hint: "Format sama dengan file forecast customer", href: `/api/forecast/template.xlsx?c=${custQ}&versi=${lastVer ? addMonths(lastVer.versi, 1) : ""}` },
+              ...(r.month ? [{ label: "Excel laporan (.xlsx)", hint: "Ringkasan, per hari, per part, per part per hari, tren bulanan", href: `/api/forecast/forecast-vs-po.xlsx?c=${custQ}&m=${r.month}${r.part !== ALL_PARTS ? `&p=${encodeURIComponent(r.part)}` : ""}` }] : []),
+              { label: "Template forecast harian (.xlsx)", hint: "Part × tanggal 1–31, untuk diisi lalu di-upload", href: `/api/forecast/template.xlsx?c=${custQ}&versi=${r.month && r.month > r.today.slice(0, 7) ? r.month : tomorrow.slice(0, 7)}` },
             ]}
           />
         </div>
@@ -157,21 +197,13 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
 
   const modals = (
     <>
-      {upload && <ForecastUpload customers={allCustomers} defaultCustomer={r.customer === ALL ? "" : r.customer} versions={r.versions.map((v) => `${v.versi}|${v.customer}`)} onClose={() => setUpload(false)} onSaved={(c) => (setUpload(false), go({ c }), router.refresh())} />}
-      {manual && (
-        <ForecastManual
-          customers={allCustomers}
-          defaultCustomer={r.customer === ALL ? "" : r.customer}
-          month={sel?.bulan ?? new Date().toISOString().slice(0, 7)}
-          parts={r.customer === ALL ? [] : r.parts}
-          onClose={() => setManual(false)}
-          onSaved={(c, m) => (setManual(false), go({ c, m }), router.refresh())}
-        />
-      )}
+      {modal === "upload" && <ForecastUpload customers={allCustomers} defaultCustomer={defCust} versions={r.versions.map((v) => `${v.versi}|${v.customer}`)} onClose={() => setModal("")} onSaved={saved} />}
+      {modal === "fcInput" && <ForecastInput customers={allCustomers} defaultCustomer={defCust} defaultMonth={r.month ?? r.today.slice(0, 7)} onClose={() => setModal("")} onSaved={saved} />}
+      {modal === "po" && <PoInput customers={allCustomers} defaultCustomer={defCust} defaultDate={nextFc} onClose={() => setModal("")} onSaved={saved} />}
     </>
   );
 
-  if (!sel) {
+  if (!r.month) {
     return (
       <main className="flex w-full flex-col gap-5 px-4 pb-12 pt-6 lg:px-8">
         {header}
@@ -180,20 +212,22 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
             <Ico d={I.chart} className="h-8 w-8" />
           </div>
           <div>
-            <h2 className="text-lg font-bold">Belum ada data forecast</h2>
-            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">Upload file forecast dari customer (format seperti &quot;11. TKI Nov 2026.xlsx&quot;: sheet bulanan + sheet harian). Riwayat forecast vs aktual sejak 2022 di file itu langsung terbaca.</p>
+            <h2 className="text-lg font-bold">Belum ada forecast</h2>
+            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+              Awal bulan: masukkan forecast harian customer (upload template atau tempel dari Excel). Lalu setiap hari input PO yang turun ke tanggal kirimnya. Dashboard langsung membandingkan per hari.
+            </p>
           </div>
           {canEdit ? (
             <div className="flex flex-wrap justify-center gap-2">
-              <button className="btn-primary" onClick={() => setUpload(true)}>
-                Upload file forecast
+              <button className="btn-primary" onClick={() => setModal("upload")}>
+                <Ico d={I.up} /> Upload forecast harian
               </button>
-              <button className="btn-secondary" onClick={() => setManual(true)}>
-                Input manual
+              <button className="btn-secondary" onClick={() => setModal("fcInput")}>
+                Input forecast sekaligus
               </button>
             </div>
           ) : (
-            <p className="text-sm text-slate-500">Minta leader atau admin meng-upload file forecast.</p>
+            <p className="text-sm text-slate-500">Minta leader atau admin memasukkan forecast.</p>
           )}
         </section>
         {modals}
@@ -206,21 +240,21 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
       {header}
       <Kpis r={r} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,0.85fr)_minmax(0,1fr)]">
-        <TrendCard r={r} onPick={(m) => go({ m })} />
+        <DailyChart r={r} />
         <GaugeCard r={r} />
         <CustomerCard r={r} onPick={(c) => go({ c, p: ALL_PARTS })} />
       </div>
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-        <RekapCard r={r} onPick={(m) => go({ m })} />
-        <InsightCard r={r} onPart={(p) => go({ p, m: r.selected ?? undefined })} />
+        <RekapCard r={r} />
+        <InsightCard r={r} onPart={(p) => go({ p })} canEdit={canEdit} onPo={() => setModal("po")} />
       </div>
-      <PartsCard r={r} />
-      {r.daily.length > 0 && <DailyCard r={r} />}
+      <PartsCard r={r} onPart={(p) => go({ p })} />
+      {r.heat.length > 0 && <HeatCard r={r} />}
+      {r.monthly.length > 1 && <MonthlyCard r={r} onPick={(m) => go({ m })} />}
       <p className="text-xs text-slate-400">
-        {lastVer ? `File terakhir: ${lastVer.customer} versi ${ymLabel(lastVer.versi, true)} · ${lastVer.sumber} oleh ${lastVer.by}, ${lastVer.at.slice(0, 16)}. ` : ""}
-        Achievement = PO ÷ forecast, hanya bulan yang punya forecast dan PO. Hijau ≥95%, kuning 85–95%, merah &lt;85%.
+        Achievement = PO ÷ forecast s/d batas (tanggal PO terakhir atau hari ini). Hijau ≥95%, kuning 85–95%, merah &lt;85%. PO dicatat per tanggal kirim.
       </p>
-      {isAdmin && <VersionsCard r={r} />}
+      {isAdmin && <DataCard r={r} />}
       {modals}
     </main>
   );
@@ -228,235 +262,241 @@ export default function ForecastView({ r, canEdit, isAdmin, customers }: { r: Fo
 
 // ---------- 1. KPI ----------
 function Kpis({ r }: { r: ForecastReport }) {
-  const s = r.fySum;
-  const last = s.last;
-  const prevFy = `FY${r.fy - 1}`;
-  const fyMonthsDone = r.fyPoints.filter((m) => m.actual !== null);
-  const noFc = fyMonthsDone.filter((m) => m.forecast === null).map((m) => ymLabel(m.bulan));
-  const range = fyMonthsDone.length ? `${ymLabel(fyMonthsDone[0].bulan)} – ${ymLabel(fyMonthsDone[fyMonthsDone.length - 1].bulan)}` : "";
+  const k = r.kpi;
+  const upto = r.upto ? dayLabel(r.upto) : "-";
   const card = "card relative flex flex-col items-start gap-2 overflow-hidden p-3 sm:flex-row sm:gap-3 sm:p-4 lg:px-3.5";
+  const big1 = "whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem]";
   const tile = (bg: string, fg: string, d: string) => (
     <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${bg} ${fg}`}>
       <Ico d={d} />
     </span>
   );
-  const vs = (v: number | null) =>
-    v == null ? (
-      <span className="text-slate-400">belum ada pembanding</span>
-    ) : (
-      <span className={`font-semibold ${tone(v)}`}>
-        {v >= 0 ? "▲" : "▼"} {pc(v)} <span className="font-normal text-slate-500">vs {prevFy}</span>
-      </span>
-    );
+  const prevGrowth = k.poPrevMonth ? k.poUpto / k.poPrevMonth - 1 : null;
+  const d7 = k.ach7 != null && k.ach7prev != null ? k.ach7 - k.ach7prev : null;
+  const noFc = k.fcMonth === 0;
   return (
     <section className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <div className={`${card} bg-gradient-to-br from-sky-50 to-white`}>
           {tile("bg-sky-100", "text-sky-700", I.target)}
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-700">Total Forecast <span className="font-normal text-slate-500">(pcs)</span></div>
-            <div className="whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem]">
-              {n0(s.forecast)}
+            <div className="text-sm font-semibold text-slate-700">
+              Forecast s/d {upto} <span className="font-normal text-slate-500">(pcs)</span>
             </div>
-            <div className="text-xs">{vs(s.forecastGrowth)}</div>
+            <div className={big1}>{n0(k.fcUpto)}</div>
+            <div className="text-xs text-slate-500">
+              Sebulan <b className="text-slate-700">{n0(k.fcMonth)}</b>
+            </div>
           </div>
         </div>
         <div className={`${card} bg-gradient-to-br from-rose-50 to-white`}>
           {tile("bg-rose-100", "text-rose-700", I.box)}
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-700">Total Actual PO <span className="font-normal text-slate-500">(pcs)</span></div>
-            <div className="whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem]">
-              {n0(s.actual)}
+            <div className="text-sm font-semibold text-slate-700">
+              Actual PO s/d {upto} <span className="font-normal text-slate-500">(pcs)</span>
             </div>
-            <div className="text-xs">{vs(s.actualGrowth)}</div>
+            <div className={big1}>{n0(k.poUpto)}</div>
+            <div className="text-xs">
+              {prevGrowth != null ? (
+                <span className={`font-semibold ${tone(prevGrowth)}`}>
+                  {prevGrowth >= 0 ? "▲" : "▼"} {pc(prevGrowth)} <span className="font-normal text-slate-500">vs bln lalu</span>
+                </span>
+              ) : (
+                <span className="text-slate-500">{k.poDays} hari ada PO</span>
+              )}
+            </div>
           </div>
         </div>
         <div className={`${card} bg-gradient-to-br from-emerald-50 to-white`}>
           {tile("bg-emerald-100", "text-emerald-700", I.award)}
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-slate-700">Achievement</div>
-            <div className={`text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem] ${achTone(s.achievement)}`}>{pct(s.achievement)}</div>
-            <div className="text-xs text-slate-500">vs Forecast</div>
+            <div className={`text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem] ${achTone(k.ach)}`}>{pct(k.ach)}</div>
+            <div className="text-xs text-slate-500">PO ÷ forecast s/d {upto}</div>
             <div className="mt-1.5 h-2 w-full rounded-full bg-slate-100">
-              <div className="anim-bar h-full rounded-full" style={{ width: `${Math.min(100, (s.achievement ?? 0) * 100)}%`, background: achColor(s.achievement) }} />
+              <div className="anim-bar h-full rounded-full" style={{ width: `${Math.min(100, (k.ach ?? 0) * 100)}%`, background: achColor(k.ach) }} />
             </div>
           </div>
         </div>
         <div className={`${card} bg-gradient-to-br from-indigo-50 to-white`}>
           {tile("bg-indigo-100", "text-indigo-700", I.scale)}
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-700">Gap <span className="font-normal text-slate-500">(pcs)</span></div>
-            <div className={`whitespace-nowrap text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem] ${tone(s.gap)}`}>
-              {s.gap != null && s.gap > 0 ? "+" : ""}
-              {n0(s.gap)}
+            <div className="text-sm font-semibold text-slate-700">
+              Gap <span className="font-normal text-slate-500">(pcs)</span>
+            </div>
+            <div className={`${big1} ${tone(k.gap)}`}>
+              {k.gap > 0 ? "+" : ""}
+              {n0(k.gap)}
             </div>
             <div className="text-xs">
-              <span className={`font-semibold ${tone(s.gapPct)}`}>{pc(s.gapPct)}</span> <span className="text-slate-500">dari Forecast</span>
+              <span className={`font-semibold ${tone(k.gapPct)}`}>{pc(k.gapPct)}</span> <span className="text-slate-500">dari forecast</span>
             </div>
           </div>
         </div>
         <div className={`${card.replace("flex-col items-start", "flex-row items-start")} col-span-2 bg-gradient-to-br from-violet-50 to-white lg:col-span-1`}>
           {tile("bg-violet-100", "text-violet-700", I.trend)}
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-700">Tren vs Bulan Lalu</div>
-            <div className={`text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem] ${tone(last?.mom)}`}>
-              {last?.mom == null ? "-" : `${last.mom >= 0 ? "▲" : "▼"} ${pc(last.mom)}`}
+            <div className="text-sm font-semibold text-slate-700">Tren 7 Hari</div>
+            <div className={`text-lg font-bold tabular-nums sm:text-xl xl:text-[1.45rem] ${achTone(k.ach7)}`}>
+              {pct(k.ach7)}
+              {d7 != null && <span className={`ml-1.5 text-sm ${tone(d7)}`}>{d7 >= 0 ? "▲" : "▼"}</span>}
             </div>
-            <div className="text-xs text-slate-500">{last ? `PO ${ymLabel(last.bulan)} vs ${ymLabel(addMonths(last.bulan, -1))}` : "-"}</div>
+            <div className="text-xs text-slate-500">{d7 != null ? <>{pts(d7)} vs 7 hari sebelumnya ({pct(k.ach7prev)})</> : "Achievement 7 hari terakhir"}</div>
           </div>
         </div>
       </div>
       <p className="text-xs text-slate-500">
-        {fyLabel(r.fy)} · PO {range}
-        {s.matched === 0 && s.months > 0 && <> · Forecast untuk FY ini belum tercatat, hanya PO yang ditampilkan</>}
-        {s.matched > 0 && s.matched < s.months && <> · Forecast &amp; Achievement dihitung {s.matched} bulan yang ada forecast{noFc.length <= 3 ? ` (tanpa ${noFc.join(", ")})` : ""}</>}
-        {r.part !== ALL_PARTS && <> · Forecast per part hanya ada untuk bulan yang file forecast-nya di-upload</>}
+        {ymLabel(r.month!, true)} · dibandingkan s/d <b>{r.upto ? dayLabel(r.upto, true) : "-"}</b>
+        {k.lastDay ? <> · PO terakhir tanggal kirim {dayLabel(k.lastDay.tanggal)}</> : " · belum ada PO"}
+        {noFc && <> · Forecast bulan ini belum dimasukkan</>}
       </p>
     </section>
   );
 }
 
-// ---------- 2. tren FY ----------
-const RANGES = [
-  { k: 0, label: "FY" },
-  { k: 24, label: "24 bln" },
-  { k: -1, label: "Semua" },
-];
-
-function TrendCard({ r, onPick }: { r: ForecastReport; onPick: (m: string) => void }) {
-  const [range, setRange] = useState(0);
-  const [view, setView] = useState<"chart" | "table">("chart");
-  const data = useMemo(() => {
-    const sel = r.sel!.bulan;
-    let pts: MonthPoint[];
-    if (range === 0) pts = r.fyPoints;
-    else {
-      const fut = r.months.filter((m) => m.bulan > sel);
-      const upto = r.months.filter((m) => m.bulan <= sel);
-      pts = [...(range > 0 ? upto.slice(-range) : upto), ...fut];
-    }
-    return pts.map((m) => ({ ...m, label: ymLabel(m.bulan), short: ymLabel(m.bulan).split(" ")[0], top: Math.max(m.actual ?? 0, m.forecast ?? 0) || null }));
-  }, [r, range]);
-  const many = data.length > 14;
+// ---------- 2. grafik harian ----------
+function DailyChart({ r }: { r: ForecastReport }) {
+  const [view, setView] = useState<"day" | "cum" | "table">("day");
   const [narrow, setNarrow] = useState(false);
   useEffect(() => setNarrow(window.innerWidth < 640), []);
-  const chips = data.length <= 14 && !narrow;
+  const data = useMemo(() => r.days.map((d) => ({ ...d, label: String(Number(d.tanggal.slice(8))), poShow: d.future ? null : d.po, poAhead: d.future ? d.po : null })), [r.days]);
   type D = (typeof data)[number];
-  const Chip = (props: { x?: number; y?: number; index?: number }) => {
-    const d = data[props.index ?? 0];
-    if (!d || d.ach == null || props.x == null || props.y == null) return null;
-    const txt = pct(d.ach);
-    const w = txt.length * 6.2 + 10;
-    return (
-      <g transform={`translate(${props.x - w / 2},${props.y - 26})`}>
-        <rect width={w} height={18} rx={9} fill="#fffbeb" stroke="#facc15" />
-        <text x={w / 2} y={12.5} textAnchor="middle" fontSize={10.5} fontWeight={700} fill={achColor(d.ach)}>
-          {txt}
-        </text>
-      </g>
-    );
-  };
+  const tick = (d: DayPoint) => d.tanggal === r.upto;
   return (
     <section className="card p-4 sm:p-5">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 font-bold">
           <Ico d={I.chart} className="h-5 w-5 text-brand-600" />
-          Tren Forecast vs Actual PO {range === 0 ? `(FY${r.fy})` : ""}
+          Forecast vs Actual PO per Hari
         </h2>
-        <div className="flex gap-2">
-          <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
-            {RANGES.map((x) => (
-              <button key={x.k} onClick={() => setRange(x.k)} className={`rounded-md px-2.5 py-1 font-medium ${range === x.k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
-                {x.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
-            {(["chart", "table"] as const).map((v) => (
-              <button key={v} onClick={() => setView(v)} className={`rounded-md px-2.5 py-1 font-medium ${view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
-                {v === "chart" ? "Grafik" : "Tabel"}
-              </button>
-            ))}
-          </div>
+        <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs">
+          {(
+            [
+              ["day", "Harian"],
+              ["cum", "Kumulatif"],
+              ["table", "Tabel"],
+            ] as const
+          ).map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} className={`rounded-md px-2.5 py-1 font-medium ${view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
+              {l}
+            </button>
+          ))}
         </div>
       </div>
-      {view === "chart" ? (
-        <>
-          <div className="mb-1 flex flex-wrap justify-end gap-4 text-xs text-slate-600">
-            <span className="flex items-center gap-1.5">
-              <i className="h-3 w-3 rounded-sm" style={{ background: GREY }} /> Forecast
-            </span>
-            <span className="flex items-center gap-1.5">
-              <i className="h-3 w-3 rounded-sm" style={{ background: RED }} /> Actual PO
-            </span>
-            {chips && (
-              <span className="flex items-center gap-1.5">
-                <i className="h-3 w-5 rounded-full border border-yellow-400 bg-amber-50" /> Achievement
-              </span>
-            )}
-          </div>
-          <div className="h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} margin={{ top: 30, right: 6, left: 0, bottom: 0 }} barGap={2} barCategoryGap={many ? "14%" : "22%"}>
-                <CartesianGrid stroke="#eef0f3" vertical={false} />
-                <XAxis dataKey={range === 0 ? "short" : "label"} tick={AX} interval={many ? "preserveStartEnd" : 0} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
-                <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={TIP}
-                  itemStyle={{ color: "#fff" }}
-                  labelStyle={{ color: "#cbd5e1" }}
-                  cursor={{ fill: "rgba(155,27,31,0.06)" }}
-                  labelFormatter={(_, p) => {
-                    const d = p?.[0]?.payload as D | undefined;
-                    return d ? `${ymLabel(d.bulan, true)}${d.ach != null ? ` · Achievement ${pct(d.ach)}` : d.kind === "forecast" ? " · baru forecast" : ""}` : "";
-                  }}
-                  formatter={(v: unknown, n: unknown) => (n === "top" ? [null, null] : [`${n0(v as number)} pcs`, String(n)])}
-                />
-                <Bar dataKey="forecast" name="Forecast" fill={GREY} radius={[4, 4, 0, 0]} isAnimationActive={false} onClick={(d) => (d as unknown as D).actual != null && onPick((d as unknown as D).bulan)} className="cursor-pointer" />
-                <Bar dataKey="actual" name="Actual PO" radius={[4, 4, 0, 0]} isAnimationActive={false} onClick={(d) => onPick((d as unknown as D).bulan)} className="cursor-pointer">
-                  {data.map((d) => (
-                    <Cell key={d.bulan} fill={RED} fillOpacity={d.bulan === r.sel!.bulan ? 1 : 0.85} stroke={d.bulan === r.sel!.bulan ? "#7f1519" : undefined} strokeWidth={d.bulan === r.sel!.bulan ? 2 : 0} />
-                  ))}
-                </Bar>
-                {chips && <Line dataKey="top" name="top" stroke="transparent" dot={false} activeDot={false} isAnimationActive={false} label={<Chip />} legendType="none" />}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="text-xs text-slate-500">Klik batang untuk melihat detail bulan itu. Bulan tanpa batang merah = baru forecast.</p>
-        </>
-      ) : (
-        <div className="max-h-[22rem] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
-              <tr>
-                <th className="px-3 py-2 text-left">Bulan</th>
-                <th className="px-3 py-2 text-right">Forecast</th>
-                <th className="px-3 py-2 text-right">PO</th>
-                <th className="px-3 py-2 text-right">Ach.</th>
-                <th className="hidden px-3 py-2 text-right sm:table-cell">vs thn lalu</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...data].reverse().map((m) => (
-                <tr key={m.bulan} onClick={() => m.actual != null && onPick(m.bulan)} className={`cursor-pointer border-t border-slate-100 tabular-nums hover:bg-slate-50 ${m.bulan === r.sel!.bulan ? "bg-brand-50" : ""}`}>
-                  <td className="px-3 py-1.5 font-medium">{ymLabel(m.bulan, true)}</td>
-                  <td className="px-3 py-1.5 text-right">{n0(m.forecast)}</td>
-                  <td className="px-3 py-1.5 text-right font-semibold">{n0(m.actual)}</td>
-                  <td className={`px-3 py-1.5 text-right font-semibold ${achTone(m.ach)}`}>{pct(m.ach)}</td>
-                  <td className={`hidden px-3 py-1.5 text-right sm:table-cell ${tone(m.yoy)}`}>{pc(m.yoy)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {view !== "table" && (
+        <div className="mb-1 flex flex-wrap justify-end gap-4 text-xs text-slate-600">
+          <span className="flex items-center gap-1.5">
+            <i className={view === "day" ? "h-3 w-3 rounded-sm" : "h-0.5 w-4 border-t-2 border-dashed border-slate-500"} style={view === "day" ? { background: GREY } : undefined} /> Forecast
+          </span>
+          <span className="flex items-center gap-1.5">
+            <i className={view === "day" ? "h-3 w-3 rounded-sm" : "h-1 w-4 rounded"} style={{ background: view === "day" ? RED : MAROON }} /> Actual PO
+          </span>
         </div>
       )}
+      {view === "day" ? (
+        <div className="h-72 sm:h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 10, right: 6, left: 0, bottom: 0 }} barGap={1} barCategoryGap="18%">
+              <CartesianGrid stroke="#eef0f3" vertical={false} />
+              <XAxis dataKey="label" tick={AX} interval={narrow ? 2 : 0} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+              <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={TIP}
+                itemStyle={{ color: "#fff" }}
+                labelStyle={{ color: "#cbd5e1" }}
+                cursor={{ fill: "rgba(155,27,31,0.06)" }}
+                labelFormatter={(_, p) => {
+                  const d = p?.[0]?.payload as D | undefined;
+                  if (!d) return "";
+                  const a = d.po != null && d.fc ? ` · ${pct(d.po / d.fc)}` : "";
+                  return `${dayLabel(d.tanggal, true)}${d.future ? " · belum ada PO" : a}`;
+                }}
+                formatter={(v: unknown, n: unknown) => [`${n0(v as number)} pcs`, String(n)]}
+              />
+              {r.upto && <ReferenceLine x={String(Number(r.upto.slice(8)))} stroke="#94a3b8" strokeDasharray="3 3" label={{ value: "batas", position: "insideTopRight", fontSize: 10, fill: "#64748b" }} />}
+              <Bar dataKey="fc" name="Forecast" fill={GREY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                {data.map((d) => (
+                  <Cell key={d.tanggal} fillOpacity={d.future ? 0.55 : 1} />
+                ))}
+              </Bar>
+              <Bar dataKey="poShow" name="Actual PO" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                {data.map((d) => (
+                  <Cell key={d.tanggal} fill={d.po != null && d.fc && d.po < d.fc * 0.9 ? RED : d.po != null && d.po > d.fc * 1.1 ? UP : RED} stroke={tick(d) ? "#7f1519" : undefined} strokeWidth={tick(d) ? 2 : 0} />
+                ))}
+              </Bar>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      ) : view === "cum" ? (
+        <div className="h-72 sm:h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#eef0f3" vertical={false} />
+              <XAxis dataKey="label" tick={AX} interval={narrow ? 2 : 0} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+              <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={TIP}
+                itemStyle={{ color: "#fff" }}
+                labelStyle={{ color: "#cbd5e1" }}
+                labelFormatter={(_, p) => {
+                  const d = p?.[0]?.payload as D | undefined;
+                  return d ? `s/d ${dayLabel(d.tanggal, true)}${d.ach != null ? ` · ${pct(d.ach)}` : ""}` : "";
+                }}
+                formatter={(v: unknown, n: unknown) => [`${n0(v as number)} pcs`, String(n)]}
+              />
+              <Line dataKey="cumFc" name="Forecast kumulatif" stroke={SLATE} strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line dataKey="cumPo" name="PO kumulatif" stroke={MAROON} strokeWidth={2.6} dot={false} isAnimationActive={false} connectNulls={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="max-h-[22rem] overflow-auto">
+          <DayTable r={r} rows={[...r.days].reverse()} compact />
+        </div>
+      )}
+      <p className="text-xs text-slate-500">
+        {view === "cum" ? "Garis merah di bawah garis putus-putus = PO tertinggal dari forecast." : "Batang PO hijau = di atas forecast >10%. Garis \"batas\" = tanggal pembanding terakhir."}
+      </p>
     </section>
+  );
+}
+
+function DayTable({ r, rows, compact, foot }: { r: ForecastReport; rows: DayPoint[]; compact?: boolean; foot?: React.ReactNode }) {
+  const TH = "px-3 py-2 text-xs font-semibold";
+  const TD = compact ? "px-3 py-1.5 tabular-nums" : "px-3 py-2 tabular-nums";
+  return (
+    <table className="w-full min-w-[30rem] text-sm">
+      <thead className="sticky top-0 bg-slate-50 text-slate-600">
+        <tr>
+          <th className={`${TH} text-left`}>Tanggal</th>
+          <th className={`${TH} text-right`}>Forecast</th>
+          <th className={`${TH} text-right`}>Actual PO</th>
+          <th className={`${TH} text-right`}>Gap</th>
+          <th className={`${TH} text-right`}>Ach. kumulatif</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((d) => {
+          const gap = d.po != null && !d.future ? d.po - d.fc : null;
+          return (
+            <tr key={d.tanggal} className={`border-t border-slate-100 ${d.future ? "text-slate-400" : ""} ${d.tanggal === r.upto ? "bg-rose-50 font-semibold" : isOff(d.tanggal) ? "bg-slate-50/60" : ""}`}>
+              <td className={`${TD} whitespace-nowrap font-medium`}>{dayLabel(d.tanggal, true)}</td>
+              <td className={`${TD} text-right`}>{d.fc ? n0(d.fc) : "–"}</td>
+              <td className={`${TD} text-right`}>{d.po == null ? "–" : n0(d.po)}</td>
+              <td className={`${TD} text-right ${tone(gap)}`}>{gap == null ? "–" : `${gap > 0 ? "+" : ""}${n0(gap)}`}</td>
+              <td className={`${TD} text-right font-semibold ${achTone(d.ach)}`}>{pct(d.ach)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+      {foot}
+    </table>
   );
 }
 
 // ---------- 3. gauge ----------
 function Gauge({ v }: { v: number | null }) {
-  // Setengah lingkaran 0–120%; jarum di 100% = forecast.
+  // Setengah lingkaran 0–120%; penanda di 100% = forecast.
   const max = 1.2;
   const f = Math.max(0, Math.min(max, v ?? 0)) / max;
   const R = 80,
@@ -485,27 +525,29 @@ function Gauge({ v }: { v: number | null }) {
 }
 
 function GaugeCard({ r }: { r: ForecastReport }) {
-  const s = r.fySum;
-  const row = (icon: string, k: string, v: React.ReactNode, cls = "") => (
+  const k = r.kpi;
+  const ahead = r.days.filter((d) => d.future && (d.po ?? 0) > 0).reduce((a, d) => a + (d.po ?? 0), 0);
+  const row = (icon: string, label: string, v: React.ReactNode, cls = "") => (
     <div className="flex items-center justify-between gap-2 border-t border-slate-100 py-2 text-sm first:border-t-0">
       <span className="flex items-center gap-2 text-slate-600">
         <Ico d={icon} className="h-4 w-4 text-slate-400" />
-        {k}
+        {label}
       </span>
-      <span className={`font-semibold tabular-nums ${cls}`}>{v}</span>
+      <span className={`whitespace-nowrap font-semibold tabular-nums ${cls}`}>{v}</span>
     </div>
   );
   return (
     <section className="card flex flex-col p-4 sm:p-5">
-      <h2 className="text-center font-bold">Achievement FY{r.fy}</h2>
+      <h2 className="text-center font-bold">Achievement s/d {r.upto ? dayLabel(r.upto) : "-"}</h2>
       <div className="flex flex-1 items-center py-2">
-        <Gauge v={s.achievement} />
+        <Gauge v={k.ach} />
       </div>
       <div className="rounded-xl bg-slate-50 px-3 py-1">
-        {row(I.target, "Forecast", `${n0(s.forecast)} pcs`)}
-        {row(I.box, "Actual PO", `${n0(s.actual)} pcs`)}
-        {row(I.warn, "Gap", `${s.gap != null && s.gap > 0 ? "+" : ""}${n0(s.gap)} pcs`, tone(s.gap))}
-        {s.remaining != null && row(I.cal, `Sisa forecast (${s.remainingMonths} bln)`, `${n0(s.remaining)} pcs`, "text-slate-700")}
+        {row(I.target, "Forecast", `${n0(k.fcUpto)} pcs`)}
+        {row(I.box, "Actual PO", `${n0(k.poUpto)} pcs`)}
+        {row(I.warn, "Gap", `${k.gap > 0 ? "+" : ""}${n0(k.gap)} pcs`, tone(k.gap))}
+        {row(I.cal, "Sisa forecast bulan ini", `${n0(k.fcRest)} pcs`, "text-slate-700")}
+        {ahead > 0 && row(I.check, "PO sudah masuk sesudahnya", `${n0(ahead)} pcs`, "text-slate-700")}
       </div>
     </section>
   );
@@ -513,19 +555,19 @@ function GaugeCard({ r }: { r: ForecastReport }) {
 
 // ---------- 4. per customer ----------
 function CustomerCard({ r, onPick }: { r: ForecastReport; onPick: (c: string) => void }) {
-  const max = Math.max(1, ...r.perCustomer.map((c) => c.actual));
+  const max = Math.max(1, ...r.perCustomer.map((c) => Math.max(c.poUpto, c.fcUpto)));
   return (
     <section className="card p-4 sm:p-5">
       <h2 className="mb-3 flex items-center gap-2 font-bold">
-        <Ico d={I.trend} className="h-5 w-5 text-brand-600" />
-        Actual PO per Customer
+        <Ico d={I.users} className="h-5 w-5 text-brand-600" />
+        Per Customer
       </h2>
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-slate-50 text-xs text-slate-500">
             <th className="rounded-l-lg px-2 py-1.5 text-left font-semibold">Customer</th>
-            <th className="px-2 py-1.5 text-right font-semibold">Actual (pcs)</th>
-            <th className="rounded-r-lg px-2 py-1.5 text-right font-semibold">Ach. (%)</th>
+            <th className="px-2 py-1.5 text-right font-semibold">PO (pcs)</th>
+            <th className="rounded-r-lg px-2 py-1.5 text-right font-semibold">Ach.</th>
           </tr>
         </thead>
         <tbody>
@@ -533,114 +575,81 @@ function CustomerCard({ r, onPick }: { r: ForecastReport; onPick: (c: string) =>
             <tr key={c.customer} className={`cursor-pointer hover:bg-slate-50 ${r.customer === c.customer ? "bg-brand-50" : ""}`} onClick={() => onPick(c.customer)} title="Lihat customer ini saja">
               <td className="px-2 py-2">
                 <div className="truncate font-medium">{c.customer}</div>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
-                  <div className="anim-bar h-full rounded-full" style={{ width: `${(c.actual / max) * 100}%`, background: RED }} />
+                <div className="relative mt-1 h-1.5 w-full rounded-full bg-slate-100">
+                  <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(c.fcUpto / max) * 100}%`, background: GREY }} />
+                  <div className="anim-bar absolute inset-y-0 left-0 rounded-full" style={{ width: `${(c.poUpto / max) * 100}%`, background: RED }} />
                 </div>
               </td>
-              <td className="px-2 py-2 text-right tabular-nums">{n0(c.actual)}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{n0(c.poUpto)}</td>
               <td className={`px-2 py-2 text-right font-semibold tabular-nums ${achTone(c.ach)}`}>{pct(c.ach)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {r.perCustomer.length === 1 && <p className="mt-3 text-xs text-slate-500">Customer lain muncul di sini setelah file forecast-nya di-upload.</p>}
+      <p className="mt-3 text-xs text-slate-500">{r.perCustomer.length === 1 ? "Customer lain muncul setelah forecast / PO-nya dimasukkan." : "Batang abu-abu = forecast, merah = PO (s/d batas)."}</p>
     </section>
   );
 }
 
-// ---------- 5. rekap bulanan ----------
-function RekapCard({ r, onPick }: { r: ForecastReport; onPick: (m: string) => void }) {
-  const [future, setFuture] = useState(false);
-  const rows = r.fyPoints.filter((m) => m.actual !== null || (future && m.forecast !== null));
-  const s = r.fySum;
-  const hasFuture = r.fyPoints.some((m) => m.actual === null && m.forecast !== null);
-  const TH = "px-3 py-2 text-xs font-semibold";
+// ---------- 5. rekap harian ----------
+function RekapCard({ r }: { r: ForecastReport }) {
+  const [all, setAll] = useState(false);
+  const rows = r.days.filter((d) => all || !d.future);
+  const k = r.kpi;
   const TD = "px-3 py-2 tabular-nums";
   return (
     <section className="card overflow-hidden p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 font-bold">
           <Ico d={I.cal} className="h-5 w-5 text-brand-600" />
-          Rekap Bulanan Forecast vs Actual
+          Rekap Harian {ymLabel(r.month!)}
         </h2>
-        {hasFuture && (
+        {r.days.some((d) => d.future) && (
           <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
-            <input type="checkbox" checked={future} onChange={(e) => setFuture(e.target.checked)} className="accent-brand-600" /> Tampilkan forecast bulan depan
+            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} className="accent-brand-600" /> Tampilkan sampai akhir bulan
           </label>
         )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] text-sm">
-          <thead>
-            <tr className="bg-slate-50 text-slate-600">
-              <th className={`${TH} rounded-l-lg text-left`}>Bulan</th>
-              <th className={`${TH} text-right`}>Forecast (pcs)</th>
-              <th className={`${TH} text-right`}>Actual PO (pcs)</th>
-              <th className={`${TH} text-right`}>Gap (pcs)</th>
-              <th className={`${TH} text-right`}>Achievement</th>
-              <th className={`${TH} rounded-r-lg text-right`}>Tren vs Bulan Lalu</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((m) => {
-              const on = m.bulan === r.selected;
-              const fut = m.actual === null;
-              return (
-                <tr
-                  key={m.bulan}
-                  onClick={() => !fut && onPick(m.bulan)}
-                  className={`border-t border-slate-100 ${fut ? "text-slate-400" : "cursor-pointer hover:bg-slate-50"} ${on ? "bg-rose-50 font-semibold [&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg" : ""}`}
-                >
-                  <td className={`${TD} font-medium`}>
-                    {ymLabel(m.bulan)}
-                    {fut && <span className="ml-1.5 rounded bg-slate-100 px-1.5 text-[10px] font-semibold uppercase">forecast</span>}
-                  </td>
-                  <td className={`${TD} text-right`}>{n0(m.forecast)}</td>
-                  <td className={`${TD} text-right`}>{n0(m.actual)}</td>
-                  <td className={`${TD} text-right ${tone(m.diff)}`}>{m.diff != null && m.diff > 0 ? "+" : ""}{n0(m.diff)}</td>
-                  <td className={`${TD} text-right font-semibold ${achTone(m.ach)}`}>{pct(m.ach)}</td>
-                  <td className={`${TD} text-right ${tone(m.mom)}`}>{m.mom == null || fut ? "–" : `${m.mom >= 0 ? "▲" : "▼"} ${pc(m.mom)}`}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="bg-slate-800 font-bold text-white">
-              <td className={`${TD} rounded-l-lg`}>
-                Total (YTD)
-                {s.matched < s.months && <sup>*</sup>}
-              </td>
-              <td className={`${TD} text-right`}>{n0(s.forecast)}</td>
-              <td className={`${TD} text-right`}>{n0(s.actual)}</td>
-              <td className={`${TD} text-right`}>{s.gap != null && s.gap > 0 ? "+" : ""}{n0(s.gap)}</td>
-              <td className={`${TD} text-right`}>{pct(s.achievement)}</td>
-              <td className={`${TD} rounded-r-lg text-right`}>–</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div className="max-h-[28rem] overflow-auto">
+        <DayTable
+          r={r}
+          rows={rows}
+          foot={
+            <tfoot className="sticky bottom-0">
+              <tr className="bg-slate-800 font-bold text-white">
+                <td className={`${TD} whitespace-nowrap rounded-l-lg`}>Total s/d {r.upto ? dayLabel(r.upto) : "-"}</td>
+                <td className={`${TD} text-right`}>{n0(k.fcUpto)}</td>
+                <td className={`${TD} text-right`}>{n0(k.poUpto)}</td>
+                <td className={`${TD} text-right`}>
+                  {k.gap > 0 ? "+" : ""}
+                  {n0(k.gap)}
+                </td>
+                <td className={`${TD} rounded-r-lg text-right`}>{pct(k.ach)}</td>
+              </tr>
+            </tfoot>
+          }
+        />
       </div>
-      {s.matched < s.months && (
-        <p className="mt-2 text-xs text-slate-500">
-          * Total hanya bulan yang punya forecast. PO semua bulan FY ini: <b>{n0(s.actualAll)}</b> pcs.
-        </p>
-      )}
     </section>
   );
 }
 
 // ---------- 6. insight & tindak lanjut ----------
-function InsightCard({ r, onPart }: { r: ForecastReport; onPart: (p: string) => void }) {
-  const s = r.fySum;
-  const worst = r.fyPoints.filter((m) => m.diff != null).sort((a, b) => a.diff! - b.diff!)[0];
-  const best = r.fyPoints.filter((m) => m.diff != null).sort((a, b) => b.diff! - a.diff!)[0];
-  const multi = r.perCustomer.length > 1 && r.customer === ALL;
-  const weakCust = r.perCustomer.filter((c) => c.ach != null && c.ach < 0.95).sort((a, b) => a.ach! - b.ach!);
-  const weakParts = r.parts.filter((p) => p.pct != null && p.pct < -0.1 && (p.forecast ?? 0) > 0).sort((a, b) => a.diff! - b.diff!).slice(0, 3);
-  const ahead = r.months.filter((m) => m.kind === "forecast").slice(0, 3);
-  const avgAhead = ahead.length ? ahead.reduce((a, m) => a + (m.forecast ?? 0), 0) / ahead.length : null;
-  const bias = r.stats.bias;
-  const Item = ({ icon, color, title, children, onClick }: { icon: string; color: string; title: string; children: React.ReactNode; onClick?: () => void }) => (
-    <div className={`flex items-start gap-3 rounded-xl border border-slate-200 p-3 ${onClick ? "cursor-pointer hover:bg-slate-50" : ""}`} onClick={onClick}>
+function InsightCard({ r, onPart, canEdit, onPo }: { r: ForecastReport; onPart: (p: string) => void; canEdit: boolean; onPo: () => void }) {
+  const k = r.kpi;
+  const done = r.days.filter((d) => !d.future && d.fc > 0);
+  const worst = [...done].filter((d) => d.po != null).sort((a, b) => (a.po! - a.fc) - (b.po! - b.fc))[0];
+  const weak = r.parts.filter((p) => p.pct != null && p.pct < -0.1 && p.fcUpto > 0).sort((a, b) => a.diff - b.diff).slice(0, 3);
+  const strong = r.parts.filter((p) => p.pct != null && p.pct > 0.1 && p.fcUpto > 0).sort((a, b) => b.diff - a.diff).slice(0, 2);
+  // Tanggal kirim berikutnya yang ada forecast (maks 7 hari ke depan).
+  const nxt = r.days.find((d) => d.tanggal > r.today && d.tanggal <= addDay(r.today, 7) && d.fc > 0);
+  const tomorrow = nxt?.tanggal ?? addDay(r.today, 1);
+  const hasTomorrow = (nxt?.po ?? 0) > 0;
+  const tomorrowFc = nxt?.fc ?? 0;
+  // Proyeksi akhir bulan bila laju achievement s/d batas berlanjut.
+  const proj = k.ach != null && k.fcMonth ? k.poUpto + k.fcRest * k.ach : null;
+  const Item = ({ icon, color, title, children }: { icon: string; color: string; title: string; children: React.ReactNode }) => (
+    <div className="flex items-start gap-3 rounded-xl border border-slate-200 p-3">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
         <Ico d={icon} />
       </span>
@@ -648,7 +657,6 @@ function InsightCard({ r, onPart }: { r: ForecastReport; onPart: (p: string) => 
         <div className="font-bold">{title}</div>
         <div className="text-slate-700">{children}</div>
       </div>
-      {onClick && <span className="self-center text-slate-400">›</span>}
     </div>
   );
   return (
@@ -657,61 +665,56 @@ function InsightCard({ r, onPart }: { r: ForecastReport; onPart: (p: string) => 
         <Ico d={I.bulb} className="h-5 w-5 text-brand-600" />
         Insight &amp; Tindak Lanjut
       </h2>
-      {worst && worst.diff! < 0 && (
-        <Item icon={I.warn} color="bg-red-50 text-red-600" title="Gap Terbesar">
-          {ymLabel(worst.bulan, true)} : <b className="text-red-700">{n0(worst.diff)} pcs</b> ({pc(worst.pct)})
-          {best && best.diff! > 0 && (
-            <div className="text-xs text-slate-500">
-              Terbaik {ymLabel(best.bulan)}: +{n0(best.diff)} pcs ({pc(best.pct)})
-            </div>
-          )}
+      {worst && worst.po! - worst.fc < 0 && (
+        <Item icon={I.warn} color="bg-red-50 text-red-600" title="Hari dengan Gap Terbesar">
+          {dayLabel(worst.tanggal, true)}: <b className="text-red-700">{n0(worst.po! - worst.fc)} pcs</b> (PO {n0(worst.po)} vs forecast {n0(worst.fc)})
         </Item>
       )}
-      {multi ? (
-        <Item icon={I.users} color="bg-sky-50 text-sky-700" title="Customer Perlu Konfirmasi">
-          {weakCust.length ? weakCust.slice(0, 3).map((c, i) => <span key={c.customer}>{i ? " dan " : ""}{c.customer} (Ach. {pct(c.ach)})</span>) : "Semua customer ≥95% dari forecast."}
-        </Item>
-      ) : (
-        <Item icon={I.users} color="bg-sky-50 text-sky-700" title={`Part Perlu Konfirmasi (${ymLabel(r.selected!)})`}>
-          {weakParts.length ? (
-            <ul className="mt-0.5 flex flex-col gap-0.5">
-              {weakParts.map((p) => (
-                <li key={p.part}>
-                  <button className="text-left hover:underline" onClick={() => onPart(p.part)}>
-                    {p.part}: <b className="text-red-700">{big(p.diff)}</b> ({pc(p.pct, 0)})
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : r.parts.some((p) => p.forecast !== null) ? (
-            "Tidak ada part yang turun >10% dari forecast."
-          ) : (
-            "Forecast per part untuk bulan ini tidak tercatat (file lama hanya punya total)."
-          )}
-        </Item>
-      )}
+      <Item icon={I.users} color="bg-sky-50 text-sky-700" title="Part Perlu Konfirmasi">
+        {weak.length ? (
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            {weak.map((p) => (
+              <li key={p.part}>
+                <button className="text-left hover:underline" onClick={() => onPart(p.part)}>
+                  {p.part}: <b className="text-red-700">{big(p.diff)}</b> ({pc(p.pct, 0)})
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : r.parts.some((p) => p.fcUpto > 0) ? (
+          "Tidak ada part yang PO-nya turun >10% dari forecast."
+        ) : (
+          "Belum ada forecast s/d batas."
+        )}
+        {strong.length > 0 && <div className="mt-1 text-xs text-slate-500">Naik: {strong.map((p) => `${p.part} (${pc(p.pct, 0)})`).join(", ")}</div>}
+      </Item>
       <Item icon={I.check} color="bg-emerald-50 text-emerald-700" title="Tindak Lanjut">
         <ul className="mt-0.5 list-disc pl-4">
-          {ahead.length > 0 && (
+          {!hasTomorrow && tomorrowFc > 0 && (
             <li>
-              Follow up revisi PO {ymLabel(ahead[0].bulan)}–{ymLabel(ahead[ahead.length - 1].bulan)} ke customer
-              {r.sel?.actual && avgAhead ? <> (forecast rata-rata {big(avgAhead)}/bln, <span className={tone(avgAhead / r.sel.actual - 1)}>{pc(avgAhead / r.sel.actual - 1)}</span> vs PO {ymLabel(r.sel.bulan)}).</> : "."}
+              PO kirim {dayLabel(tomorrow)} belum diinput{tomorrowFc ? ` (forecast ${big(tomorrowFc)})` : ""}.{" "}
+              {canEdit && (
+                <button className="font-semibold text-brand-600 hover:underline" onClick={onPo}>
+                  Input sekarang
+                </button>
+              )}
             </li>
           )}
-          {avgAhead && bias != null && r.stats.n >= 3 && (
+          {proj != null && (
             <li>
-              Review kapasitas pakai angka realistis ±{big(avgAhead * (1 + bias))}/bln: {r.stats.n} bulan terakhir PO rata-rata <span className={tone(bias)}>{pc(bias)}</span> dari forecast.
+              Bila laju sama, PO sebulan ±<b>{big(proj)}</b> vs forecast {big(k.fcMonth)} (<span className={tone(proj / k.fcMonth - 1)}>{pc(proj / k.fcMonth - 1)}</span>).
             </li>
           )}
-          {s.achievement != null && s.achievement < 0.95 && <li>Achievement FY {pct(s.achievement)}: jangan langsung jadikan forecast dasar lembur.</li>}
-          {!ahead.length && <li>Upload file forecast terbaru supaya bulan ke depan terlihat.</li>}
+          {k.ach != null && k.ach < 0.95 && <li>Achievement {pct(k.ach)}: sesuaikan rencana produksi dan lembur dengan PO, bukan forecast.</li>}
+          {k.ach != null && k.ach > 1.05 && <li>PO di atas forecast {pc(k.ach - 1)}: cek stok dan kapasitas untuk sisa bulan.</li>}
+          {k.fcMonth === 0 && <li>Masukkan forecast harian bulan ini supaya PO bisa dibandingkan.</li>}
         </ul>
       </Item>
     </section>
   );
 }
 
-// ---------- 5. per part ----------
+// ---------- 7. per part ----------
 function Spark({ v }: { v: (number | null)[] }) {
   const data = v.map((y, i) => ({ i, y }));
   if (!v.some((x) => x)) return <span className="text-xs text-slate-300">—</span>;
@@ -719,7 +722,7 @@ function Spark({ v }: { v: (number | null)[] }) {
     <div className="h-7 w-24">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 3, right: 2, left: 2, bottom: 3 }}>
-          <Line dataKey="y" stroke={MAROON} strokeWidth={1.6} dot={false} isAnimationActive={false} connectNulls />
+          <Line dataKey="y" stroke={MAROON} strokeWidth={1.6} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -727,24 +730,19 @@ function Spark({ v }: { v: (number | null)[] }) {
 }
 
 type Filter = "all" | "naik" | "turun" | "sesuai" | "baru";
-function PartsCard({ r }: { r: ForecastReport }) {
+function PartsCard({ r, onPart }: { r: ForecastReport; onPart: (p: string) => void }) {
   const [f, setF] = useState<Filter>("all");
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<"diff" | "actual" | "pct" | "part">("diff");
+  const [sort, setSort] = useState<"diff" | "po" | "pct" | "part">("diff");
   const [all, setAll] = useState(false);
-  const active = r.parts.filter((p) => (p.actual ?? 0) > 0 || (p.forecast ?? 0) > 0 || (p.next ?? 0) > 0);
+  const active = r.parts.filter((p) => p.poUpto > 0 || p.fcMonth > 0);
+  const match = (p: PartRow, k: Filter) => (k === "all" ? true : k === "baru" ? p.fcUpto === 0 && p.poUpto > 0 : diffStatus(p.pct) === k);
   const count = (k: Filter) => active.filter((p) => match(p, k)).length;
-  function match(p: PartPoint, k: Filter) {
-    if (k === "all") return true;
-    if (k === "baru") return (p.forecast ?? 0) === 0 && (p.actual ?? 0) > 0;
-    return diffStatus(p.pct) === k;
-  }
   const list = active
     .filter((p) => match(p, f) && (!q || p.part.toLowerCase().includes(q.toLowerCase())))
-    .sort((a, b) =>
-      sort === "part" ? a.part.localeCompare(b.part) : sort === "actual" ? (b.actual ?? 0) - (a.actual ?? 0) : sort === "pct" ? (a.pct ?? 0) - (b.pct ?? 0) : Math.abs(b.diff ?? 0) - Math.abs(a.diff ?? 0),
-    );
-  const maxAbs = Math.max(1, ...active.map((p) => Math.abs(p.diff ?? 0)));
+    .sort((a, b) => (sort === "part" ? a.part.localeCompare(b.part) : sort === "po" ? b.poUpto - a.poUpto : sort === "pct" ? (a.pct ?? 0) - (b.pct ?? 0) : Math.abs(b.diff) - Math.abs(a.diff)));
+  const maxAbs = Math.max(1, ...active.map((p) => Math.abs(p.diff)));
+  const upto = r.upto ? dayLabel(r.upto) : "-";
   const tabs: { k: Filter; label: string }[] = [
     { k: "all", label: "Semua" },
     { k: "turun", label: "Di bawah" },
@@ -768,8 +766,8 @@ function PartsCard({ r }: { r: ForecastReport }) {
     <section className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
         <div>
-          <h2 className="font-bold">Per part · {ymLabel(r.sel!.bulan, true)}</h2>
-          <p className="text-xs text-slate-500">{active.length} part aktif. Grafik kecil = PO 12 bulan terakhir.</p>
+          <h2 className="font-bold">Per part · s/d {upto}</h2>
+          <p className="text-xs text-slate-500">{active.length} part. Grafik kecil = PO harian bulan ini. Klik nama part untuk filter.</p>
         </div>
         <input className="input h-10 w-full py-1 sm:w-64" placeholder="Cari part…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
@@ -780,7 +778,6 @@ function PartsCard({ r }: { r: ForecastReport }) {
           </button>
         ))}
       </div>
-      {/* Laptop: tabel */}
       <div className="hidden max-h-[36rem] overflow-auto md:block">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs text-slate-500">
@@ -789,34 +786,41 @@ function PartsCard({ r }: { r: ForecastReport }) {
                 Part
               </Th>
               <Th className="text-right">Forecast</Th>
-              <Th k="actual" className="text-right">
-                PO aktual
+              <Th k="po" className="text-right">
+                Actual PO
               </Th>
               <Th k="diff" className="w-56 text-center">
-                Selisih pcs
+                Gap pcs
               </Th>
               <Th k="pct" className="text-right">
                 %
               </Th>
-              <Th className="text-right">Selisih box</Th>
-              <Th className="text-right">vs bln lalu</Th>
-              <Th className="text-right">{r.nextMonth ? ymLabel(r.nextMonth.bulan) : "Bln depan"}</Th>
-              <Th className="text-center">12 bln</Th>
+              <Th className="text-right">Gap box</Th>
+              <Th className="text-right">PO {upto}</Th>
+              <Th className="text-right">Fc sebulan</Th>
+              <Th className="text-center">Harian</Th>
             </tr>
           </thead>
           <tbody>
             {list.map((p) => (
               <tr key={p.part} className="border-t border-slate-100 tabular-nums hover:bg-slate-50">
-                <td className="px-3 py-2 font-medium">{p.part}</td>
-                <td className="px-3 py-2 text-right text-slate-600">{n0(p.forecast)}</td>
-                <td className="px-3 py-2 text-right font-semibold">{n0(p.actual)}</td>
+                <td className="px-3 py-2 font-medium">
+                  <button className="text-left hover:underline" onClick={() => onPart(p.part)}>
+                    {p.part}
+                  </button>
+                </td>
+                <td className="px-3 py-2 text-right text-slate-600">{n0(p.fcUpto)}</td>
+                <td className="px-3 py-2 text-right font-semibold">{n0(p.poUpto)}</td>
                 <td className="px-3 py-2">
                   <DivBar v={p.diff} max={maxAbs} />
                 </td>
                 <td className={`px-3 py-2 text-right font-semibold ${tone(p.pct)}`}>{pc(p.pct, 0)}</td>
-                <td className={`px-3 py-2 text-right ${tone(p.diff)}`}>{p.box && p.diff != null ? (p.diff / p.box).toLocaleString("id-ID", { maximumFractionDigits: 1 }) : "-"}</td>
-                <td className={`px-3 py-2 text-right ${tone(p.mom)}`}>{pc(p.mom, 0)}</td>
-                <td className="px-3 py-2 text-right text-slate-600">{n0(p.next)}</td>
+                <td className={`px-3 py-2 text-right ${tone(p.diff)}`}>{p.box ? (p.diff / p.box).toLocaleString("id-ID", { maximumFractionDigits: 1 }) : "-"}</td>
+                <td className="px-3 py-2 text-right">
+                  <span className={p.lastPo < p.lastFc ? "text-red-700" : p.lastPo > p.lastFc ? "text-emerald-700" : ""}>{n0(p.lastPo)}</span>
+                  {p.lastFc > 0 && <span className="text-xs text-slate-400"> / {big(p.lastFc)}</span>}
+                </td>
+                <td className="px-3 py-2 text-right text-slate-600">{n0(p.fcMonth)}</td>
                 <td className="px-3 py-1">
                   <div className="flex justify-center">
                     <Spark v={p.spark} />
@@ -834,27 +838,28 @@ function PartsCard({ r }: { r: ForecastReport }) {
           </tbody>
         </table>
       </div>
-      {/* HP: kartu */}
       <ul className="flex flex-col divide-y divide-slate-100 border-t border-slate-100 md:hidden">
         {(all ? list : list.slice(0, 10)).map((p) => (
           <li key={p.part} className="flex flex-col gap-1.5 px-4 py-3">
             <div className="flex items-start justify-between gap-2">
-              <span className="font-semibold">{p.part}</span>
+              <button className="text-left font-semibold" onClick={() => onPart(p.part)}>
+                {p.part}
+              </button>
               <span className={`shrink-0 text-sm font-bold tabular-nums ${tone(p.pct)}`}>{pc(p.pct, 0)}</span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs tabular-nums">
               <div>
                 <div className="text-slate-500">Forecast</div>
-                <div>{big(p.forecast)}</div>
+                <div>{big(p.fcUpto)}</div>
               </div>
               <div>
                 <div className="text-slate-500">PO</div>
-                <div className="font-semibold">{big(p.actual)}</div>
+                <div className="font-semibold">{big(p.poUpto)}</div>
               </div>
               <div>
-                <div className="text-slate-500">Selisih</div>
+                <div className="text-slate-500">Gap</div>
                 <div className={tone(p.diff)}>
-                  {p.diff != null && p.diff > 0 ? "+" : ""}
+                  {p.diff > 0 ? "+" : ""}
                   {big(p.diff)}
                 </div>
               </div>
@@ -892,119 +897,137 @@ function DivBar({ v, max }: { v: number | null; max: number }) {
   );
 }
 
-// ---------- 6. harian ----------
-function DailyCard({ r }: { r: ForecastReport }) {
-  const [view, setView] = useState<"chart" | "heat">("chart");
-  const data = r.daily.map((d) => {
-    const wd = new Date(d.tanggal + "T00:00:00Z").getUTCDay();
-    return { ...d, label: String(Number(d.tanggal.slice(8))), off: wd === 0 || wd === 6 };
-  });
-  const total = r.daily.reduce((a, d) => a + d.qty, 0);
-  const poDays = r.daily.filter((d) => d.qty > 0).length;
-  const peak = r.daily.reduce((a, d) => (d.qty > a.qty ? d : a), r.daily[0]);
-  const maxCell = Math.max(1, ...r.dailyParts.flatMap((p) => Object.values(p.days)));
+// ---------- 8. per part per hari ----------
+function HeatCard({ r }: { r: ForecastReport }) {
+  const [mode, setMode] = useState<"po" | "fc">("po");
+  const [all, setAll] = useState(false);
+  const rows = all ? r.heat : r.heat.slice(0, 15);
   return (
     <section className="card p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-bold">PO harian · {ymLabel(r.sel!.bulan, true)}</h2>
-          <p className="text-xs text-slate-500">
-            {poDays} hari kirim · rata-rata {big(poDays ? total / poDays : 0)}/hari · tertinggi {big(peak?.qty)} ({Number(peak?.tanggal.slice(8))} {ymLabel(r.sel!.bulan).split(" ")[0]})
-          </p>
+          <h2 className="font-bold">Per part per hari · {ymLabel(r.month!, true)}</h2>
+          <p className="text-xs text-slate-500">{mode === "po" ? "Angka = PO. Hijau = ≥ forecast hari itu, merah = di bawah forecast, abu-abu = belum ada PO." : "Angka = forecast harian dari customer."}</p>
         </div>
         <div className="flex rounded-lg bg-slate-100 p-0.5 text-sm">
-          {(["chart", "heat"] as const).map((v) => (
-            <button key={v} onClick={() => setView(v)} className={`rounded-md px-3 py-1 font-medium ${view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
-              {v === "chart" ? "Grafik" : "Per part"}
+          {(
+            [
+              ["po", "PO vs forecast"],
+              ["fc", "Forecast"],
+            ] as const
+          ).map(([v, l]) => (
+            <button key={v} onClick={() => setMode(v)} className={`rounded-md px-3 py-1 font-medium ${mode === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
+              {l}
             </button>
           ))}
         </div>
       </div>
-      {view === "chart" ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-700">PO per hari</h3>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke="#eef0f3" vertical={false} />
-                  <XAxis dataKey="label" tick={AX} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} interval={1} />
-                  <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={TIP} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} labelFormatter={(l) => `Tanggal ${l}`} formatter={(v: unknown) => [`${n0(v as number)} pcs`, "PO"]} cursor={{ fill: "rgba(155,27,31,0.06)" }} />
-                  <Bar dataKey="qty" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                    {data.map((d) => (
-                      <Cell key={d.tanggal} fill={d.off ? "#cbd5e1" : MAROON} />
-                    ))}
-                  </Bar>
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-700">Kumulatif PO vs laju forecast</h3>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke="#eef0f3" vertical={false} />
-                  <XAxis dataKey="label" tick={AX} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} interval={1} />
-                  <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={TIP} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} labelFormatter={(l) => `s/d tanggal ${l}`} formatter={(v: unknown, n: unknown) => [`${n0(v as number)} pcs`, String(n)]} />
-                  <Line dataKey="pace" name="Laju forecast" stroke={SLATE} strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line dataKey="cum" name="PO kumulatif" stroke={MAROON} strokeWidth={2.4} dot={false} isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <p className="text-xs text-slate-500">Laju forecast = forecast bulan ini dibagi rata ke hari kirim.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="max-h-[32rem] overflow-auto rounded-lg border border-slate-100">
-          <table className="text-xs tabular-nums">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
-              <tr>
-                <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5 text-left">Part</th>
-                <th className="px-2 py-1.5 text-right">Total</th>
-                {data.map((d) => (
-                  <th key={d.tanggal} className={`min-w-11 px-1 py-1.5 text-center ${d.off ? "text-slate-300" : ""}`}>
-                    {d.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {r.dailyParts.map((p) => (
-                <tr key={p.part} className="border-t border-slate-100">
-                  <td className="sticky left-0 whitespace-nowrap bg-white px-2 py-1 font-medium">{p.part}</td>
-                  <td className="px-2 py-1 text-right font-semibold">{big(p.total)}</td>
-                  {data.map((d) => {
-                    const v = p.days[d.tanggal] ?? 0;
-                    const a = v ? 0.12 + 0.78 * (v / maxCell) : 0;
+      <div className="max-h-[32rem] overflow-auto rounded-lg border border-slate-100">
+        <table className="text-xs tabular-nums">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
+            <tr>
+              <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1.5 text-left">Part</th>
+              <th className="px-2 py-1.5 text-right">Total</th>
+              {r.days.map((d) => (
+                <th key={d.tanggal} className={`min-w-11 px-1 py-1.5 text-center ${isOff(d.tanggal) ? "text-slate-300" : ""} ${d.tanggal === r.upto ? "text-brand-600" : ""}`}>
+                  {Number(d.tanggal.slice(8))}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => (
+              <tr key={p.part} className="border-t border-slate-100">
+                <td className="sticky left-0 whitespace-nowrap bg-white px-2 py-1 font-medium">{p.part}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-right font-semibold">{big(mode === "po" ? p.poTotal : p.fcTotal)}</td>
+                {r.days.map((d) => {
+                  const f = p.fc[d.tanggal] ?? 0;
+                  const q = p.po[d.tanggal] ?? 0;
+                  const title = `${p.part} · ${dayLabel(d.tanggal)}: forecast ${n0(f)}, PO ${d.future && !q ? "-" : n0(q)}`;
+                  if (mode === "fc")
                     return (
-                      <td key={d.tanggal} className="px-0.5 py-0.5 text-center" title={v ? `${p.part} · ${d.label}: ${n0(v)} pcs` : undefined}>
-                        {v ? (
-                          <div className="rounded px-0.5 py-1" style={{ background: `rgba(155,27,31,${a})`, color: a > 0.5 ? "#fff" : "#4a0b0d" }}>
-                            {axisBig(v)}
-                          </div>
-                        ) : null}
+                      <td key={d.tanggal} className="px-0.5 py-0.5 text-center text-slate-600" title={title}>
+                        {f ? axisBig(f) : ""}
                       </td>
                     );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  const pending = d.future && !q;
+                  const cls = pending ? (f ? "text-slate-300" : "") : !f && !q ? "" : q >= f ? "bg-emerald-50 text-emerald-800" : q === 0 ? "bg-red-100 text-red-800" : "bg-red-50 text-red-700";
+                  return (
+                    <td key={d.tanggal} className="px-0.5 py-0.5 text-center" title={title}>
+                      {(f || q) > 0 && <div className={`rounded px-0.5 py-1 ${cls}`}>{pending ? axisBig(f) : axisBig(q)}</div>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!all && r.heat.length > 15 && (
+        <button className="btn-secondary mt-3 w-full sm:w-auto" onClick={() => setAll(true)}>
+          Tampilkan semua {r.heat.length} part
+        </button>
       )}
     </section>
   );
 }
 
-// ---------- versi tersimpan (admin) ----------
-function VersionsCard({ r }: { r: ForecastReport }) {
+// ---------- 9. tren bulanan ----------
+function MonthlyCard({ r, onPick }: { r: ForecastReport; onPick: (m: string) => void }) {
+  const data = r.monthly.map((m) => ({ ...m, label: ymLabel(m.bulan) }));
+  return (
+    <section className="card p-4 sm:p-5">
+      <h2 className="mb-2 flex items-center gap-2 font-bold">
+        <Ico d={I.trend} className="h-5 w-5 text-brand-600" />
+        Tren Bulanan
+      </h2>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }} barGap={2}>
+              <CartesianGrid stroke="#eef0f3" vertical={false} />
+              <XAxis dataKey="label" tick={AX} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+              <YAxis tick={AX} tickFormatter={axisBig} width={44} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={TIP} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#cbd5e1" }} formatter={(v: unknown, n: unknown) => [`${n0(v as number)} pcs`, String(n)]} cursor={{ fill: "rgba(155,27,31,0.06)" }} />
+              <Bar dataKey="fcUpto" name="Forecast" fill={GREY} radius={[4, 4, 0, 0]} isAnimationActive={false} onClick={(d) => onPick((d as unknown as { bulan: string }).bulan)} className="cursor-pointer" />
+              <Bar dataKey="poUpto" name="Actual PO" fill={RED} radius={[4, 4, 0, 0]} isAnimationActive={false} onClick={(d) => onPick((d as unknown as { bulan: string }).bulan)} className="cursor-pointer" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        <table className="w-full self-start text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="px-3 py-2 text-left">Bulan</th>
+              <th className="px-3 py-2 text-right">Forecast</th>
+              <th className="px-3 py-2 text-right">PO</th>
+              <th className="px-3 py-2 text-right">Ach.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...r.monthly].reverse().map((m) => (
+              <tr key={m.bulan} onClick={() => onPick(m.bulan)} className={`cursor-pointer border-t border-slate-100 tabular-nums hover:bg-slate-50 ${m.bulan === r.month ? "bg-brand-50" : ""}`}>
+                <td className="px-3 py-1.5 font-medium">
+                  {ymLabel(m.bulan)}
+                  {m.partial && m.upto && <span className="ml-1 text-xs font-normal text-slate-400">s/d {Number(m.upto.slice(8))}</span>}
+                </td>
+                <td className="px-3 py-1.5 text-right">{n0(m.fcUpto)}</td>
+                <td className="px-3 py-1.5 text-right font-semibold">{n0(m.poUpto)}</td>
+                <td className={`px-3 py-1.5 text-right font-semibold ${achTone(m.ach)}`}>{pct(m.ach)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+// ---------- data tersimpan (admin) ----------
+function DataCard({ r }: { r: ForecastReport }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   async function del(v: string, c: string) {
-    if (!confirm(`Hapus data forecast versi ${ymLabel(v, true)} untuk ${c}? Data di Sheet dikosongkan.`)) return;
+    if (!confirm(`Hapus forecast ${ymLabel(v, true)} untuk ${c}? Data di Sheet dikosongkan (PO tidak ikut terhapus).`)) return;
     setBusy(`${v}|${c}`);
     const res = await fetch(`/api/forecast?versi=${v}&customer=${encodeURIComponent(c)}`, { method: "DELETE" });
     setBusy("");
@@ -1013,21 +1036,49 @@ function VersionsCard({ r }: { r: ForecastReport }) {
   }
   return (
     <details className="card p-4 sm:p-5">
-      <summary className="cursor-pointer font-bold">File forecast tersimpan ({r.versions.length})</summary>
-      <ul className="mt-3 divide-y divide-slate-100 text-sm">
-        {[...r.versions].reverse().map((v) => (
-          <li key={`${v.versi}|${v.customer}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
-            <span>
-              <b>{v.customer} · versi {ymLabel(v.versi, true)}</b> <span className="text-slate-500">· {v.sumber} oleh {v.by} · {v.at.slice(0, 16)}</span>
-            </span>
-            <button className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-50" disabled={!!busy} onClick={() => del(v.versi, v.customer)}>
-              {busy === `${v.versi}|${v.customer}` ? "Menghapus…" : "Hapus"}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <summary className="cursor-pointer font-bold">
+        Data tersimpan · {r.versions.length} forecast bulanan · {r.poDates.length} tanggal PO
+      </summary>
+      <div className="mt-3 grid gap-5 lg:grid-cols-2">
+        <div>
+          <h3 className="mb-1 text-sm font-semibold text-slate-600">Forecast</h3>
+          <ul className="divide-y divide-slate-100 text-sm">
+            {[...r.versions].reverse().map((v) => (
+              <li key={`${v.versi}|${v.customer}`} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span>
+                  <b>
+                    {v.customer} · {ymLabel(v.versi, true)}
+                  </b>{" "}
+                  <span className="text-slate-500">
+                    · {v.parts} part · {big(v.total)} pcs · {v.by} {v.at.slice(0, 16)}
+                  </span>
+                </span>
+                <button className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-50" disabled={!!busy} onClick={() => del(v.versi, v.customer)}>
+                  {busy === `${v.versi}|${v.customer}` ? "Menghapus…" : "Hapus"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3 className="mb-1 text-sm font-semibold text-slate-600">PO terakhir diinput</h3>
+          <ul className="divide-y divide-slate-100 text-sm">
+            {r.poDates.slice(0, 12).map((p) => (
+              <li key={`${p.tanggal}|${p.customer}`} className="flex flex-wrap justify-between gap-2 py-2">
+                <span>
+                  <b>{dayLabel(p.tanggal, true)}</b> <span className="text-slate-500">· {p.customer}</span>
+                </span>
+                <span className="tabular-nums text-slate-600">
+                  {n0(p.total)} pcs · {p.by} {p.at.slice(11, 16)}
+                </span>
+              </li>
+            ))}
+            {!r.poDates.length && <li className="py-2 text-slate-400">Belum ada PO.</li>}
+          </ul>
+        </div>
+      </div>
       <p className="mt-2 text-xs text-slate-500">
-        Data ada di tab &quot;Forecast PO&quot; dan &quot;Forecast Harian&quot; di Google Sheet. <Link href="/forecast" className="underline">Muat ulang</Link>
+        Data ada di tab &quot;Forecast Harian&quot; dan &quot;PO Harian&quot; di Google Sheet. <Link href="/forecast" className="underline">Muat ulang</Link>
       </p>
     </details>
   );
