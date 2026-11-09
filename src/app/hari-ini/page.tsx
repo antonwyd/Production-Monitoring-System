@@ -231,7 +231,7 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
             </div>
             {s.complete ? <Delta now={d.lost.lt} prev={d.lost.prevLt} kind="min" good="down" vs={vs} /> : <span className="text-xs text-slate-500">sementara</span>}
           </Kpi>
-          <Kpi icon={ICON.doc} title="Laporan Masuk" help="Member yang sudah kirim ÷ member yang diharapkan lapor (semua member Active section QA, ditambah member section lain yang ikut lapor hari itu sebagai perbantuan).">
+          <Kpi icon={ICON.doc} title="Laporan Masuk" help="Member yang sudah kirim ÷ member yang diharapkan lapor (semua member Active section QA, ditambah member section lain yang ikut lapor hari itu sebagai perbantuan). Member yang ditandai leader tidak masuk (Cuti/Sakit/Izin/Alpa) tidak dihitung.">
             <div className="text-[28px] font-bold leading-none tabular-nums">
               {s.reported} <span className="text-slate-400">/</span> {expected}
             </div>
@@ -240,6 +240,11 @@ export default async function HariIniPage({ searchParams }: { searchParams: Prom
               <span className={v.missing.length ? "font-semibold text-rose-700" : "text-emerald-700"}>{v.missing.length ? `${v.missing.length} belum kirim` : "Semua sudah kirim"}</span>
               <span className="text-slate-500">{expected ? Math.round((s.reported / expected) * 100) : 0}% lengkap</span>
             </div>
+            {v.absen.length > 0 && (
+              <div className="text-[11px] leading-snug text-slate-500">
+                {v.absen.length} tidak masuk: {v.absen.map((b) => `${b.name.split(/\s+/)[0]} (${b.alasan})`).join(", ")}
+              </div>
+            )}
             {v.bantu.length > 0 && (
               <div className="text-[11px] leading-snug text-slate-500">
                 Termasuk {v.bantu.length} perbantuan: {v.bantu.map((b) => `${b.name.split(/\s+/)[0]}${b.section ? ` (${b.section})` : ""}`).join(", ")}

@@ -1,7 +1,7 @@
 // Penghubung data untuk Dashboard & Report: memanggil logika Google Sheet (src/lib/sheets/qa.ts).
 // Lapisan tipis ini memudahkan tes memakai data palsu tanpa Google Sheet.
 import { SheetsError } from "./sheets/client";
-import { apiLogin, apiMaster, apiQueue, apiRows, QaError } from "./sheets/qa";
+import { apiLogin, apiMaster, apiQueue, apiRows, bacaKehadiran, QaError } from "./sheets/qa";
 
 export class BackendError extends Error {}
 
@@ -16,6 +16,8 @@ async function directTransport(action: string, a: Record<string, unknown>): Prom
         return await apiLogin(String(a.nik ?? ""), String(a.pin ?? ""));
       case "queue":
         return await apiQueue(a as { status?: string; date?: string; member?: string });
+      case "absen":
+        return await bacaKehadiran(String(a.from ?? ""), String(a.to ?? a.from ?? ""));
       case "rows":
         return await apiRows(String(a.from ?? ""), String(a.to ?? ""));
     }

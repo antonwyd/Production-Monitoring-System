@@ -329,7 +329,12 @@ textarea.in{height:auto;min-height:48px;padding:12px 14px;resize:vertical}
 .bulang .bu small{display:block;color:#64748b;font-size:12px;white-space:normal}.bulang .grow{flex:1;min-width:0}
 .missing{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:4px}
 .missing h3{margin:0 0 10px;font-size:15px}.missing h3 span{color:var(--warn)}
-.missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px}
+.missing .ch{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;background:var(--warn-soft);color:#7C2D12;font-size:13px;border:0;font-family:inherit;cursor:pointer}
+.missing .ch.on{outline:2px solid #9b1b1f}.missing .absh{display:block;margin:-6px 0 8px;font-size:12px;color:var(--muted)}
+.absp{margin-top:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fafafa}.absp b{display:block;font-size:14px;margin-bottom:8px}
+.absb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.absb .btn{flex:1;min-width:70px;padding:8px 0}
+.absc{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;margin-bottom:6px}
+.absl{margin-top:10px}.absl h3 span{color:var(--muted)}.missing .ch.ab{background:#eef2f7;color:#334155;cursor:default}
 .lrow{display:flex;gap:10px;margin:14px 0 12px}
 .lrow .btn{flex:1;justify-content:center;height:52px}
 .lg2{max-width:820px;margin:28px auto 0;display:flex;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(16,24,40,.12)}
@@ -2033,9 +2038,33 @@ function loadUltahL(){
 var BELUM={};
 function loadBelum(){
   var d=L.date||M.today,box=$('belum');if(!box)return;
-  var draw=function(list){var b=$('belum');if(!b||!list)return;b.innerHTML=list.length?'<div class="missing"><h3>Belum kirim '+(d===M.today?'hari ini':esc(fmtDate(d)))+' <span>('+list.length+')</span></h3>'+list.map(function(m){return '<span class="ch">'+esc(m)+'</span>';}).join('')+'</div>':'';};
+  var draw=function(r){var b=$('belum');if(!b||!r)return;
+    // v7.0: data = {missing, absen}; leader bisa menandai yang belum kirim sebagai tidak masuk (Cuti/Sakit/Izin/Alpa).
+    var list=Array.isArray(r)?r:(r.missing||[]),ab=Array.isArray(r)?[]:(r.absen||[]),h='';
+    ABS.list=list;ABS.ab=ab;ABS.d=d;
+    if(list.length){
+      h+='<div class="missing"><h3>Belum kirim '+(d===M.today?'hari ini':esc(fmtDate(d)))+' <span>('+list.length+')</span></h3><small class="absh">Tekan nama untuk menandai tidak masuk.</small>'+list.map(function(m,i){return '<button class="ch'+(ABS.open===i?' on':'')+'" onclick="bukaAbsen('+i+')">'+esc(m)+'</button>';}).join('');
+      if(ABS.open!=null&&list[ABS.open]!=null){
+        h+='<div class="absp"><b>'+esc(list[ABS.open])+' tidak masuk karena:</b><div class="absb">'+['Cuti','Sakit','Izin','Alpa'].map(function(a){return '<button class="btn line" onclick="simpanAbsen(\''+a+'\')">'+a+'</button>';}).join('')+'</div><input id="absCat" class="absc" maxlength="200" placeholder="Catatan (boleh kosong)"><button class="lnk2" onclick="bukaAbsen(null)">Tutup</button></div>';
+      }
+      h+='</div>';
+    }
+    if(ab.length)h+='<div class="missing absl"><h3>Tidak masuk <span>('+ab.length+')</span></h3>'+ab.map(function(x,i){return '<span class="ch ab">'+esc(x.name)+' · <b>'+esc(x.alasan)+'</b>'+(x.catatan?' ('+esc(x.catatan)+')':'')+' <button class="lnk2" onclick="batalAbsen('+i+')">batal</button></span>';}).join('')+'</div>';
+    b.innerHTML=h;
+  };
   if(BELUM[d]){draw(BELUM[d]);return;}
   call('belumKirim',[L.name,L.pin,d],function(r){BELUM[d]=r||[];setTimeout(function(){delete BELUM[d];},60000);draw(BELUM[d]);},function(){});
+}
+var ABS={open:null,list:[],ab:[],d:''};
+function bukaAbsen(i){ABS.open=(i===ABS.open?null:i);loadBelum();}
+function simpanAbsen(alasan){
+  var m=ABS.list[ABS.open],d=ABS.d,c=$('absCat');if(m==null)return;
+  call('tandaiTidakMasuk',[L.name,L.pin,d,m,alasan,c?c.value:''],function(){ABS.open=null;delete BELUM[d];loadBelum();toast(m+' ditandai tidak masuk ('+alasan+')');},function(e){alert(e);});
+}
+function batalAbsen(i){
+  var x=ABS.ab[i],d=ABS.d;if(!x)return;
+  if(!confirm('Batalkan tanda tidak masuk untuk '+x.name+'?'))return;
+  call('batalTidakMasuk',[L.name,L.pin,d,x.name],function(){delete BELUM[d];loadBelum();},function(e){alert(e);});
 }
 function approveAllOk(){L.sel={};L.data.list.forEach(function(s){if(!perluCek(s))L.sel[s.id]=true;});approveSel();}
 function toggleSc(id){var e=$('sc'+id);L.open[id]=!(e&&e.classList.contains('open'));renderQueue();}

@@ -453,3 +453,24 @@ describe("Tahap 1: keandalan", () => {
     expect(st.mcHrsCat).toEqual({ "PF Iron Cage": 16 });
   });
 });
+
+describe("tidak masuk (tab Kehadiran)", () => {
+  it("leader menandai, tidak dihitung belum kirim, bisa dibatalkan", async () => {
+    const { buildToday } = await import("@/lib/views");
+    const awal = await buildToday(DATE);
+    expect(awal.missing.sort()).toEqual(["Harjuki", "Suharyanto"]);
+    await qa.tandaiTidakMasuk("Dian Kartika", qa.LEADER_SESSION, DATE, "Suharyanto", "Sakit", "demam");
+    await expect(qa.tandaiTidakMasuk("Dian Kartika", qa.LEADER_SESSION, DATE, "Suharyanto", "Libur")).rejects.toThrow();
+    clearReportCache();
+    const v = await buildToday(DATE);
+    expect(v.missing).toEqual(["Harjuki"]);
+    expect(v.expected).toBe(1);
+    expect(v.absen).toEqual([{ name: "Suharyanto", alasan: "Sakit", catatan: "demam" }]);
+    // Tandai ulang = baris diperbarui, bukan ditambah.
+    await qa.tandaiTidakMasuk("Dian Kartika", qa.LEADER_SESSION, DATE, "Suharyanto", "Cuti");
+    expect((await qa.bacaKehadiran(DATE)).map((x) => x.alasan)).toEqual(["Cuti"]);
+    await qa.batalTidakMasuk("Dian Kartika", qa.LEADER_SESSION, DATE, "Suharyanto");
+    clearReportCache();
+    expect((await buildToday(DATE)).missing.sort()).toEqual(["Harjuki", "Suharyanto"]);
+  });
+});
