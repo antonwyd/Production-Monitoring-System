@@ -29,11 +29,57 @@ const ST_WAIT = "Menunggu",
   ST_OK = "Disetujui",
   ST_NO = "Ditolak";
 
-let io: SheetsIO = googleSheets;
+// Cache baca singkat per tab (Antrian Validasi, Kehadiran) supaya halaman leader + dashboard yang dibuka
+// bersamaan tidak melewati kuota Google Sheets (60 baca/menit). Dikosongkan setiap ada tulis ke tab itu.
+const readCache = new Map<string, { at: number; tab: string; data: Promise<Grid[]> }>();
+function tabOf(range: string) {
+  const m = /^'?(.*?)'?!/.exec(range);
+  return (m ? m[1] : range).replace(/''/g, "'");
+}
+function hapusCacheTab(ranges: string[]) {
+  const tabs = new Set(ranges.map(tabOf));
+  for (const [k, v] of readCache) if (tabs.has(v.tab)) readCache.delete(k);
+}
+function cachedGet(range: string, render: "FORMATTED_VALUE" | "UNFORMATTED_VALUE", ttl: number, kosongBilaGagal = false): Promise<Grid[]> {
+  const key = `${render}|${range}`;
+  const hit = readCache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.data;
+  const baca = io.get([range], render);
+  const entry = { at: Date.now(), tab: tabOf(range), data: kosongBilaGagal ? baca.catch(() => [[]] as Grid[]) : baca };
+  entry.data.catch(() => {
+    if (readCache.get(key) === entry) readCache.delete(key);
+  });
+  readCache.set(key, entry);
+  return entry.data;
+}
+function bungkus(x: SheetsIO): SheetsIO {
+  return {
+    get: (r, m) => x.get(r, m),
+    update: async (d) => {
+      try {
+        await x.update(d);
+      } finally {
+        hapusCacheTab(d.map((r) => r.range));
+      }
+    },
+    append: async (r, v) => {
+      try {
+        await x.append(r, v);
+      } finally {
+        hapusCacheTab([r]);
+      }
+    },
+    rowCounts: () => x.rowCounts(),
+    growSheet: (t, c, k) => x.growSheet(t, c, k),
+    addTab: x.addTab ? (t) => x.addTab!(t) : undefined,
+  };
+}
+let io: SheetsIO = bungkus(googleSheets);
 /** Untuk tes: ganti Google Sheets dengan sheet palsu. */
 export function setSheetsIO(x: SheetsIO | null) {
-  io = x ?? googleSheets;
+  io = bungkus(x ?? googleSheets);
   masterCache = null;
+  readCache.clear();
 }
 
 /** Sheet yang sedang dipakai (asli atau palsu di tes). */
@@ -326,7 +372,7 @@ export type QueueEntry = {
 };
 
 async function readQueue(): Promise<QueueEntry[]> {
-  const [g] = await io.get([`${q(SHEET_QUEUE)}!A2:L`], "UNFORMATTED_VALUE");
+  const [g] = await cachedGet(`${q(SHEET_QUEUE)}!A2:L`, "UNFORMATTED_VALUE", 10_000);
   return g
     .map((r, i) => {
       let data: Record<string, unknown> = {};
@@ -1080,7 +1126,8 @@ async function pastikanTabHadir() {
 /** Tanda tidak masuk pada rentang tanggal (yyyy-MM-dd). Tab belum ada = kosong. */
 export async function bacaKehadiran(from: string, to = from): Promise<Absen[]> {
   try {
-    const [g] = await io.get([`${q(SHEET_HADIR)}!A2:F`], "FORMATTED_VALUE");
+    // Tab belum dibuat = error; dicache juga (sebagai kosong) supaya tidak dibaca ulang tiap permintaan.
+    const [g] = await cachedGet(`${q(SHEET_HADIR)}!A2:F`, "FORMATTED_VALUE", 60_000, true);
     return g
       .map((r, i) => ({ row: i + 2, date: dayOf(r[0]) || s(r[0]).trim(), nik: s(r[1]).trim(), member: s(r[2]).trim(), alasan: s(r[3]).trim(), catatan: s(r[4]).trim(), oleh: s(r[5]).trim() }))
       .filter((x) => x.member && x.alasan && x.date >= from && x.date <= to);
