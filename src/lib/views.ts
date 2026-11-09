@@ -97,6 +97,8 @@ export type TodayView = {
   expected: number;
   /** Member section lain (perbantuan) yang ikut dihitung karena hari itu lapor. */
   bantu: { name: string; section: string }[];
+  /** Ditandai leader tidak masuk (Cuti/Sakit/Izin/Alpa), tidak dihitung wajib lapor. */
+  absen: { name: string; alasan: string; catatan: string }[];
   /** Ringkas untuk kartu dashboard. */
   stats: {
     qty: number;
@@ -166,10 +168,12 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
   const procCats = proc ? master.categories.filter((c) => c.process === proc) : null;
   const days = opts.days === 14 || opts.days === 30 ? opts.days : 7;
   // Minimal 14 hari ke belakang: untuk tren "vs kemarin" dan daftar member yang biasanya lapor.
-  const [{ facts, lost }, allSubs] = await Promise.all([
+  const [{ facts, lost }, allSubs, absenRaw] = await Promise.all([
     // ...dan sejak tanggal 1 bulan itu untuk ringkasan "Bulan ini".
     loadFacts(master, [addDays(date, -Math.max(14, days)), `${date.slice(0, 8)}01`].sort()[0], date, procCats?.map((c) => c.id)),
     callBackend<RawSubmission[]>("queue", { date }),
+    // Tanda "tidak masuk" dari leader (tab Kehadiran). Gagal baca = anggap tidak ada.
+    callBackend<{ member: string; alasan: string; catatan: string }[]>("absen", { from: date, to: date }).catch(() => []),
   ]);
   const procNames = new Set(procCats?.map((c) => c.name));
   const subs = procCats ? allSubs.filter((x) => (x.items ?? []).some((i) => procNames.has(i.category))) : allSubs;
@@ -189,9 +193,15 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
   // Section selain QA hanya dihitung kalau hari ini ikut lapor (perbantuan/lembur di QA).
   const g = new Date(`${date}T00:00:00Z`).getUTCDay();
   const libur = g === 0 || g === 6;
-  const expected = master.members.filter((m) => (isQaMember(m) && !libur) || sentToday.has(m.name) || doneToday.has(m.name));
   // Kiriman yang semuanya Ditolak (belum kirim ulang) dihitung belum kirim.
   const sentOk = (name: string) => (sentToday.get(name) ?? []).some((x) => x !== "Ditolak");
+  // Ditandai leader "tidak masuk" dan memang tidak lapor: tidak dihitung wajib lapor / belum kirim.
+  const absenOf = new Map((Array.isArray(absenRaw) ? absenRaw : []).map((x) => [x.member, x]));
+  const absen = master.members
+    .filter((m) => absenOf.has(m.name) && !sentOk(m.name) && !doneToday.has(m.name))
+    .map((m) => ({ name: m.name, alasan: absenOf.get(m.name)!.alasan, catatan: absenOf.get(m.name)!.catatan }));
+  const absenSet = new Set(absen.map((x) => x.name));
+  const expected = master.members.filter((m) => !absenSet.has(m.name) && ((isQaMember(m) && !libur) || sentToday.has(m.name) || doneToday.has(m.name)));
   const missing = expected.filter((m) => !sentOk(m.name) && !doneToday.has(m.name)).map((m) => m.name);
   const rejected = openRejections(subs)
     .map((s) => ({ member: s.member, note: s.note }));
@@ -250,6 +260,7 @@ export async function buildToday(date: string, opts: DashOpts = {}): Promise<Tod
     topNg: topNg(today, master, 5),
     expected: expected.length,
     bantu: expected.filter((m) => !isQaMember(m)).map((m) => ({ name: m.name, section: m.area.trim() })),
+    absen,
     stats: {
       qty: t.qty,
       ng: t.ng,

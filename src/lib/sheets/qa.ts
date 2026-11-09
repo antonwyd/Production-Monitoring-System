@@ -998,6 +998,8 @@ export const RPC: Record<string, (...args: never[]) => Promise<unknown> | unknow
   putuskan,
   editKiriman,
   getScriptUrl,
+  tandaiTidakMasuk,
+  batalTidakMasuk,
 };
 
 /* ---------- Notifikasi HP (web push), tab "Notifikasi HP" ---------- */
@@ -1055,4 +1057,64 @@ export async function hapusLangganan(rows: number[]) {
 /** NIK member dari Master Data (untuk mencocokkan langganan). */
 export async function nikMember(nama: string): Promise<string> {
   return (await readMaster()).nik[nama] ?? "";
+}
+
+/* ---------- Kehadiran: member QA yang tidak masuk (ditandai leader), tab "Kehadiran" ---------- */
+// Kolom: A Tanggal | B NIK | C Nama | D Alasan | E Catatan | F Ditandai oleh | G Waktu
+export const SHEET_HADIR = "Kehadiran";
+export const ALASAN_ABSEN = ["Cuti", "Sakit", "Izin", "Alpa"];
+export type Absen = { row: number; date: string; nik: string; member: string; alasan: string; catatan: string; oleh: string };
+
+async function pastikanTabHadir() {
+  const tabs = await io.rowCounts();
+  if (tabs[SHEET_HADIR]) {
+    const [h] = await io.get([`${q(SHEET_HADIR)}!A1`], "FORMATTED_VALUE");
+    if (s(h[0]?.[0]).trim()) return;
+  } else {
+    if (!io.addTab) throw new QaError(`Tab ${SHEET_HADIR} belum ada.`);
+    await io.addTab(SHEET_HADIR);
+  }
+  await io.update([{ range: `${q(SHEET_HADIR)}!A1:G1`, values: [["Tanggal", "NIK", "Nama", "Alasan", "Catatan", "Ditandai oleh", "Waktu"]] }]);
+}
+
+/** Tanda tidak masuk pada rentang tanggal (yyyy-MM-dd). Tab belum ada = kosong. */
+export async function bacaKehadiran(from: string, to = from): Promise<Absen[]> {
+  try {
+    const [g] = await io.get([`${q(SHEET_HADIR)}!A2:F`], "FORMATTED_VALUE");
+    return g
+      .map((r, i) => ({ row: i + 2, date: dayOf(r[0]) || s(r[0]).trim(), nik: s(r[1]).trim(), member: s(r[2]).trim(), alasan: s(r[3]).trim(), catatan: s(r[4]).trim(), oleh: s(r[5]).trim() }))
+      .filter((x) => x.member && x.alasan && x.date >= from && x.date <= to);
+  } catch {
+    return [];
+  }
+}
+
+function cekTanggal(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s(date))) throw new QaError("Tanggal tidak valid.");
+}
+
+/** Leader menandai member tidak masuk pada tanggal itu (satu baris per tanggal + member, diperbarui bila sudah ada). */
+export async function tandaiTidakMasuk(name: string, pin: string, date: string, member: string, alasan: string, catatan = "") {
+  await cekLeader(name, pin);
+  cekTanggal(date);
+  member = s(member).trim();
+  if (!ALASAN_ABSEN.includes(s(alasan))) throw new QaError("Pilih alasan: " + ALASAN_ABSEN.join(", ") + ".");
+  const nikOf = (await readMaster()).nik;
+  if (!Object.hasOwn(nikOf, member)) throw new QaError(`Member ${member} tidak ada di Master Data.`);
+  const nik = nikOf[member];
+  await pastikanTabHadir();
+  const row = [asText(date), asText(nik), asText(member), asText(alasan), asText(s(catatan).slice(0, 200)), asText(name), nowJakarta()];
+  const ada = (await bacaKehadiran(date)).find((x) => x.member === member);
+  if (ada) await io.update([{ range: `${q(SHEET_HADIR)}!A${ada.row}:G${ada.row}`, values: [row] }]);
+  else await io.append(`${q(SHEET_HADIR)}!A:G`, [row]);
+  return { ok: true };
+}
+
+/** Batalkan tanda tidak masuk (baris dikosongkan). */
+export async function batalTidakMasuk(name: string, pin: string, date: string, member: string) {
+  await cekLeader(name, pin);
+  cekTanggal(date);
+  const rows = (await bacaKehadiran(date)).filter((x) => x.member === s(member).trim());
+  if (rows.length) await io.update(rows.map((x) => ({ range: `${q(SHEET_HADIR)}!A${x.row}:G${x.row}`, values: [["", "", "", "", "", "", ""]] })));
+  return { ok: true };
 }

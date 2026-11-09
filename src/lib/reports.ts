@@ -671,6 +671,9 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     const date = p.date ?? today;
     const { facts, lost } = await loadFacts(master, date, date, p.categoryId);
     const subs = await callBackend<RawSubmission[]>("queue", { date });
+    const absen = new Map(
+      (await callBackend<{ member: string; alasan: string }[]>("absen", { from: date, to: date }).catch(() => [])).map((x) => [x.member, x.alasan]),
+    );
     const byMember = groupBy(facts, (f) => f.memberId);
     const rejectedOpen = new Set(openRejections(subs).map((r) => r.member));
     const rows: Row[] = master.members.flatMap((m) => {
@@ -690,7 +693,7 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
         member: m.name,
         area: m.area,
         // Kiriman ditolak yang belum dikirim ulang didahulukan supaya tidak terlewat.
-        status: openRej ? "Ditolak" : approved ? "Disetujui" : pending ? "Menunggu" : statuses.length ? "Ditolak" : "Belum lapor",
+        status: openRej ? "Ditolak" : approved ? "Disetujui" : pending ? "Menunggu" : statuses.length ? "Ditolak" : absen.has(m.name) ? `Tidak masuk (${absen.get(m.name)})` : "Belum lapor",
         ...ag,
         lostMin: lt,
         ajMin: aj,
@@ -703,8 +706,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
       ...base,
       subtitle: formatDateId(date),
       kpis: [
-        { label: "Sudah lapor (disetujui)", value: `${reported} / ${rows.length}` },
-        { label: "Belum lapor", value: rows.filter((r) => r.status === "Belum lapor").length, format: "int" },
+        { label: "Sudah lapor (disetujui)", value: `${reported} / ${rows.filter((r) => !String(r.status).startsWith("Tidak masuk")).length}` },
+        { label: "Belum lapor", value: rows.filter((r) => r.status === "Belum lapor").length, format: "int", hint: `${rows.filter((r) => String(r.status).startsWith("Tidak masuk")).length} tidak masuk` },
         { label: "Hasil (pcs)", value: t.qty, format: "int" },
         { label: "Achievement", value: t.ach, format: "pct", hint: `Grade ${t.grade}` },
       ],

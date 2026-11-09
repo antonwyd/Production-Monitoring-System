@@ -10,7 +10,8 @@ const EXTRA: Record<string, (...a: never[]) => Promise<unknown>> = {
   belumKirim: async (name: string, pin: string, date: string) => {
     await leaderLogin(name, pin);
     const d = /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date : todayJakarta();
-    return (await buildToday(d)).missing;
+    const v = await buildToday(d);
+    return { missing: v.missing, absen: v.absen };
   },
   ultahHariIni: async (name: string, pin: string) => {
     await leaderLogin(name, pin);
@@ -28,7 +29,7 @@ const MEMBER_FNS: Record<string, (args: unknown[]) => unknown> = {
 };
 
 /** Fungsi halaman leader: argumen 0 = nama leader, 1 = PIN. Wajib sesi leader/admin; nama diambil dari sesi. */
-const LEADER_FNS = new Set(["leaderLogin", "getAntrian", "putuskan", "editKiriman", "belumKirim", "ultahHariIni"]);
+const LEADER_FNS = new Set(["leaderLogin", "getAntrian", "putuskan", "editKiriman", "belumKirim", "ultahHariIni", "tandaiTidakMasuk", "batalTidakMasuk"]);
 /** Fungsi lain yang cukup butuh sesi apa saja (dulu terbuka tanpa login). */
 const SESSION_FNS = new Set(["getMasterData"]);
 
