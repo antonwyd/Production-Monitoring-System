@@ -9,6 +9,8 @@ export const FEATURES = {
   overtime: false,
   /** Forecast vs PO customer (/forecast). */
   forecast: true,
+  /** Perencanaan > Rencana Hari Ini (/perencanaan): alokasi orang & mesin pagi hari. */
+  planning: true,
 };
 
 export const REPORT_HOME = FEATURES.planActual ? "/production-report" : "/production-report/rekap";
