@@ -13,6 +13,9 @@ const ROLE_LABEL: Record<Session["role"], string> = {
 function navFor(role: Session["role"]): NavGroup[] {
   const canValidate = role === "leader" || role === "admin";
   const groups: NavGroup[] = [
+    ...(FEATURES.planning && role !== "operator"
+      ? [{ title: "Perencanaan", items: [{ key: "perencanaan", href: "/perencanaan", label: "Rencana Hari Ini", icon: "clock" }] }]
+      : []),
     {
       title: "Main",
       items: [

@@ -1143,6 +1143,11 @@ function cekTanggal(date: string) {
 /** Leader menandai member tidak masuk pada tanggal itu (satu baris per tanggal + member, diperbarui bila sudah ada). */
 export async function tandaiTidakMasuk(name: string, pin: string, date: string, member: string, alasan: string, catatan = "") {
   await cekLeader(name, pin);
+  return tandaiTidakMasukOleh(name, date, member, alasan, catatan);
+}
+
+/** Sama dengan tandaiTidakMasuk, untuk pengguna yang sudah login (sesi leader/admin, mis. halaman Perencanaan). */
+export async function tandaiTidakMasukOleh(name: string, date: string, member: string, alasan: string, catatan = "") {
   cekTanggal(date);
   member = s(member).trim();
   if (!ALASAN_ABSEN.includes(s(alasan))) throw new QaError("Pilih alasan: " + ALASAN_ABSEN.join(", ") + ".");
@@ -1160,8 +1165,22 @@ export async function tandaiTidakMasuk(name: string, pin: string, date: string, 
 /** Batalkan tanda tidak masuk (baris dikosongkan). */
 export async function batalTidakMasuk(name: string, pin: string, date: string, member: string) {
   await cekLeader(name, pin);
+  return batalTidakMasukOleh(date, member);
+}
+
+export async function batalTidakMasukOleh(date: string, member: string) {
   cekTanggal(date);
   const rows = (await bacaKehadiran(date)).filter((x) => x.member === s(member).trim());
   if (rows.length) await io.update(rows.map((x) => ({ range: `${q(SHEET_HADIR)}!A${x.row}:G${x.row}`, values: [["", "", "", "", "", "", ""]] })));
   return { ok: true };
+}
+
+/** Baris setting Master Data (S7:T30) apa adanya, untuk fitur yang membaca setting opsional (Perencanaan). */
+export async function masterSettings(): Promise<Record<string, unknown>> {
+  return (await readMaster()).settings;
+}
+
+/** Baca satu range dengan cache singkat (dikosongkan otomatis bila tab itu ditulis). */
+export function bacaCache(range: string, ttl = 10_000, kosongBilaGagal = true) {
+  return cachedGet(range, "UNFORMATTED_VALUE", ttl, kosongBilaGagal);
 }
