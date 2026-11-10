@@ -4,6 +4,27 @@ import { formatDateId, nowJakarta } from "./dates";
 import { formatCell } from "./format";
 import { LOGO_PNG_BASE64, LOGO_RATIO } from "./logo";
 import type { Chart, ColFormat, Report, Table } from "./reports";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { angkaJa, tr, type Lang } from "./i18n";
+import { translateReport } from "./reportI18n";
+
+/** Bahasa file yang sedang dibuat (diset di reportToPdf). Jepang memakai font M PLUS 1p (Helvetica tidak punya huruf Jepang). */
+let LANG: Lang = "id";
+const L = (s: string) => tr(s, LANG);
+const F = () => (LANG === "ja" ? "mplus" : "helvetica");
+const ST = (st: string) => (LANG === "ja" && st === "italic" ? "normal" : st);
+let FONT_B64: { r: string; b: string } | null = null;
+function pasangFontJepang(doc: jsPDF) {
+  if (!FONT_B64) {
+    const dir = path.join(process.cwd(), "src/assets/fonts");
+    FONT_B64 = { r: readFileSync(path.join(dir, "MPLUS1p-Regular.ttf")).toString("base64"), b: readFileSync(path.join(dir, "MPLUS1p-Bold.ttf")).toString("base64") };
+  }
+  doc.addFileToVFS("MPLUS1p-Regular.ttf", FONT_B64.r);
+  doc.addFont("MPLUS1p-Regular.ttf", "mplus", "normal");
+  doc.addFileToVFS("MPLUS1p-Bold.ttf", FONT_B64.b);
+  doc.addFont("MPLUS1p-Bold.ttf", "mplus", "bold");
+}
 
 // PDF siap kirim / cetak, dibuat di server (bukan print browser): A4 landscape, kop + logo di tiap halaman,
 // angka utama vs target, grafik utama, tabel, kotak Dibuat / Diperiksa / Disetujui, nomor halaman.
@@ -29,7 +50,9 @@ const isNum = (f?: ColFormat) => !!f && f !== "text" && f !== "grade";
 
 /** Huruf standar PDF (Helvetica) tidak punya beberapa simbol; ganti dengan yang setara. */
 const safe = (s: string) =>
-  s
+  LANG === "ja"
+    ? angkaJa(s)
+    : s
     .replace(/▲/g, "+")
     .replace(/▼/g, "-")
     .replace(/[−–—]/g, "-")
@@ -47,24 +70,24 @@ function kop(doc: jsPDF, r: Report) {
   done.add(page);
   const lh = 13;
   doc.addImage(LOGO_PNG_BASE64, "PNG", M, 8, lh * LOGO_RATIO, lh);
-  doc.setFont("helvetica", "bold").setFontSize(7.5).setTextColor(...MUTED);
+  doc.setFont(F(), ST("bold")).setFontSize(7.5).setTextColor(...MUTED);
   doc.text("PT. TAKAI SEIKI INDONESIA", M + lh * LOGO_RATIO + 5, 11.5);
   doc.setFontSize(15).setTextColor(...MAROON);
   doc.text(safe(r.title), M + lh * LOGO_RATIO + 5, 18);
-  doc.setFont("helvetica", "normal").setFontSize(8.5).setTextColor(...MUTED);
+  doc.setFont(F(), ST("normal")).setFontSize(8.5).setTextColor(...MUTED);
   doc.text(safe(r.subtitle), M + lh * LOGO_RATIO + 5, 23);
   doc.setDrawColor(...MAROON).setLineWidth(0.6).line(M, 26, W - M, 26);
 }
 
 function footer(doc: jsPDF, r: Report) {
   const n = doc.getNumberOfPages();
-  const made = `Dibuat ${formatDateId(nowJakarta().slice(0, 10))} ${nowJakarta().slice(11, 16)} WIB · angka dari laporan yang sudah disetujui leader`;
+  const made = LANG === "ja" ? `作成 ${L(formatDateId(nowJakarta().slice(0, 10)))} ${nowJakarta().slice(11, 16)} WIB · 数値はリーダー承認済みの報告から算出` : `Dibuat ${formatDateId(nowJakarta().slice(0, 10))} ${nowJakarta().slice(11, 16)} WIB · angka dari laporan yang sudah disetujui leader`;
   for (let i = 1; i <= n; i++) {
     doc.setPage(i);
-    doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(7.5).setTextColor(...MUTED);
     doc.setDrawColor(...LINE).setLineWidth(0.2).line(M, H - 10, W - M, H - 10);
     doc.text(safe(`PT. Takai Seiki Indonesia · ${r.title} · ${made}`), M, H - 6);
-    doc.text(`Halaman ${i} dari ${n}`, W - M, H - 6, { align: "right" });
+    doc.text(LANG === "ja" ? `${i} / ${n} ページ` : `Halaman ${i} dari ${n}`, W - M, H - 6, { align: "right" });
   }
 }
 
@@ -81,14 +104,14 @@ function kpiCards(doc: jsPDF, r: Report, y: number) {
     if (k.status) {
       doc.setFillColor(...(k.status === "good" ? GOOD : BAD)).rect(x, y + 2, 1.2, h - 4, "F");
     }
-    doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(7.5).setTextColor(...MUTED);
     doc.text(safe(k.label), x + 4, y + 5.5, { maxWidth: w - 6 });
-    doc.setFont("helvetica", "bold").setFontSize(15).setTextColor(...INK);
+    doc.setFont(F(), ST("bold")).setFontSize(15).setTextColor(...INK);
     doc.text(safe(formatCell(k.value, k.format)), x + 4, y + 13.5);
-    doc.setFont("helvetica", "normal").setFontSize(7);
+    doc.setFont(F(), ST("normal")).setFontSize(7);
     if (k.target) {
       const ok = k.status === "good";
-      const label = k.status ? `${ok ? "Sesuai" : "Di luar"} target (${k.target})` : `Target ${k.target}`;
+      const label = LANG === "ja" ? (k.status ? `${ok ? "目標達成" : "目標未達"}（${k.target}）` : `目標 ${k.target}`) : k.status ? `${ok ? "Sesuai" : "Di luar"} target (${k.target})` : `Target ${k.target}`;
       doc.setTextColor(...(k.status ? (ok ? GOOD : BAD) : MUTED));
       doc.text(safe(label), x + 4, y + 18.5, { maxWidth: w - 6 });
       if (k.hint) {
@@ -106,7 +129,7 @@ function kpiCards(doc: jsPDF, r: Report, y: number) {
 /** Grafik sederhana: batang (opsional garis kumulatif Pareto) atau garis. */
 function drawChart(doc: jsPDF, c: Chart, x: number, y: number, w: number, h: number) {
   doc.setDrawColor(...LINE).setLineWidth(0.3).roundedRect(x, y, w, h, 2, 2, "S");
-  doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(...INK);
+  doc.setFont(F(), ST("bold")).setFontSize(9).setTextColor(...INK);
   doc.text(safe(c.title), x + 4, y + 6);
   const s = c.series[0];
   const data = c.data.slice(0, 15);
@@ -120,7 +143,7 @@ function drawChart(doc: jsPDF, c: Chart, x: number, y: number, w: number, h: num
   for (let i = 0; i <= 4; i++) {
     const gy = py + ph - (ph * i) / 4;
     doc.line(px, gy, px + pw, gy);
-    doc.setFont("helvetica", "normal").setFontSize(6).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(6).setTextColor(...MUTED);
     doc.text(safe(formatCell((max * i) / 4, s.format === "pct" ? "pct" : s.format === "dec1" ? "dec1" : "int")), px - 1.5, gy + 1, { align: "right" });
   }
   const step = pw / Math.max(data.length, 1);
@@ -133,7 +156,7 @@ function drawChart(doc: jsPDF, c: Chart, x: number, y: number, w: number, h: num
     else {
       doc.setFillColor(...MAROON).rect(cx - step * 0.32, py + ph - bh, step * 0.64, bh, "F");
     }
-    doc.setFont("helvetica", "normal").setFontSize(6).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(6).setTextColor(...MUTED);
     const lbl = safe(String(d[c.xKey] ?? ""));
     doc.text(lbl.length > 14 ? `${lbl.slice(0, 13)}.` : lbl, cx, py + ph + 3.5, { align: "center", maxWidth: step + 4 });
   });
@@ -147,9 +170,9 @@ function drawChart(doc: jsPDF, c: Chart, x: number, y: number, w: number, h: num
     doc.setDrawColor(...PINK).setLineWidth(0.6);
     for (let i = 1; i < cum.length; i++) doc.line(cum[i - 1][0], cum[i - 1][1], cum[i][0], cum[i][1]);
     cum.forEach(([a, b]) => doc.setFillColor(...PINK).circle(a, b, 0.8, "F"));
-    doc.setFont("helvetica", "normal").setFontSize(6).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(6).setTextColor(...MUTED);
     doc.text("100%", px + pw + 1, py + 1);
-    doc.text("kumulatif", px + pw - 1, py - 1.5, { align: "right" });
+    doc.text(L("kumulatif"), px + pw - 1, py - 1.5, { align: "right" });
   }
 }
 
@@ -176,11 +199,11 @@ function table(doc: jsPDF, r: Report, t: Table, y: number) {
     kop(doc, r);
     y = TOP + 2;
   }
-  doc.setFont("helvetica", "bold").setFontSize(10.5).setTextColor(...MAROON);
+  doc.setFont(F(), ST("bold")).setFontSize(10.5).setTextColor(...MAROON);
   doc.text(safe(t.title), M, y + 4);
   let start = y + 6.5;
   if (t.note) {
-    doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...MUTED);
+    doc.setFont(F(), ST("normal")).setFontSize(7.5).setTextColor(...MUTED);
     doc.text(safe(t.note), M, y + 8.5, { maxWidth: W - 2 * M });
     start = y + 11;
   }
@@ -189,9 +212,9 @@ function table(doc: jsPDF, r: Report, t: Table, y: number) {
     startY: start,
     margin: { left: M, right: M, top: TOP + 2, bottom: 14 },
     head: [t.columns.map((c) => safe(c.label))],
-    body: all.length ? all.map((r) => t.columns.map((c) => safe(formatCell(r[c.key], c.format)))) : [[{ content: "Belum ada data di periode ini.", colSpan: t.columns.length, styles: { halign: "center", textColor: MUTED, fontStyle: "italic" } }]],
+    body: all.length ? all.map((r) => t.columns.map((c) => safe(formatCell(r[c.key], c.format)))) : [[{ content: L("Belum ada data di periode ini."), colSpan: t.columns.length, styles: { halign: "center", textColor: MUTED, fontStyle: ST("italic") as "italic" } }]],
     theme: "plain",
-    styles: { font: "helvetica", fontSize: 7.5, cellPadding: { top: 1.6, bottom: 1.6, left: 2, right: 2 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 } },
+    styles: { font: F(), fontSize: 7.5, cellPadding: { top: 1.6, bottom: 1.6, left: 2, right: 2 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 } },
     headStyles: { fillColor: MAROON, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: Object.fromEntries(t.columns.map((c, i) => [i, { halign: isNum(c.format) ? "right" : c.format === "grade" ? "center" : "left" }])),
@@ -216,16 +239,16 @@ function table(doc: jsPDF, r: Report, t: Table, y: number) {
       }
       if (c?.key === "status") {
         if (raw === "OK") Object.assign(d.cell.styles, { textColor: GOOD, fillColor: GOOD_BG, fontStyle: "bold" });
-        else if (raw === "Di bawah target") Object.assign(d.cell.styles, { textColor: BAD, fillColor: BAD_BG, fontStyle: "bold" });
-        else if (raw === "Tidak jalan") d.cell.styles.textColor = [148, 163, 184];
+        else if (raw === L("Di bawah target")) Object.assign(d.cell.styles, { textColor: BAD, fillColor: BAD_BG, fontStyle: "bold" });
+        else if (raw === L("Tidak jalan")) d.cell.styles.textColor = [148, 163, 184];
       }
     },
     willDrawPage: () => kop(doc, r),
   });
   let end = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
   if (t.detail && t.rows.length > DETAIL_ROWS) {
-    doc.setFont("helvetica", "italic").setFontSize(7.5).setTextColor(...MUTED);
-    doc.text(`${t.rows.length - DETAIL_ROWS} baris lainnya ada di file Excel.`, M, end + 4);
+    doc.setFont(F(), ST("italic")).setFontSize(7.5).setTextColor(...MUTED);
+    doc.text(LANG === "ja" ? `残り ${t.rows.length - DETAIL_ROWS} 行は Excel ファイルにあります。` : `${t.rows.length - DETAIL_ROWS} baris lainnya ada di file Excel.`, M, end + 4);
     end += 4;
   }
   return end + 7;
@@ -241,21 +264,24 @@ function signBoxes(doc: jsPDF, r: Report, y: number) {
   const w = 52;
   const gap = 5;
   const x0 = W - M - 3 * w - 2 * gap;
-  ["Dibuat", "Diperiksa", "Disetujui"].forEach((p, i) => {
+  (LANG === "ja" ? ["作成", "確認", "承認"] : ["Dibuat", "Diperiksa", "Disetujui"]).forEach((p, i) => {
     const x = x0 + i * (w + gap);
     doc.setDrawColor(148, 163, 184).setLineWidth(0.3).rect(x, y, w, h);
     doc.setFillColor(248, 232, 232).rect(x, y, w, 6, "FD");
-    doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...INK);
+    doc.setFont(F(), ST("bold")).setFontSize(8).setTextColor(...INK);
     doc.text(p, x + w / 2, y + 4.2, { align: "center" });
     doc.line(x, y + h - 6, x + w, y + h - 6);
-    doc.setFont("helvetica", "normal").setFontSize(6.5).setTextColor(...MUTED);
-    doc.text("Nama / Tgl", x + 2, y + h - 2);
+    doc.setFont(F(), ST("normal")).setFontSize(6.5).setTextColor(...MUTED);
+    doc.text(L("Nama / Tgl"), x + 2, y + h - 2);
   });
   return y + h + 4;
 }
 
-export function reportToPdf(r: Report): Buffer {
+export function reportToPdf(r0: Report, lang: Lang = "id"): Buffer {
+  LANG = lang;
+  const r = translateReport(r0, lang);
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
+  if (lang === "ja") pasangFontJepang(doc);
   doc.setProperties({ title: `${r.title} · ${r.subtitle}`, author: "PT. Takai Seiki Indonesia", creator: "QA Production" });
   kop(doc, r);
   let y = TOP + 2;
