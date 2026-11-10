@@ -131,3 +131,12 @@ body {
   @apply inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent;
   animation: spin-slow .7s linear infinite;
 }
+
+/* Pilihan bahasa ID | 日本語 */
+html[data-lang="ja"]:not([data-tr]) body { visibility: hidden; }
+.lang-id, .lang-ja { color: #94a3b8; transition: background-color .15s, color .15s; }
+.lang-id:hover, .lang-ja:hover { color: #fff; }
+html:not([data-lang="ja"]) .lang-id, html[data-lang="ja"] .lang-ja { background: #9b1b1f; color: #fff; }
+.lang-light { border-color: #cbd5e1; }
+.lang-light .lang-id, .lang-light .lang-ja { color: #475569; }
+html:not([data-lang="ja"]) .lang-light .lang-id, html[data-lang="ja"] .lang-light .lang-ja { color: #fff; }

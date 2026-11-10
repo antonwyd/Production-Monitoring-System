@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { REPORT_HOME } from "@/lib/features";
+import { LangSwitch } from "./LangRuntime";
 
 export type NavItem = { key: string; href: string; label: string; icon: string; external?: boolean };
 export type NavGroup = { title?: string; items: NavItem[] };
@@ -85,6 +86,10 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
   );
 
   const footer = (
+    <>
+    <div className="sb-hide relative px-4 pb-3">
+      <LangSwitch />
+    </div>
     <div className="sb-foot relative flex items-center gap-3 border-t border-white/10 px-4 py-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-brand-600 ring-2 ring-brand-600">
         {user.name
@@ -110,6 +115,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
         <Icon name="logout" />
       </button>
     </div>
+    </>
   );
 
   const brand = (
@@ -151,6 +157,7 @@ export default function Sidebar({ groups, active, user }: { groups: NavGroup[]; 
         </button>
         <img src="/logo-tki.png" alt="PT. Takai Seiki Indonesia" className="h-7 w-auto" />
         <span className="font-bold tracking-tight">QA Production</span>
+        <LangSwitch className="lang-light ml-auto" />
       </header>
       {/* HP: menu bawah */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-slate-200 bg-white/95 px-2 pb-[calc(6px+env(safe-area-inset-bottom))] pt-1.5 backdrop-blur lg:hidden">

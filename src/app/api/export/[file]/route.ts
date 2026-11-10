@@ -4,6 +4,7 @@ import { addDays, todayJakarta } from "@/lib/dates";
 import { reportToXlsx } from "@/lib/excel";
 import { reportToPdf } from "@/lib/pdf";
 import { buildReport, parseReportParams, REPORT_KINDS, type ReportKind } from "@/lib/reports";
+import { langFromCookieHeader } from "@/lib/i18n";
 import { buildLaporan, buildToday, laporanToReport, todayToReport } from "@/lib/views";
 
 /** GET /api/export/{jenis}.xlsx atau {jenis}.pdf ?from=&to=&category= */
@@ -24,7 +25,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
         : kind === "hari-ini"
           ? todayToReport(await buildToday(params.date ?? base))
           : await buildReport(kind as ReportKind, params, base);
-    const buf = pdf ? reportToPdf(report) : await reportToXlsx(report);
+    const lang = langFromCookieHeader(req.headers.get("cookie"));
+    const buf = pdf ? reportToPdf(report, lang) : await reportToXlsx(report, lang);
     return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type": pdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

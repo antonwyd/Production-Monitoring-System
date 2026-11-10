@@ -2,6 +2,12 @@ import ExcelJS from "exceljs";
 import { formatDateId, nowJakarta } from "./dates";
 import { LOGO_PNG_BASE64, LOGO_RATIO } from "./logo";
 import type { ColFormat, Column, Kpi, Report, Table } from "./reports";
+import { tr, type Lang } from "./i18n";
+import { translateReport } from "./reportI18n";
+
+/** Bahasa file yang sedang dibuat (diset di reportToXlsx). */
+let LANG: Lang = "id";
+const L = (s: string) => tr(s, LANG);
 
 // File Excel untuk rapat produksi. Sheet "Laporan" = kop + logo, angka utama vs target, semua tabel
 // ringkas bertumpuk, lalu kotak Dibuat / Diperiksa / Disetujui. Daftar rincian panjang di sheet sendiri.
@@ -69,7 +75,7 @@ function setupPrint(ws: ExcelJS.Worksheet, title: string, repeatRow?: number) {
     margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.2, footer: 0.25 },
     ...(repeatRow ? { printTitlesRow: `${repeatRow}:${repeatRow}` } : {}),
   };
-  ws.headerFooter = { oddFooter: `&L&8PT. Takai Seiki Indonesia · ${title.replace(/&/g, "&&")}&R&8Halaman &P dari &N` };
+  ws.headerFooter = { oddFooter: `&L&8PT. Takai Seiki Indonesia · ${title.replace(/&/g, "&&")}&R&8${LANG === "ja" ? "&P / &N ページ" : "Halaman &P dari &N"}` };
 }
 
 /** Kop: logo di kiri, nama perusahaan, judul report, periode dan waktu dibuat. Mengembalikan baris berikutnya. */
@@ -80,7 +86,7 @@ function kop(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, width: number, title: 
   const lines: [string, Partial<ExcelJS.Font>, number][] = [
     ["PT. TAKAI SEIKI INDONESIA", { bold: true, size: 9, color: { argb: MUTED } }, 16],
     [title, { bold: true, size: 16, color: { argb: MAROON } }, 24],
-    [`${subtitle}  ·  Dibuat ${formatDateId(nowJakarta().slice(0, 10))} ${nowJakarta().slice(11, 16)} WIB`, { size: 9, color: { argb: MUTED } }, 16],
+    [L(`${subtitle}  ·  Dibuat ${formatDateId(nowJakarta().slice(0, 10))} ${nowJakarta().slice(11, 16)} WIB`), { size: 9, color: { argb: MUTED } }, 16],
   ];
   lines.forEach(([text, font, h], i) => {
     ws.mergeCells(i + 1, 3, i + 1, w);
@@ -112,8 +118,8 @@ function sectionTitle(ws: ExcelJS.Worksheet, row: number, width: number, text: s
 
 /** Angka utama: Indikator | Nilai | Target | Status | Keterangan. */
 function writeKpis(ws: ExcelJS.Worksheet, kpis: Kpi[], startRow: number, width: number) {
-  let row = sectionTitle(ws, startRow, width, "Angka utama");
-  const head = ["Indikator", "Nilai", "Target", "Status", "Keterangan"];
+  let row = sectionTitle(ws, startRow, width, L("Angka utama"));
+  const head = ["Indikator", "Nilai", "Target", "Status", "Keterangan"].map(L);
   head.forEach((h, i) => {
     const c = ws.getCell(row, i + 1);
     c.value = h;
@@ -142,7 +148,7 @@ function writeKpis(ws: ExcelJS.Worksheet, kpis: Kpi[], startRow: number, width: 
     const st = ws.getCell(row, 4);
     if (k.status) {
       const ok = k.status === "good";
-      st.value = ok ? "Sesuai target" : "Di luar target";
+      st.value = L(ok ? "Sesuai target" : "Di luar target");
       st.font = { bold: true, color: { argb: ok ? GOOD.fg : BAD.fg } };
       st.fill = fill(ok ? GOOD.bg : BAD.bg);
     }
@@ -177,12 +183,12 @@ function writeTable(ws: ExcelJS.Worksheet, t: Table, startRow: number) {
   if (!rows.length) {
     ws.mergeCells(startRow + 1, 1, startRow + 1, Math.max(1, t.columns.length));
     const c = ws.getCell(startRow + 1, 1);
-    c.value = "Belum ada data di periode ini.";
+    c.value = L("Belum ada data di periode ini.");
     c.font = { italic: true, color: { argb: MUTED } };
   }
   rows.forEach((row, idx) => {
     const isTotal = !!t.total && idx === rows.length - 1;
-    const missing = row.status === "Belum lapor" || row.status === "Tidak jalan";
+    const missing = row.status === L("Belum lapor") || row.status === L("Tidak jalan");
     const xr = ws.getRow(startRow + 1 + idx);
     t.columns.forEach((c, i) => {
       const cell = xr.getCell(i + 1);
@@ -200,7 +206,7 @@ function writeTable(ws: ExcelJS.Worksheet, t: Table, startRow: number) {
       } else if (c.format === "grade" && typeof v === "string" && GRADE_FILL[v]) {
         cell.font = { bold: true, color: { argb: GRADE_FILL[v].fg } };
         cell.fill = fill(GRADE_FILL[v].bg);
-      } else if (c.key === "status" && (v === "OK" || v === "Di bawah target")) {
+      } else if (c.key === "status" && (v === "OK" || v === L("Di bawah target"))) {
         const s = v === "OK" ? GOOD : BAD;
         cell.font = { bold: true, color: { argb: s.fg } };
         cell.fill = fill(s.bg);
@@ -228,7 +234,7 @@ function writeTable(ws: ExcelJS.Worksheet, t: Table, startRow: number) {
 /** Kotak tanda tangan Dibuat / Diperiksa / Disetujui selebar tabel. */
 function signBoxes(ws: ExcelJS.Worksheet, startRow: number, width: number) {
   const w = Math.max(width, 6);
-  const parts = ["Dibuat", "Diperiksa", "Disetujui"];
+  const parts = (LANG === "ja" ? ["作成", "確認", "承認"] : ["Dibuat", "Diperiksa", "Disetujui"]);
   const span = Math.floor(w / 3);
   const row = startRow + 1;
   parts.forEach((p, i) => {
@@ -243,7 +249,7 @@ function signBoxes(ws: ExcelJS.Worksheet, startRow: number, width: number) {
     h.alignment = { horizontal: "center", vertical: "middle" };
     h.fill = fill(TINT);
     const n = ws.getCell(row + 5, c1);
-    n.value = "Nama:                         Tgl:";
+    n.value = L("Nama:                         Tgl:");
     n.font = { size: 9, color: { argb: MUTED } };
     for (let r = row; r <= row + 5; r++)
       for (let c = c1; c <= c2; c++)
@@ -265,7 +271,9 @@ function sheetName(title: string, used: Set<string>) {
   return name;
 }
 
-export async function reportToXlsx(r: Report): Promise<Buffer> {
+export async function reportToXlsx(r0: Report, lang: Lang = "id"): Promise<Buffer> {
+  LANG = lang;
+  const r = translateReport(r0, lang);
   const wb = new ExcelJS.Workbook();
   wb.creator = "QA Production · PT. Takai Seiki Indonesia";
   wb.created = new Date();
@@ -274,7 +282,7 @@ export async function reportToXlsx(r: Report): Promise<Buffer> {
   const separate = r.tables.filter((t) => !inline.includes(t));
   const width = Math.max(6, ...inline.map((t) => t.columns.length));
 
-  const ws = wb.addWorksheet("Laporan", { properties: { tabColor: { argb: MAROON } }, views: [{ showGridLines: false }] });
+  const ws = wb.addWorksheet(L("Laporan"), { properties: { tabColor: { argb: MAROON } }, views: [{ showGridLines: false }] });
   let row = kop(wb, ws, width, r.title, r.subtitle);
   row++;
   const widths: number[] = Array(width).fill(10);
@@ -291,20 +299,20 @@ export async function reportToXlsx(r: Report): Promise<Buffer> {
     out.widths.forEach((w, i) => (widths[i] = Math.max(widths[i], w)));
     row = out.next + 1;
   }
-  const used = new Set<string>(["Laporan"]);
+  const used = new Set<string>([L("Laporan")]);
   const names = separate.map((t) => sheetName(t.title, used));
   if (separate.length) {
-    row = sectionTitle(ws, row, width, "Rincian di sheet lain");
+    row = sectionTitle(ws, row, width, L("Rincian di sheet lain"));
     separate.forEach((t, i) => {
       const c = ws.getCell(row, 1);
-      c.value = { text: `→ ${t.title} (${t.rows.length} baris)`, hyperlink: `#'${names[i]}'!A1` };
+      c.value = { text: `→ ${t.title} (${t.rows.length} ${LANG === "ja" ? "行" : "baris"})`, hyperlink: `#'${names[i]}'!A1` };
       c.font = { color: { argb: MAROON }, underline: true };
       row++;
     });
     row++;
   }
   const foot = ws.getCell(row, 1);
-  foot.value = "Angka dihitung dari laporan yang sudah disetujui leader.";
+  foot.value = L("Angka dihitung dari laporan yang sudah disetujui leader.");
   foot.font = { italic: true, size: 9, color: { argb: MUTED } };
   row = signBoxes(ws, row + 1, width);
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = Math.min(Math.max(w, 9), 40)));
