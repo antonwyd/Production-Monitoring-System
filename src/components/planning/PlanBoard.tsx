@@ -25,6 +25,7 @@ import {
   type Step,
 } from "@/lib/planning";
 import type { PlanPage } from "@/lib/sheets/planning";
+import FloorView from "./FloorView";
 
 const ALASAN = ["Cuti", "Sakit", "Izin", "Alpa"];
 const n0 = (v: number) => Math.round(v).toLocaleString("id-ID");
@@ -67,6 +68,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [view, setView] = useState<"papan" | "lantai">("papan");
   const [saved, setSaved] = useState(page.saved);
   const isToday = st.date === today;
   const now = isToday ? Math.max(START, nowMin) : START;
@@ -197,6 +199,17 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
 
       {/* 2 Alokasi */}
       <Section id="alokasi" n={2} title="Alokasi orang & mesin" sub="Ketuk orang untuk memindah (mulai jam berapa, ke mana). Ketuk MC untuk mengganti part.">
+        <div className="flex gap-1 self-start rounded-lg bg-slate-100 p-1 text-sm font-semibold" role="tablist">
+          {(["papan", "lantai"] as const).map((v) => (
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} className={`rounded-md px-3 py-1.5 ${view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
+              {v === "papan" ? "Papan" : "Tampilan lantai"}
+            </button>
+          ))}
+        </div>
+        {view === "lantai" ? (
+          <FloorView m={m} st={st} initialAt={now} />
+        ) : (
+          <>
         <div className="grid gap-4 lg:grid-cols-3">
           {STEPS.map((step) => {
             const sum = res.steps.find((s) => s.step === step)!;
@@ -239,6 +252,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
             ))}
           </div>
         </div>
+          </>
+        )}
       </Section>
 
       {/* 3 Kapasitas & PO */}
