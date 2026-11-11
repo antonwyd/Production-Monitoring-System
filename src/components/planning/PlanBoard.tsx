@@ -58,9 +58,10 @@ const COLOR: Record<Step, string> = { pf: "#2563eb", seiretsu: "#d97706", senbet
 const SOFT: Record<Step, string> = { pf: "#eff6ff", seiretsu: "#fffbeb", senbetsu: "#ecfdf5" };
 const WORD: Record<Status, string> = { SAFE: "Cukup", WARNING: "Mepet", CRITICAL: "Kurang" };
 const PILL: Record<Status, string> = { SAFE: "bg-emerald-100 text-emerald-800", WARNING: "bg-amber-100 text-amber-800", CRITICAL: "bg-red-100 text-red-800" };
+const TXT: Record<Status, string> = { SAFE: "text-emerald-700", WARNING: "text-amber-700", CRITICAL: "text-red-700" };
 const BAR: Record<Status, string> = { SAFE: "bg-emerald-500", WARNING: "bg-amber-500", CRITICAL: "bg-red-500" };
 
-type Where = { cat: string; part: string } | null;
+type Where = { cat: string; part: string; mcs: string[]; next?: string; ot?: number } | null;
 
 export default function PlanBoard({ page, today, nowMin, canSave }: { page: PlanPage; today: string; nowMin: number; canSave: boolean }) {
   // Shield tidak direncanakan di sini (permintaan Anton 11 Nov).
@@ -85,10 +86,12 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [extra, setExtra] = useState<Record<string, string[]>>(() => {
     const out: Record<string, string[]> = {};
     const add = (cat: string, pid: string) => pid && m.parts.some((p) => p.id === pid) && !(out[cat] ??= []).includes(pid) && out[cat].push(pid);
+    for (const key of Object.keys(page.po ?? {})) for (const p of m.parts) if (p.key === key) add(p.category, p.id);
     for (const p of page.state.people) for (const g of p.segs) if (g.cat) g.mcs?.length ? g.mcs.forEach((x) => add(g.cat, page.state.machines[mcKey(g.cat, x)] ?? "")) : add(g.cat, g.part ?? "");
     return out;
   });
-  const [sheet, setSheet] = useState<null | "dest" | "hadir" | { addType: string } | { target: Row }>(null);
+  const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | { addType: string } | { target: Row }>(null);
+  const [hist, setHist] = useState<PlanState[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -98,6 +101,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const res = useMemo(() => compute(m, st, end, now), [m, st, end, now]);
 
   const update = (fn: (s: PlanState) => PlanState) => {
+    setHist((h) => [...h.slice(-40), st]);
     setSt((s) => fn(s));
     setDirty(true);
     setMsg(null);
@@ -114,10 +118,20 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         continue;
       }
       const part = s.mcs?.length ? (st.machines[mcKey(s.cat, s.mcs[0])] ?? "") : (s.part ?? "");
-      out.set(p.name, { cat: s.cat, part });
+      // Perubahan berikutnya (mis. pindah jam 13:00) dan jam pulang bila lembur.
+      const sp = spans(p, end);
+      const nx = sp.find((x) => x.at > at && (x.cat !== s.cat || (x.part ?? "") !== (s.part ?? "") || (x.mcs ?? []).join() !== (s.mcs ?? []).join()));
+      const work = sp.filter((x) => x.cat);
+      const last = work.at(-1);
+      let next: string | undefined;
+      if (nx && nx.at < nEnd) {
+        const c2 = m.cats.find((c) => c.name === nx.cat);
+        next = nx.cat ? `${toClock(nx.at)} ${c2 ? STEP_NAME[c2.step] : nx.cat} ${nx.mcs?.length ? "" : partLabel(m, nx.part ?? "")}`.trim() : `${toClock(nx.at)} lepas`;
+      }
+      out.set(p.name, { cat: s.cat, part, mcs: s.mcs ?? [], next, ot: last && last.to > nEnd ? last.to : undefined });
     }
     return out;
-  }, [st, end, at]);
+  }, [st, end, at, m, nEnd]);
 
   /** Pindahkan orang-orang ke (kategori, type) mulai jam `at`. PF: MC dipilih otomatis. */
   function moveTo(names: string[], cat: string, part: string) {
@@ -178,6 +192,24 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     });
     setSel([]);
   };
+  const undo = () => {
+    const prev = hist.at(-1);
+    if (!prev) return;
+    setHist((h) => h.slice(0, -1));
+    setSt(prev);
+    setSel([]);
+    setMsg(null);
+  };
+  /** Ganti MC satu orang mulai jam `at`. */
+  const setMcs = (name: string, cat: string, part: string, mcs: string[]) => {
+    update((s) => ({
+      ...s,
+      machines: { ...s.machines, ...Object.fromEntries(mcs.filter((x) => !s.machines[mcKey(cat, x)]).map((x) => [mcKey(cat, x), part])) },
+      people: s.people.map((p) => (p.name === name ? (mcs.length ? assign(p, { at, cat, mcs }) : release(p, at)) : p)),
+    }));
+    setSheet(null);
+    setSel([]);
+  };
   const toggle = (name: string) => setSel((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));
 
   const changes = st.people.filter((p) => {
@@ -228,6 +260,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   });
   const chip = (name: string, color?: string, full?: boolean) => {
     const on = sel.includes(name);
+    const w = where.get(name);
+    const sub = [w?.mcs.length ? w.mcs.map((x) => x.replace("MC ", "")).join(",") : "", w?.ot ? `⏱ s/d ${toClock(w.ot)}` : "", w?.next ? `→ ${w.next}` : ""].filter(Boolean);
     return (
       <button
         key={name}
@@ -235,12 +269,21 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         onDragStart={() => setDrag(name)}
         onDragEnd={() => setDrag(null)}
         onClick={() => toggle(name)}
-        className={`group flex items-center gap-1.5 rounded-full border bg-white py-1 pl-1 pr-3 text-left text-sm font-medium shadow-sm transition active:scale-95 ${full ? "w-full" : ""} ${on ? "border-slate-900 ring-2 ring-slate-900" : "border-slate-200 hover:border-slate-400"}`}
+        className={`group flex items-center gap-1.5 rounded-full border bg-white py-1 pl-1 pr-3 text-left text-sm font-medium ${sub.length ? "rounded-2xl" : ""} shadow-sm transition active:scale-95 ${full ? "w-full" : ""} ${on ? "border-slate-900 ring-2 ring-slate-900" : "border-slate-200 hover:border-slate-400"}`}
       >
         <span className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: on ? "#0f172a" : (color ?? "#94a3b8") }}>
           {on ? "✓" : initials(name)}
         </span>
-        <span className="truncate">{full ? name : first(name)}</span>
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate">{full ? name : first(name)}</span>
+          {sub.length > 0 && (
+            <span className="flex flex-wrap gap-x-1.5 text-[11px] font-semibold">
+              {w?.mcs.length ? <span className="text-slate-500">MC {sub[0]}</span> : null}
+              {w?.ot ? <span className="text-amber-700">⏱ {toClock(w.ot)}</span> : null}
+              {w?.next ? <span className="text-violet-700">→ {w.next}</span> : null}
+            </span>
+          )}
+        </span>
       </button>
     );
   };
@@ -353,12 +396,29 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                                   setSheet({ target: row });
                                 }}
                               >
-                                ≈ {n0(row.estEnd)} pcs
-                                {row.need > 0 && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 font-semibold ${PILL[row.status]}`}>{WORD[row.status]}</span>}
+                                {row.need > 0 ? <span className={`rounded-full px-2 py-0.5 font-semibold ${PILL[row.status]}`}>{WORD[row.status]}</span> : <span className="underline">+ target</span>}
                               </button>
                             )
                           )}
                         </div>
+                        {(() => {
+                          const key = m.parts.find((p) => p.id === pid)?.key ?? "";
+                          const po = page.po?.[key] ?? 0;
+                          const act = page.actual?.[`${c.name}|${pid}`] ?? 0;
+                          const cell = (l: string, v: string, cls = "") => (
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{l}</div>
+                              <div className={`truncate text-sm font-bold tabular-nums ${cls}`}>{v}</div>
+                            </div>
+                          );
+                          return (
+                            <div className="mb-2 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
+                              {cell(row?.need && row.need !== po ? "Target" : "PO", row?.need ? n0(row.need) : po ? n0(po) : "–")}
+                              {cell("Estimasi", n0(row?.estEnd ?? 0), row?.need ? TXT[row.status] : "")}
+                              {cell("Aktual", act ? n0(act) : "–")}
+                            </div>
+                          );
+                        })()}
                         {row && row.need > 0 && (
                           <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
                             <div className={`h-full ${BAR[row.status]}`} style={{ width: `${Math.min(100, (row.estEnd / row.need) * 100)}%` }} />
@@ -400,6 +460,11 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                   <button className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-900" onClick={() => setSheet("dest")}>
                     Pindah ke…
                   </button>
+                  {sel.length === 1 && m.cats.find((c) => c.name === where.get(sel[0])?.cat)?.mc && (
+                    <button className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-900" onClick={() => setSheet("mc")}>
+                      Atur MC
+                    </button>
+                  )}
                   <button className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold" onClick={() => unassign(sel)}>
                     Lepas tugas
                   </button>
@@ -420,7 +485,14 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
               </div>
             ) : (
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm">{changes} orang diubah</span>
+                <span className="flex items-center gap-3 text-sm">
+                  {changes} orang diubah
+                  {hist.length > 0 && (
+                    <button className="rounded-lg bg-white/10 px-3 py-1.5 font-semibold hover:bg-white/20" onClick={undo}>
+                      ↶ Batal langkah
+                    </button>
+                  )}
+                </span>
                 {canSave ? (
                   <button className="btn-primary h-10 px-5" disabled={busy} onClick={save}>
                     {busy ? "Menyimpan…" : "Simpan rencana"}
@@ -496,6 +568,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           }}
         />
       )}
+      {sheet === "mc" && sel.length === 1 && where.get(sel[0]) && (
+        <McSheet m={m} st={st} at={at} name={sel[0]} w={where.get(sel[0])!} onClose={() => setSheet(null)} onSave={(mcs) => setMcs(sel[0], where.get(sel[0])!.cat, where.get(sel[0])!.part, mcs)} />
+      )}
       {sheet === "hadir" && <HadirSheet st={st} onClose={() => setSheet(null)} onSet={(name, a) => setAbsent([name], a)} />}
     </div>
   );
@@ -526,6 +601,43 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
+  );
+}
+
+function McSheet({ m, st, at, name, w, onClose, onSave }: { m: PMaster; st: PlanState; at: number; name: string; w: NonNullable<Where>; onClose: () => void; onSave: (mcs: string[]) => void }) {
+  const [pick, setPick] = useState<string[]>(w.mcs);
+  const holders = mcHolders(st, m, at, name);
+  const limit = m.maxMc[w.cat] ?? 3;
+  return (
+    <Sheet title={`MC ${first(name)} mulai ${toClock(at)}`} onClose={onClose}>
+      <p className="mb-3 text-sm text-slate-500">
+        {w.cat} · maks {limit} MC per orang. Abu-abu = dipegang orang lain.
+      </p>
+      <div className="grid grid-cols-6 gap-1.5">
+        {m.machines
+          .filter((x) => x.category === w.cat)
+          .map((x) => {
+            const k = mcKey(w.cat, x.mc);
+            const on = pick.includes(x.mc);
+            const other = holders.get(k);
+            return (
+              <button
+                key={k}
+                disabled={!!other || (!on && pick.length >= limit)}
+                title={other ? `Dipegang ${other}` : partLabel(m, st.machines[k] ?? "")}
+                onClick={() => setPick(on ? pick.filter((y) => y !== x.mc) : [...pick, x.mc])}
+                className={`flex flex-col items-center rounded-lg border py-1.5 text-xs font-bold disabled:opacity-30 ${on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white"}`}
+              >
+                {x.mc.replace("MC ", "")}
+                <span className={`text-[9px] font-medium ${on ? "text-blue-100" : "text-slate-400"}`}>{other ? first(other) : partLabel(m, st.machines[k] ?? "").split(" ")[0]}</span>
+              </button>
+            );
+          })}
+      </div>
+      <button className="btn-primary mt-4 w-full" onClick={() => onSave(pick)}>
+        Simpan {pick.length} MC
+      </button>
+    </Sheet>
   );
 }
 

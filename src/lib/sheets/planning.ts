@@ -5,7 +5,9 @@
 // Simpan ulang tanggal yang sama = baris lama dikosongkan, baris baru ditambahkan.
 import "server-only";
 import { addDays, nowJakarta } from "../dates";
-import { compute, dayEnd, mcKey, norm, spans, toClock, buildMaster, type PlanState, type RawMaster, type PPerson } from "../planning";
+import { compute, dayEnd, familyOf, mcKey, norm, spans, toClock, buildMaster, typeKey, type PlanState, type RawMaster, type PPerson } from "../planning";
+import { fromPoCode, partKey } from "../overtime";
+import { readForecast } from "./forecast";
 import { add, emptyAgg, loadFacts } from "../reports";
 import { loadMaster } from "../service";
 import { apiMaster, bacaKehadiran, bacaCache, masterSettings, planMaster, sheetsIO, tandaiTidakMasukOleh, batalTidakMasukOleh } from "./qa";
@@ -52,11 +54,31 @@ export type PlanPage = {
   basis: string | null;
   /** Efisiensi & batas MC: asal angkanya. */
   source: Record<string, string>;
+  /** PO kirim tanggal ini per produk (kunci produk), dari tab "PO Harian". */
+  po?: Record<string, number>;
+  /** Aktual (laporan sudah disetujui) tanggal ini per "Kategori|id part". */
+  actual?: Record<string, number>;
 };
 
 export async function loadPlanPage(date: string): Promise<PlanPage> {
   const [am, pm, set, master, absen, saved] = await Promise.all([apiMaster(), planMaster(), masterSettings(), loadMaster(), bacaKehadiran(date), readSaved(date)]);
-  const { facts } = await loadFacts(master, addDays(date, -30), addDays(date, -1));
+  const { facts: all } = await loadFacts(master, addDays(date, -30), date);
+  const facts = all.filter((f) => f.workDate < date);
+  const todayFacts = all.filter((f) => f.workDate === date);
+  // PO kirim tanggal ini (kode customer "GDD627*D1  J" -> 627-J D1).
+  const po: Record<string, number> = {};
+  try {
+    const { po: rows } = await readForecast();
+    for (const r of rows) {
+      if (r.tanggal !== date) continue;
+      const p = fromPoCode(r.part);
+      if (!p) continue;
+      const key = `${/^GDD/i.test(r.part.trim()) ? "iron" : familyOf("plastik")}|${partKey(p.name)}|${typeKey(p.type)}`;
+      po[key] = (po[key] ?? 0) + r.qty;
+    }
+  } catch {
+    /* tab PO Harian belum ada: lewati */
+  }
 
   const categories = am.categories.map((c) => ({ name: c.name, process: c.process }));
   const eff: Record<string, number> = {};
@@ -147,8 +169,15 @@ export async function loadPlanPage(date: string): Promise<PlanPage> {
   const abs = new Map(absen.map((a) => [a.member, a.alasan]));
   state.people = state.people.map((p) => (abs.has(p.name) ? { ...p, absent: abs.get(p.name) } : saved ? p : { ...p, absent: undefined }));
   for (const k of Object.keys(machines)) if (!(k in state.machines)) state.machines[k] = machines[k];
+  // Belum ada rencana tersimpan: target = PO kirim hari ini (semua proses).
+  if (!saved && !Object.keys(state.targets ?? {}).length) state.targets = Object.fromEntries(Object.entries(po).map(([k, q]) => [k, { pf: q, seiretsu: q, senbetsu: q }]));
+  const actual: Record<string, number> = {};
+  for (const f of todayFacts) {
+    const id = partIn(f.categoryName, f.part);
+    if (id) actual[`${f.categoryName}|${id}`] = (actual[`${f.categoryName}|${id}`] ?? 0) + f.qty;
+  }
 
-  return { raw, state, initial, saved: saved?.info ?? null, basis, source };
+  return { raw, state, initial, saved: saved?.info ?? null, basis, source, po, actual };
 }
 
 async function ensureTab() {
