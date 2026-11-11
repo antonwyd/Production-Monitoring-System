@@ -485,3 +485,48 @@ export function describe(m: PMaster, p: PPerson, end: number): string {
     })
     .join(" → ");
 }
+
+/** Daftar type yang bisa diberi PO (satu baris per key produk), label terpendek. */
+export function poTypes(m: Pick<PMaster, "parts" | "cats">): { key: string; label: string }[] {
+  const ok = new Set(m.cats.map((c) => c.name));
+  const out = new Map<string, string>();
+  for (const p of m.parts) {
+    if (!ok.has(p.category)) continue;
+    const cur = out.get(p.key);
+    if (!cur || p.label.length < cur.length) out.set(p.key, p.label);
+  }
+  return [...out].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, "id", { numeric: true }));
+}
+
+/**
+ * Baca PO yang ditempel dari Excel/WA: satu baris = nama type + jumlah.
+ * Contoh: "627-J D1   800.000", "GDD627*D1 J 800000", "629J D2\t300,000".
+ * Cocok bila nomor part (tanpa digit lain di sebelahnya), huruf varian (J/H) dan type (D1/D2) ada di baris.
+ */
+export function parsePo(text: string, m: Pick<PMaster, "parts" | "cats">): { po: Record<string, number>; miss: string[] } {
+  const types = poTypes(m).map((t) => {
+    const mm = /^(\d+[A-Z]?)-?([A-Z])?\s*(D\d)?/i.exec(t.label.replace(/\s+-/g, "-")) ?? [];
+    return { ...t, num: (mm[1] ?? "").toUpperCase(), suf: (mm[2] ?? "").toUpperCase(), typ: (mm[3] ?? "").toUpperCase() };
+  });
+  const po: Record<string, number> = {};
+  const miss: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const q = /(\d{1,3}(?:[.,]\d{3})+|\d+)\s*(?:pcs)?\s*$/i.exec(line);
+    if (!q) {
+      miss.push(line);
+      continue;
+    }
+    const qty = Number(q[1].replace(/[.,]/g, ""));
+    const head = line.slice(0, q.index).toUpperCase();
+    const hit = types
+      .filter((t) => t.num && new RegExp(`(?<!\\d)${t.num}(?![\\dA-Z]*\\d)`).test(head))
+      .filter((t) => !t.typ || new RegExp(`${t.typ}(?!\\d)`).test(head.replace(/\s+/g, "")))
+      .filter((t) => !t.suf || new RegExp(`${t.num}${t.suf}|${t.num}.*?(?<![A-Z])${t.suf}(?![A-Z0-9])`).test(head))
+      .sort((a, b) => b.num.length - a.num.length || b.label.length - a.label.length);
+    if (!hit.length || !qty) miss.push(line);
+    else po[hit[0].key] = (po[hit[0].key] ?? 0) + qty;
+  }
+  return { po, miss };
+}

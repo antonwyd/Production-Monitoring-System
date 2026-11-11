@@ -14,10 +14,13 @@ import {
   mcHolders,
   mcKey,
   normalEnd,
+  parsePo,
+  poTypes,
   prodBetween,
   release,
   spans,
   START,
+  STEPS,
   STEP_NAME,
   toClock,
   type PCat,
@@ -98,7 +101,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     for (const p of page.state.people) for (const g of p.segs) if (g.cat) g.mcs?.length ? g.mcs.forEach((x) => add(g.cat, page.state.machines[mcKey(g.cat, x)] ?? "")) : add(g.cat, g.part ?? "");
     return out;
   });
-  const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | { addType: string }>(null);
+  const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | "po" | { addType: string }>(null);
   const [hist, setHist] = useState<PlanState[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -216,7 +219,6 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     setSheet(null);
     setSel([]);
   };
-  const setTarget = (key: string, step: Step, v: number) => update((s) => ({ ...s, targets: { ...s.targets, [key]: { ...s.targets[key], [step]: v } } }));
   const toggle = (name: string) => setSel((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));
 
   const changes = st.people.filter((p) => {
@@ -248,6 +250,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     const byPart = new Map<string, string[]>();
     for (const [name, w] of where) if (w && w.cat === c.name) byPart.set(w.part, [...(byPart.get(w.part) ?? []), name]);
     for (const pid of extra[c.name] ?? []) if (!byPart.has(pid)) byPart.set(pid, []);
+    // Type yang ada PO-nya selalu tampil sebagai tempat tujuan, walau belum ada orang.
+    for (const p of m.parts) if (p.category === c.name && st.targets[p.key] && !byPart.has(p.id)) byPart.set(p.id, []);
     const groups = [...byPart.entries()]
       .map(([pid, names]) => ({ pid, names: names.sort(), row: rowFor(m, res, c, pid) }))
       .sort((a, b) => b.names.length - a.names.length || partLabel(m, a.pid).localeCompare(partLabel(m, b.pid)));
@@ -262,24 +266,52 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const hours: number[] = [];
   for (let t = START; t < end; t += 60) if (t !== 12 * 60) hours.push(t);
   const moving = sel.length > 0 || !!drag;
+  // PO per type (disimpan sebagai target yang sama di setiap proses).
+  const po = useMemo(() => {
+    const o: Record<string, number> = {};
+    for (const [k, v] of Object.entries(st.targets)) {
+      const q = Math.max(0, ...Object.values(v).map((x) => x ?? 0));
+      if (q > 0) o[k] = q;
+    }
+    return o;
+  }, [st.targets]);
+  const setPoAll = (map: Record<string, number>) =>
+    update((s) => {
+      const targets: PlanState["targets"] = {};
+      for (const [key, q] of Object.entries(map)) {
+        if (!(q > 0)) continue;
+        const t: Partial<Record<Step, number>> = {};
+        for (const p of m.parts) if (p.key === key) t[m.cats.find((c) => c.name === p.category)!.step] = q;
+        targets[key] = t;
+      }
+      return { ...s, targets };
+    });
   const hasil = useMemo(() => {
     const left = prodBetween(m, st.ot, Math.max(now, at, START), T) / 60;
-    return resT.rows
-      .filter((r) => r.need > 0)
-      .map((r) => {
-        const gap = r.need - r.est;
-        const status: Status = r.est >= r.need * 1.1 ? "SAFE" : r.est >= r.need ? "WARNING" : "CRITICAL";
+    const held = mcHolders(st, m, at, "");
+    const out: Group[] = [];
+    for (const t of poTypes(m)) {
+      const q = po[t.key];
+      if (!q) continue;
+      const steps: Act[] = STEPS.flatMap((step) => {
+        const r = resT.rows.find((x) => x.key === t.key && x.step === step);
+        if (!r) return [];
+        const gap = q - r.est;
         const add = gap > 0 && r.unit > 0 && left > 0 ? Math.ceil(gap / (r.unit * left)) : 0;
-        const p = m.parts.find((x) => x.key === r.key && (r.cats.length ? r.cats.includes(x.category) : m.cats.find((c) => c.name === x.category)?.step === r.step));
+        const p = m.parts.find((x) => x.key === t.key && (r.cats.length ? r.cats.includes(x.category) : m.cats.find((c) => c.name === x.category)?.step === step));
         const cat = p?.category ?? "";
         const pid = p?.id ?? "";
-        // MC kosong yang bisa jalan type ini (untuk PF).
-        const held = mcHolders(st, m, at, "");
         const free = m.machines.filter((x) => x.category === cat && !held.get(mcKey(cat, x.mc)) && (st.machines[mcKey(cat, x.mc)] === pid || x.opts.includes(pid))).length;
-        return { r, gap, status, add, cat, pid, free };
-      })
-      .sort((a, b) => ({ CRITICAL: 0, WARNING: 1, SAFE: 2 })[a.status] - ({ CRITICAL: 0, WARNING: 1, SAFE: 2 })[b.status] || b.gap - a.gap);
-  }, [resT, m, st, now, at, T]);
+        return [{ step, est: r.est, gap, add, cat, pid, free, extraHours: r.extraHours, rateEnd: r.rateEnd, people: r.people.length }];
+      });
+      if (!steps.length) continue;
+      const low = steps.reduce((a, b) => (b.est < a.est ? b : a));
+      const status: Status = low.est >= q * 1.1 ? "SAFE" : low.est >= q ? "WARNING" : "CRITICAL";
+      out.push({ key: t.key, label: t.label, po: q, hasil: low.est, gap: q - low.est, bottle: low.step, status, steps });
+    }
+    const R = { CRITICAL: 0, WARNING: 1, SAFE: 2 };
+    return out.sort((a, b) => R[a.status] - R[b.status] || b.gap - a.gap);
+  }, [resT, m, st, now, at, T, po]);
   const kurang = hasil.filter((h) => h.status === "CRITICAL").length;
 
   const dropProps = (id: string, onDrop: (names: string[]) => void) => ({
@@ -382,6 +414,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
 
         <div className="ml-auto flex items-center gap-2">
           {saved && !dirty && <span className="hidden text-[11px] text-slate-400 xl:inline">Tersimpan · {saved.by}</span>}
+          <button className="h-9 rounded-lg bg-sky-50 px-3 text-sm font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100" onClick={() => setSheet("po")}>
+            📋 PO{Object.keys(po).length ? ` (${Object.keys(po).length})` : ""}
+          </button>
           <button className="h-9 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-30" disabled={!hist.length} onClick={undo} title="Batalkan langkah terakhir">
             ↶ Batal
           </button>
@@ -434,7 +469,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
               <div className="flex gap-0.5 rounded-xl bg-slate-100 p-1">
                 {(
                   [
-                    ["hasil", "📊 Hasil vs Target"],
+                    ["hasil", "📊 PO vs Simulasi"],
                     ["lantai", "▶ Lantai produksi"],
                   ] as const
                 ).map(([k, l]) => (
@@ -475,7 +510,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                 <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} compact maxH={300} />
               </div>
             )}
-            {tab === "hasil" && <Hasil m={m} rows={hasil} T={T} pool={pool} onAdd={(names, cat, pid) => moveTo(names, cat, pid)} />}
+            {tab === "hasil" && <Hasil m={m} rows={hasil} T={T} pool={pool} onAdd={(names, cat, pid) => moveTo(names, cat, pid)} onPo={() => setSheet("po")} />}
           </section>
 
           {/* Papan per proses */}
@@ -538,7 +573,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                           <span>
                             Aktual <b className="tabular-nums text-slate-800">{act ? k0(act) : "–"}</b>
                           </span>
-                          <TargetInline value={row?.need ?? 0} onSave={(v) => setTarget(m.parts.find((p) => p.id === pid)!.key, c.step, v)} />
+                          <span>
+                            PO <b className="tabular-nums text-slate-800">{row?.need ? k0(row.need) : "–"}</b>
+                          </span>
                         </div>
                         <div className="mt-2.5 flex flex-wrap gap-1.5">
                           {names.map((n) => chip(n, c.step))}
@@ -661,6 +698,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           </div>
         </div>
       )}
+      {sheet === "po" && <PoSheet m={m} po={po} onClose={() => setSheet(null)} onSave={(map) => (setPoAll(map), setSheet(null))} />}
       {sheet === "hadir" && <HadirSheet st={st} onClose={() => setSheet(null)} onSet={(name, a) => setAbsent([name], a)} />}
     </div>
   );
@@ -677,96 +715,105 @@ const typeOpts = (m: PMaster, c: PCat, current: string[]): PPart[] => {
 };
 const countMc = (st: PlanState, m: PMaster, cat: string, at: number) => [...mcHolders(st, m, at).keys()].filter((k) => k.startsWith(cat + "|")).length;
 
-type HasilRow = { r: Row; gap: number; status: Status; add: number; cat: string; pid: string; free: number };
+type Act = { step: Step; est: number; gap: number; add: number; cat: string; pid: string; free: number; extraHours: number; rateEnd: number; people: number };
+type Group = { key: string; label: string; po: number; hasil: number; gap: number; bottle: Step; status: Status; steps: Act[] };
 
-/** Hasil simulasi vs target per type: yang kurang di atas, lengkap dengan tindakan. */
-function Hasil({ m, rows, T, pool, onAdd }: { m: PMaster; rows: HasilRow[]; T: number; pool: string[]; onAdd: (names: string[], cat: string, pid: string) => void }) {
+/** PO vs hasil simulasi per type: yang kurang di atas, lengkap dengan apa yang harus diubah. */
+function Hasil({ m, rows, T, pool, onAdd, onPo }: { m: PMaster; rows: Group[]; T: number; pool: string[]; onAdd: (names: string[], cat: string, pid: string) => void; onPo: () => void }) {
   if (!rows.length)
     return (
-      <div className="flex items-center gap-3 px-4 py-5 text-[13px] text-slate-500">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-lg">🎯</span>
-        <span>
-          Isi <b className="text-slate-700">Target</b> di kartu type (klik &quot;Target + isi&quot;). Hasil simulasi dan apa yang harus dilakukan akan tampil di sini.
-        </span>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-5 text-[13px] text-slate-500">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-lg">📋</span>
+        <span>Input PO hari ini dulu. Setelah itu terlihat per type: PO, hasil simulasi, kurang berapa, dan siapa yang harus dipindah.</span>
+        <button className="btn-primary h-9 px-4 text-sm" onClick={onPo}>
+          Input PO
+        </button>
       </div>
     );
   const cnt = (s: Status) => rows.filter((x) => x.status === s).length;
+  const totPo = rows.reduce((a, r) => a + r.po, 0);
+  const totGap = rows.reduce((a, r) => a + Math.max(0, r.gap), 0);
   return (
-    <div className="max-h-[260px] overflow-auto">
-      <div className="sticky top-0 z-10 flex gap-4 bg-white px-4 py-2 text-[12px] font-semibold">
+    <div className="max-h-[300px] overflow-auto">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-4 gap-y-1 bg-white px-4 py-2 text-[12px] font-semibold">
         <span className="text-red-600">● {cnt("CRITICAL")} kurang</span>
         <span className="text-amber-600">● {cnt("WARNING")} mepet</span>
-        <span className="text-emerald-600">● {cnt("SAFE")} cukup</span>
-        <span className="ml-auto font-normal text-slate-400">Estimasi = hasil susunan orang di papan sampai jam {toClock(T)}</span>
+        <span className="text-emerald-600">● {cnt("SAFE")} aman</span>
+        <span className="text-slate-500">
+          Total PO {n0(totPo)} · {totGap > 0 ? <b className="text-red-600">kurang {n0(totGap)}</b> : <b className="text-emerald-600">semua tercapai</b>}
+        </span>
+        <button className="ml-auto font-semibold text-sky-700 hover:underline" onClick={onPo}>
+          Ubah PO
+        </button>
       </div>
-      <table className="w-full min-w-[640px] text-[13px]">
-        <thead className="text-[11px] uppercase tracking-wide text-slate-400">
-          <tr>
-            <th className="px-4 py-1 text-left font-semibold">Type</th>
-            <th className="px-2 py-1 text-right font-semibold">Target</th>
-            <th className="px-2 py-1 text-right font-semibold">Estimasi s/d {toClock(T)}</th>
-            <th className="hidden w-[22%] px-2 py-1 md:table-cell" />
-            <th className="px-2 py-1 text-right font-semibold">Selisih</th>
-            <th className="px-4 py-1 text-left font-semibold">Yang perlu dilakukan</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ r, gap, status, add, cat, pid, free }) => {
-            const c = m.cats.find((x) => x.name === cat);
-            const step = r.step;
-            const pct = Math.min(100, (r.est / r.need) * 100);
-            const col = status === "CRITICAL" ? "#ef4444" : status === "WARNING" ? "#f59e0b" : "#10b981";
-            const perPerson = c?.mc ? (m.maxMc[cat] ?? 3) : 1;
-            const mcAdd = c?.mc ? Math.min(add, free) : 0;
-            const needPeople = c?.mc ? Math.ceil(mcAdd / perPerson) : add;
-            const take = pool.slice(0, needPeople);
-            return (
-              <tr key={`${r.key}#${r.step}`} className={`border-t border-slate-100 ${status === "CRITICAL" ? "bg-red-50/40" : ""}`}>
-                <td className="px-4 py-2">
-                  <div className="flex items-center gap-2 whitespace-nowrap">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLOR[step] }} />
-                    <span className="font-bold text-slate-900">{r.label}</span>
-                    <span className="text-[11.5px] text-slate-400">{cat || STEP_NAME[step]}</span>
-                  </div>
-                </td>
-                <td className="px-2 py-2 text-right font-semibold tabular-nums">{n0(r.need)}</td>
-                <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: col }}>
-                  {n0(r.est)}
-                </td>
-                <td className="hidden px-2 py-2 md:table-cell">
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: col }} />
-                  </div>
-                </td>
-                <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: col }}>
-                  {gap > 0 ? `−${n0(gap)}` : `+${n0(-gap)}`}
-                </td>
-                <td className="px-4 py-2">
-                  {status === "SAFE" ? (
-                    <span className="text-emerald-700">Aman</span>
-                  ) : status === "WARNING" ? (
-                    <span className="text-amber-700">Pas-pasan, pantau</span>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="font-semibold text-red-700">
-                        {c?.mc ? `Butuh ${add} MC lagi` : `Tambah ${add} orang`}
-                        {r.rateEnd > 0 && T >= nEndOf(m) ? ` atau lembur ±${(Math.ceil(r.extraHours * 2) / 2).toLocaleString("id-ID")} jam` : ""}
-                      </span>
-                      {c?.mc && <span className="text-[12px] text-slate-500">{free ? `MC kosong untuk type ini: ${free}` : "Tidak ada MC kosong untuk type ini: ganti MC lain ke type ini (Atur MC) atau lembur."}</span>}
-                      {take.length > 0 && cat && pid && (!c?.mc || mcAdd > 0) && (
-                        <button className="rounded-md bg-red-600 px-2 py-0.5 text-[12px] font-semibold text-white hover:bg-red-700" onClick={() => onAdd(take, cat, pid)}>
-                          + {take.map(first).join(", ")}
-                        </button>
-                      )}
-                      {!take.length && (!c?.mc || free > 0) && <span className="text-[12px] text-slate-500">Seret orang dari type yang &quot;Cukup&quot; ke type ini.</span>}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="flex min-w-[620px] flex-col">
+        {rows.map((g) => {
+          const col = g.status === "CRITICAL" ? "#ef4444" : g.status === "WARNING" ? "#f59e0b" : "#10b981";
+          const pct = Math.min(100, (g.hasil / g.po) * 100);
+          return (
+            <div key={g.key} className={`grid grid-cols-[150px_110px_1fr_120px] items-start gap-3 border-t border-slate-100 px-4 py-2.5 ${g.status === "CRITICAL" ? "bg-red-50/50" : ""}`}>
+              <div>
+                <div className="text-[15px] font-bold text-slate-900">{g.label}</div>
+                <div className="text-[11.5px] text-slate-500">PO {n0(g.po)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[15px] font-bold tabular-nums" style={{ color: col }}>
+                  {n0(g.hasil)}
+                </div>
+                <div className="text-[11px] text-slate-400">simulasi s/d {toClock(T)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: col }} />
+                </div>
+                <div className="mt-1.5 flex flex-col gap-1">
+                  {g.steps.map((a) => {
+                    const short = a.gap > 0;
+                    const c = m.cats.find((x) => x.name === a.cat);
+                    const per = c?.mc ? (m.maxMc[a.cat] ?? 3) : 1;
+                    const mcAdd = c?.mc ? Math.min(a.add, a.free) : 0;
+                    const ppl = c?.mc ? Math.ceil(mcAdd / per) : a.add;
+                    const take = pool.slice(0, ppl);
+                    return (
+                      <div key={a.step} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
+                        <span className="inline-flex w-[118px] shrink-0 items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full" style={{ background: COLOR[a.step] }} />
+                          <b className="text-slate-700">{STEP_NAME[a.step]}</b>
+                          <span className={`tabular-nums ${short ? "font-bold text-red-600" : "text-slate-500"}`}>{k0(a.est)}</span>
+                        </span>
+                        {!short ? (
+                          <span className="text-emerald-700">✓ cukup</span>
+                        ) : (
+                          <>
+                            <span className="font-semibold text-red-700">
+                              {c?.mc ? `butuh +${a.add} MC` : `tambah ${a.add} orang`}
+                              {a.rateEnd > 0 && T >= nEndOf(m) ? ` atau lembur ±${(Math.ceil(a.extraHours * 2) / 2).toLocaleString("id-ID")} jam` : ""}
+                            </span>
+                            {c?.mc && <span className="text-slate-500">{a.free ? `(MC kosong ${a.free})` : "(MC penuh: ganti MC lain ke type ini)"}</span>}
+                            {take.length > 0 && a.cat && a.pid && (!c?.mc || mcAdd > 0) ? (
+                              <button className="rounded-md bg-red-600 px-2 py-0.5 text-[11.5px] font-semibold text-white hover:bg-red-700" onClick={() => onAdd(take, a.cat, a.pid)}>
+                                + {take.map(first).join(", ")}
+                              </button>
+                            ) : (
+                              !c?.mc && <span className="text-slate-500">seret orang dari type yang aman</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[15px] font-extrabold tabular-nums" style={{ color: col }}>
+                  {g.gap > 0 ? `−${n0(g.gap)}` : `+${n0(-g.gap)}`}
+                </div>
+                <div className="text-[11px] text-slate-400">{g.gap > 0 ? `kurang · ${STEP_NAME[g.bottle]} paling sedikit` : "lebih dari PO"}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -806,7 +853,6 @@ function Meter({ step, est, target, actual, status }: { step: Step; est: number;
   );
 }
 
-/** Target diisi langsung di kartu (klik angka). */
 function TargetInline({ value, onSave }: { value: number; onSave: (v: number) => void }) {
   const [edit, setEdit] = useState(false);
   const [v, setV] = useState("");
@@ -894,6 +940,56 @@ function McSheet({ m, st, at, name, w, onClose, onSave }: { m: PMaster; st: Plan
       <button className="btn-primary mt-4 w-full" onClick={() => onSave(pick)}>
         Simpan {pick.length} MC
       </button>
+    </Sheet>
+  );
+}
+
+function PoSheet({ m, po, onClose, onSave }: { m: PMaster; po: Record<string, number>; onClose: () => void; onSave: (map: Record<string, number>) => void }) {
+  const types = poTypes(m);
+  const [v, setV] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(po).map(([k, q]) => [k, n0(q)])));
+  const [paste, setPaste] = useState("");
+  const [miss, setMiss] = useState<string[]>([]);
+  const [q, setQ] = useState("");
+  const read = () => {
+    const r = parsePo(paste, m);
+    setV((o) => ({ ...o, ...Object.fromEntries(Object.entries(r.po).map(([k, x]) => [k, n0(x)])) }));
+    setMiss(r.miss);
+    setPaste("");
+  };
+  const total = Object.values(v).reduce((a, x) => a + num(x), 0);
+  const shown = types.filter((t) => !q || t.label.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <Sheet title="PO hari ini" onClose={onClose}>
+      <p className="mb-2 text-sm text-slate-500">Tempel dari Excel/WA (satu baris: type + jumlah), atau isi langsung di daftar.</p>
+      <textarea className="input h-20 w-full font-mono text-[13px]" placeholder={"627-J D1\t800000\n629-J D2\t300000"} value={paste} onChange={(e) => setPaste(e.target.value)} />
+      <button className="btn-secondary mt-1.5 h-8 w-full text-sm" disabled={!paste.trim()} onClick={read}>
+        Baca tempelan
+      </button>
+      {miss.length > 0 && <p className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[12px] text-amber-800">Tidak dikenali: {miss.join(" · ")}</p>}
+      <input className="input mt-3 h-8 w-full text-sm" placeholder="Cari type…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="mt-2 grid max-h-[38vh] grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1">
+        {shown.map((t) => (
+          <label key={t.key} className="flex items-center justify-between gap-2 text-sm">
+            <span className={`truncate ${num(v[t.key] ?? "") ? "font-bold" : "text-slate-600"}`}>{t.label}</span>
+            <input
+              inputMode="numeric"
+              className="h-8 w-28 rounded-lg border border-slate-200 px-2 text-right text-sm tabular-nums outline-none focus:border-slate-900"
+              value={v[t.key] ?? ""}
+              placeholder="0"
+              onChange={(e) => setV({ ...v, [t.key]: e.target.value })}
+              onBlur={() => v[t.key] && setV({ ...v, [t.key]: num(v[t.key]) ? n0(num(v[t.key])) : "" })}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 flex gap-2">
+        <button className="btn-secondary h-10 px-3 text-sm" onClick={() => setV({})}>
+          Kosongkan
+        </button>
+        <button className="btn-primary h-10 flex-1" onClick={() => onSave(Object.fromEntries(Object.entries(v).map(([k, x]) => [k, num(x)])))}>
+          Pakai PO · total {n0(total)}
+        </button>
+      </div>
     </Sheet>
   );
 }

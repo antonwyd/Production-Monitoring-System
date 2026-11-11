@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, assignRange, buildMaster, extendOt, compute, machineOpts, mcHolders, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, buildMaster, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -131,5 +131,13 @@ describe("Perencanaan: jam dari-sampai", () => {
     const end = toMin("18:00");
     st2.people[0] = assignRange(st2.people[0], { at: toMin("16:00"), cat: "Seiretsu Iron Cage", part: S }, end, end);
     expect(row(compute(m, st2, end), "seiretsu").est).toBe(4600 * 2 + 1200);
+  });
+});
+
+describe("Perencanaan: tempel PO", () => {
+  it("membaca berbagai format baris PO", () => {
+    const r = parsePo("627-J D1\t800.000\nGDD629*D2  J 300,000\n6901J D2 5000 pcs\nBaris aneh\n629-J D3 100", m);
+    expect(r.po).toEqual({ "iron|627J|D1": 800000, "iron|629J|D2": 300000, "iron|6901J|D2": 5000 });
+    expect(r.miss).toEqual(["Baris aneh", "629-J D3 100"]);
   });
 });
