@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, assignRange, balance, buildMaster, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, balance, buildMaster, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -142,17 +142,30 @@ describe("Perencanaan: tempel PO", () => {
   });
 });
 
-describe("Perencanaan: seimbangkan", () => {
-  it("pindahkan kelebihan orang ke type yang kurang, tanpa membuat type asal kurang", () => {
+describe("Perencanaan: alur PO (sortir PF+Seiretsu, cek akhir Senbetsu)", () => {
+  it("sortir = PF + Seiretsu; hasil akhir = min(Senbetsu, sortir)", () => {
+    const people = [
+      { name: "P", segs: [{ at: 420, cat: "PF Iron Cage", mcs: ["MC 12", "MC 13"] }] },
+      { name: "S", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Senbetsu Iron Cage", part: "Senbetsu Iron Cage|629-J|D2" }] },
+    ];
+    const st = base(people, { [KEY]: { pf: 10000, seiretsu: 10000, senbetsu: 10000 } });
+    const r = compute(m, st, 960);
+    const f = poFlow(r, poOf(st)).get(KEY)!;
+    expect(f.sortir).toBeCloseTo(row(r, "pf").est + row(r, "seiretsu").est);
+    expect(f.final).toBeCloseTo(Math.min(row(r, "senbetsu").est, f.sortir));
+    expect(f.gap).toBeCloseTo(Math.max(0, 10000 - f.final));
+  });
+  it("seimbangkan: yang belum bekerja dulu, tiap orang sekali, kekurangan turun", () => {
     const people = ["A", "B", "C"].map((name) => ({ name, segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }));
-    const st = base([...people, { name: "Pool", segs: [] }], { [KEY]: { seiretsu: 4000 }, "iron|627J|D1": { seiretsu: 6000 } });
+    const st = base([...people, { name: "Pool", segs: [] }], { [KEY]: { pf: 6000, seiretsu: 6000, senbetsu: 6000 } });
     const mv = balance(m, st, 420, 960);
-    expect(mv.length).toBe(2);
-    expect(mv.every((x) => x.to.part === "Seiretsu Iron Cage|627-J|D1")).toBe(true);
+    expect(mv.length).toBeGreaterThan(0);
     expect(mv[0].name).toBe("Pool");
-    let s = st;
-    for (const x of mv) s = { ...s, people: s.people.map((p) => (p.name === x.name ? assign(p, { at: 420, ...x.to }) : p)) };
-    const r = compute(m, s, 960);
-    expect(r.rows.filter((x) => x.need > 0).every((x) => x.est >= x.need)).toBe(true);
+    expect(new Set(mv.map((x) => x.name)).size).toBe(mv.length);
+    let s2 = st;
+    for (const x of mv) s2 = { ...s2, people: s2.people.map((p) => (p.name === x.name ? assign(p, { at: 420, ...x.to }) : p)) };
+    expect(shortfall(m, s2, 960)).toBeLessThan(shortfall(m, st, 960));
+    expect(poFlow(compute(m, s2, 960), poOf(s2)).get(KEY)!.gap).toBe(0);
   });
 });

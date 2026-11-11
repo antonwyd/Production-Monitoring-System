@@ -15,6 +15,7 @@ import {
   mcHolders,
   mcKey,
   normalEnd,
+  poFlow,
   parsePo,
   poTypes,
   prodBetween,
@@ -92,7 +93,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<"hasil" | "lantai" | "tutup">("hasil");
+  const [tab, setTab] = useState<"lantai" | "tutup">("lantai");
   const [bigFloor, setBigFloor] = useState(false);
   const [until, setUntil] = useState(nEnd);
   const [focus, setFocus] = useState<{ cat: string; n: number } | undefined>();
@@ -300,33 +301,6 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       }
       return { ...s, targets };
     });
-  const hasil = useMemo(() => {
-    const left = prodBetween(m, st.ot, Math.max(now, at, START), T) / 60;
-    const held = mcHolders(st, m, at, "");
-    const out: Group[] = [];
-    for (const t of poTypes(m)) {
-      const q = po[t.key];
-      if (!q) continue;
-      const steps: Act[] = STEPS.flatMap((step) => {
-        const r = resT.rows.find((x) => x.key === t.key && x.step === step);
-        if (!r) return [];
-        const gap = q - r.est;
-        const add = gap > 0 && r.unit > 0 && left > 0 ? Math.ceil(gap / (r.unit * left)) : 0;
-        const p = m.parts.find((x) => x.key === t.key && (r.cats.length ? r.cats.includes(x.category) : m.cats.find((c) => c.name === x.category)?.step === step));
-        const cat = p?.category ?? "";
-        const pid = p?.id ?? "";
-        const free = m.machines.filter((x) => x.category === cat && !held.get(mcKey(cat, x.mc)) && (st.machines[mcKey(cat, x.mc)] === pid || x.opts.includes(pid))).length;
-        return [{ step, est: r.est, gap, add, cat, pid, free, extraHours: r.extraHours, rateEnd: r.rateEnd, people: r.people.length }];
-      });
-      if (!steps.length) continue;
-      const low = steps.reduce((a, b) => (b.est < a.est ? b : a));
-      const status: Status = low.est >= q * 1.1 ? "SAFE" : low.est >= q ? "WARNING" : "CRITICAL";
-      out.push({ key: t.key, label: t.label, po: q, hasil: low.est, gap: q - low.est, bottle: low.step, status, steps });
-    }
-    const R = { CRITICAL: 0, WARNING: 1, SAFE: 2 };
-    return out.sort((a, b) => R[a.status] - R[b.status] || b.gap - a.gap);
-  }, [resT, m, st, now, at, T, po]);
-  const kurang = hasil.filter((h) => h.status === "CRITICAL").length;
 
   // Matriks: baris = type (yang ada PO atau ada orangnya), kolom = PF → Seiretsu → Senbetsu.
   const matrix = useMemo(() => {
@@ -342,6 +316,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       cellPeople.set(k, [...(cellPeople.get(k) ?? []), name]);
       busy.add(p.key);
     }
+    const flows = poFlow(resT, po);
     return poTypes(m)
       .filter((t) => po[t.key] || busy.has(t.key))
       .map((t) => {
@@ -352,12 +327,14 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           const r = resT.rows.find((x) => x.key === t.key && x.step === step);
           const tgt = parts.find((p) => names.some((n) => where.get(n)?.part === p.id)) ?? parts[0];
           const est = r?.est ?? 0;
-          const status: Status | undefined = !q ? undefined : est >= q * 1.1 ? "SAFE" : est >= q ? "WARNING" : "CRITICAL";
+          // Status per sel hanya untuk Senbetsu (cek akhir); PF & Seiretsu dinilai bersama sebagai sortir.
+          const status: Status | undefined = !q || step !== "senbetsu" ? undefined : est >= q * 1.1 ? "SAFE" : est >= q ? "WARNING" : "CRITICAL";
           return { step, ok: parts.length > 0, names, est, mcs: r?.mcs.length ?? 0, cat: tgt?.category ?? "", pid: tgt?.id ?? "", status, mc: !!(tgt && catOf.get(tgt.category)?.mc) };
         });
-        const live = cells.filter((c) => c.ok);
-        const hasil = live.length ? Math.min(...live.map((c) => c.est)) : 0;
-        return { ...t, po: q, cells, hasil, gap: q - hasil };
+        const f = flows.get(t.key);
+        const sortir = cells[0].est + cells[1].est;
+        const hasil = f ? f.final : Math.min(sortir, cells[2].est);
+        return { ...t, po: q, cells, sortir, sen: cells[2].est, hasil, gap: q - hasil };
       })
       .sort((a, b) => Number(!a.po) - Number(!b.po));
   }, [m, po, where, resT]);
@@ -503,7 +480,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                       {ICON[step]}
                     </span>
                     {STEP_NAME[step]}
-                    <span className="font-normal text-slate-400">{matrix.reduce((a, r) => a + r.cells.find((c) => c.step === step)!.names.length, 0)} orang</span>
+                    <span className="font-normal text-slate-400">{step === "senbetsu" ? "cek akhir · " : "sortir · "}{matrix.reduce((a, r) => a + r.cells.find((c) => c.step === step)!.names.length, 0)} orang</span>
                   </span>
                 ))}
                 <span className="self-end text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">Hasil vs PO</span>
@@ -539,10 +516,11 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                               </span>
                               <span className="text-[11px] text-slate-500">
                                 {c.mc ? `${c.mcs} MC · ` : ""}
-                                {r.po ? (c.est >= r.po ? `+${k0(c.est - r.po)}` : `−${k0(r.po - c.est)}`) : `${c.names.length} orang`}
+                                {r.po && c.step === "senbetsu" ? (c.est >= r.po ? `+${k0(c.est - r.po)}` : `−${k0(r.po - c.est)}`) : `${c.names.length} orang`}
                               </span>
                             </div>
-                            {r.po > 0 && (
+                            {r.po > 0 && c.step === "senbetsu" && r.sen > r.sortir && <span className="text-[10.5px] text-slate-500">dibatasi hasil sortir {k0(r.sortir)}</span>}
+                            {r.po > 0 && c.step === "senbetsu" && (
                               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white">
                                 <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cc }} />
                               </div>
@@ -558,8 +536,25 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                         <span className="text-[18px] font-extrabold tabular-nums" style={{ color: col }}>
                           {r.po ? (r.gap > 0 ? `−${n0(r.gap)}` : "✓") : k0(r.hasil)}
                         </span>
-                        <span className="text-[11px] text-slate-500">{r.po ? (r.gap > 0 ? `terkejar ${k0(r.hasil)}` : `terkejar ${k0(r.hasil)}`) : "hasil"}</span>
+                        <span className="text-[11px] text-slate-500">{r.po ? `jadi ${k0(r.hasil)}` : "hasil"}</span>
                       </div>
+                      {r.po > 0 && (
+                        <>
+                          <span />
+                          <div className="col-span-2 -mt-1 flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+                            <span className="shrink-0 text-[11.5px] font-bold text-slate-600">Sortir PF + Seiretsu</span>
+                            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                              <div className="absolute inset-y-0 left-0" style={{ width: `${Math.min(100, (r.cells[0].est / r.po) * 100)}%`, background: COLOR.pf }} />
+                              <div className="absolute inset-y-0" style={{ left: `${Math.min(100, (r.cells[0].est / r.po) * 100)}%`, width: `${Math.max(0, Math.min(100, (r.sortir / r.po) * 100) - Math.min(100, (r.cells[0].est / r.po) * 100))}%`, background: COLOR.seiretsu }} />
+                            </div>
+                            <span className={`shrink-0 text-[12px] font-bold tabular-nums ${r.sortir >= r.po ? "text-emerald-700" : "text-red-600"}`}>
+                              {k0(r.sortir)} / {k0(r.po)} {r.sortir >= r.po ? "✓" : `(−${k0(r.po - r.sortir)})`}
+                            </span>
+                          </div>
+                          <span className="-mt-1 self-center text-[11px] text-slate-400">cek semua hasil sortir</span>
+                          <span />
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -687,39 +682,20 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
               <div className="flex gap-0.5 rounded-xl bg-slate-100 p-1">
                 {(
                   [
-                    ["hasil", "📊 PO vs Simulasi"],
                     ["lantai", "▶ Lantai produksi"],
                   ] as const
                 ).map(([k, l]) => (
                   <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-3 py-1 text-[13px] font-semibold transition ${tab === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
                     {l}
-                    {k === "hasil" && kurang > 0 && <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{kurang}</span>}
                   </button>
                 ))}
               </div>
-              {tab === "hasil" && (
-                <div className="flex items-center gap-1.5 text-[12px] text-slate-500">
-                  <span>sampai jam</span>
-                  <select className="h-7 rounded-lg border border-slate-200 bg-white px-1.5 text-[13px] font-semibold text-slate-900" value={until} onChange={(e) => setUntil(Number(e.target.value))}>
-                    {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-                      .map((h) => h * 60)
-                      .filter((x) => x > START && x <= dayEnd(m, m.otLimitMin))
-                      .map((x) => (
-                        <option key={x} value={x}>
-                          {toClock(x)}
-                          {x > nEnd ? " (lembur)" : ""}
-                        </option>
-                      ))}
-                  </select>
-                  {until > end && <span className="text-amber-600">· belum ada yang lembur sampai jam ini</span>}
-                </div>
-              )}
               {tab === "lantai" && (
                 <button className="text-[12px] font-semibold text-slate-500 hover:text-slate-900" onClick={() => setBigFloor(true)}>
                   ⤢ Layar penuh
                 </button>
               )}
-              <button className="ml-auto text-[12px] font-semibold text-slate-400 hover:text-slate-800" onClick={() => setTab(tab === "tutup" ? "hasil" : "tutup")}>
+              <button className="ml-auto text-[12px] font-semibold text-slate-400 hover:text-slate-800" onClick={() => setTab(tab === "tutup" ? "lantai" : "tutup")}>
                 {tab === "tutup" ? "Tampilkan ▾" : "Sembunyikan ▴"}
               </button>
             </div>
@@ -728,7 +704,6 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                 <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} compact maxH={300} />
               </div>
             )}
-            {tab === "hasil" && <Hasil m={m} rows={hasil} T={T} pool={pool} onAdd={(names, cat, pid) => moveTo(names, cat, pid)} onPo={() => setSheet("po")} />}
           </section>
 
           {/* Papan per proses */}
@@ -781,7 +756,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                             </span>
                           ) : (
                             <span className="flex items-center gap-1">
-                              {row?.need ? <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${PILL[row.status]}`}>{WORD[row.status]}</span> : null}
+                              {row?.need && c.step === "senbetsu" ? <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${PILL[row.status]}`}>{WORD[row.status]}</span> : null}
                               <button
                                 className="grid h-6 w-6 place-items-center rounded-md text-[13px] text-slate-300 hover:bg-red-50 hover:text-red-600"
                                 title="Hapus type ini dari papan"
@@ -796,7 +771,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                             </span>
                           )}
                         </div>
-                        <Meter step={c.step} est={row?.estEnd ?? 0} target={row?.need ?? 0} actual={act} status={row?.need ? row.status : undefined} />
+                        <Meter step={c.step} est={row?.estEnd ?? 0} target={c.step === "senbetsu" ? (row?.need ?? 0) : 0} actual={act} status={row?.need && c.step === "senbetsu" ? row.status : undefined} />
                         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 whitespace-nowrap text-[11.5px] text-slate-500">
                           <span>
                             Estimasi <b className="tabular-nums text-slate-800">{k0(row?.estEnd ?? 0)}</b>
@@ -979,109 +954,6 @@ const typeOpts = (m: PMaster, c: PCat, current: string[]): PPart[] => {
 };
 const countMc = (st: PlanState, m: PMaster, cat: string, at: number) => [...mcHolders(st, m, at).keys()].filter((k) => k.startsWith(cat + "|")).length;
 
-type Act = { step: Step; est: number; gap: number; add: number; cat: string; pid: string; free: number; extraHours: number; rateEnd: number; people: number };
-type Group = { key: string; label: string; po: number; hasil: number; gap: number; bottle: Step; status: Status; steps: Act[] };
-
-/** PO vs hasil simulasi per type: yang kurang di atas, lengkap dengan apa yang harus diubah. */
-function Hasil({ m, rows, T, pool, onAdd, onPo }: { m: PMaster; rows: Group[]; T: number; pool: string[]; onAdd: (names: string[], cat: string, pid: string) => void; onPo: () => void }) {
-  if (!rows.length)
-    return (
-      <div className="flex flex-wrap items-center gap-3 px-4 py-5 text-[13px] text-slate-500">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-lg">📋</span>
-        <span>Input PO hari ini dulu. Setelah itu terlihat per type: PO, hasil simulasi, kurang berapa, dan siapa yang harus dipindah.</span>
-        <button className="btn-primary h-9 px-4 text-sm" onClick={onPo}>
-          Input PO
-        </button>
-      </div>
-    );
-  const cnt = (s: Status) => rows.filter((x) => x.status === s).length;
-  const totPo = rows.reduce((a, r) => a + r.po, 0);
-  const totGap = rows.reduce((a, r) => a + Math.max(0, r.gap), 0);
-  return (
-    <div className="max-h-[300px] overflow-auto">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-4 gap-y-1 bg-white px-4 py-2 text-[12px] font-semibold">
-        <span className="text-red-600">● {cnt("CRITICAL")} kurang</span>
-        <span className="text-amber-600">● {cnt("WARNING")} mepet</span>
-        <span className="text-emerald-600">● {cnt("SAFE")} aman</span>
-        <span className="text-slate-500">
-          Total PO {n0(totPo)} · {totGap > 0 ? <b className="text-red-600">kurang {n0(totGap)}</b> : <b className="text-emerald-600">semua tercapai</b>}
-        </span>
-        <button className="ml-auto font-semibold text-sky-700 hover:underline" onClick={onPo}>
-          Ubah PO
-        </button>
-      </div>
-      <div className="flex min-w-[620px] flex-col">
-        {rows.map((g) => {
-          const col = g.status === "CRITICAL" ? "#ef4444" : g.status === "WARNING" ? "#f59e0b" : "#10b981";
-          const pct = Math.min(100, (g.hasil / g.po) * 100);
-          return (
-            <div key={g.key} className={`grid grid-cols-[150px_110px_1fr_120px] items-start gap-3 border-t border-slate-100 px-4 py-2.5 ${g.status === "CRITICAL" ? "bg-red-50/50" : ""}`}>
-              <div>
-                <div className="text-[15px] font-bold text-slate-900">{g.label}</div>
-                <div className="text-[11.5px] text-slate-500">PO {n0(g.po)}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-[15px] font-bold tabular-nums" style={{ color: col }}>
-                  {n0(g.hasil)}
-                </div>
-                <div className="text-[11px] text-slate-400">simulasi s/d {toClock(T)}</div>
-              </div>
-              <div className="min-w-0">
-                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: col }} />
-                </div>
-                <div className="mt-1.5 flex flex-col gap-1">
-                  {g.steps.map((a) => {
-                    const short = a.gap > 0;
-                    const c = m.cats.find((x) => x.name === a.cat);
-                    const per = c?.mc ? (m.maxMc[a.cat] ?? 3) : 1;
-                    const mcAdd = c?.mc ? Math.min(a.add, a.free) : 0;
-                    const ppl = c?.mc ? Math.ceil(mcAdd / per) : a.add;
-                    const take = pool.slice(0, ppl);
-                    return (
-                      <div key={a.step} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
-                        <span className="inline-flex w-[118px] shrink-0 items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full" style={{ background: COLOR[a.step] }} />
-                          <b className="text-slate-700">{STEP_NAME[a.step]}</b>
-                          <span className={`tabular-nums ${short ? "font-bold text-red-600" : "text-slate-500"}`}>{k0(a.est)}</span>
-                        </span>
-                        {!short ? (
-                          <span className="text-emerald-700">✓ cukup</span>
-                        ) : (
-                          <>
-                            <span className="font-semibold text-red-700">
-                              {c?.mc ? `butuh +${a.add} MC` : `tambah ${a.add} orang`}
-                              {a.rateEnd > 0 && T >= nEndOf(m) ? ` atau lembur ±${(Math.ceil(a.extraHours * 2) / 2).toLocaleString("id-ID")} jam` : ""}
-                            </span>
-                            {c?.mc && <span className="text-slate-500">{a.free ? `(MC kosong ${a.free})` : "(MC penuh: ganti MC lain ke type ini)"}</span>}
-                            {take.length > 0 && a.cat && a.pid && (!c?.mc || mcAdd > 0) ? (
-                              <button className="rounded-md bg-red-600 px-2 py-0.5 text-[11.5px] font-semibold text-white hover:bg-red-700" onClick={() => onAdd(take, a.cat, a.pid)}>
-                                + {take.map(first).join(", ")}
-                              </button>
-                            ) : (
-                              !c?.mc && <span className="text-slate-500">seret orang dari type yang aman</span>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[15px] font-extrabold tabular-nums" style={{ color: col }}>
-                  {g.gap > 0 ? `−${n0(g.gap)}` : `+${n0(-g.gap)}`}
-                </div>
-                <div className="text-[11px] text-slate-400">{g.gap > 0 ? `kurang · ${STEP_NAME[g.bottle]} paling sedikit` : "lebih dari PO"}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-const nEndOf = (m: PMaster) => normalEnd(m);
 
 function Stat({ label, value, tone = "" }: { label: string; value: number; tone?: string }) {
   return (

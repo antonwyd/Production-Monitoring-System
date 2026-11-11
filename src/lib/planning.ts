@@ -534,8 +534,40 @@ export function parsePo(text: string, m: Pick<PMaster, "parts" | "cats">): { po:
 export type Move = { name: string; from: { cat: string; part: string } | null; to: { cat: string; part: string }; gain: number };
 
 /** Total kekurangan semua sel (type × proses) yang punya target, sampai jam T. */
+/**
+ * Alur PO (logika Anton 11 Nov): PF dan Seiretsu sama-sama sortir, hasil keduanya DIJUMLAH untuk memenuhi PO.
+ * Senbetsu (cek akhir) memeriksa semua hasil sortir, jadi juga harus = PO, dan tidak bisa melebihi hasil sortir.
+ */
+export type Flow = { key: string; po: number; pf: number; sei: number; sortir: number; sen: number; final: number; gapSortir: number; gapSen: number; gap: number; status: Status };
+export const poOf = (st: Pick<PlanState, "targets">): Record<string, number> => {
+  const o: Record<string, number> = {};
+  for (const [k, v] of Object.entries(st.targets)) {
+    const q = Math.max(0, ...Object.values(v).map((x) => x ?? 0));
+    if (q > 0) o[k] = q;
+  }
+  return o;
+};
+export function poFlow(res: Pick<Result, "rows">, po: Record<string, number>): Map<string, Flow> {
+  const est = (key: string, step: Step) => res.rows.find((r) => r.key === key && r.step === step)?.est ?? 0;
+  const out = new Map<string, Flow>();
+  for (const [key, q] of Object.entries(po)) {
+    const pf = est(key, "pf");
+    const sei = est(key, "seiretsu");
+    const sortir = pf + sei;
+    const sen = est(key, "senbetsu");
+    const final = Math.min(sen, sortir);
+    const status: Status = final >= q * (1 + SAFE_BUFFER) ? "SAFE" : final >= q ? "WARNING" : "CRITICAL";
+    out.set(key, { key, po: q, pf, sei, sortir, sen, final, gapSortir: Math.max(0, q - sortir), gapSen: Math.max(0, q - sen), gap: Math.max(0, q - final), status });
+  }
+  return out;
+}
+const flowCost = (f: Flow) => f.gapSortir + f.gap;
+
+/** Total kekurangan semua PO (sortir + hasil akhir) sampai jam T. */
 export function shortfall(m: PMaster, st: PlanState, T: number, now = START): number {
-  return compute(m, st, T, now).rows.reduce((a, r) => a + (r.need > 0 ? Math.max(0, r.need - r.est) : 0), 0);
+  let t = 0;
+  for (const f of poFlow(compute(m, st, T, now), poOf(st)).values()) t += flowCost(f);
+  return t;
 }
 
 /**
@@ -546,46 +578,52 @@ export function balance(m: PMaster, st: PlanState, at: number, T: number, now = 
   const catOf = new Map(m.cats.map((c) => [c.name, c]));
   const end = dayEnd(m, st.ot);
   const nowSeg = (p: PPerson) => spans(p, end).find((s) => s.at <= at && at < s.to);
+  const po = poOf(st);
+  const manualPart = (key: string, step: Step) => m.parts.find((p) => p.key === key && catOf.get(p.category)?.step === step && !catOf.get(p.category)?.mc);
   const moves: Move[] = [];
   const stuck = new Set<string>();
   let cur = st;
-  let obj = shortfall(m, cur, T, now);
-  for (let round = 0; round < maxMoves && obj > 0; round++) {
-    const res = compute(m, cur, T, now);
-    const cells = res.rows
-      .filter((r) => r.need > r.est && !stuck.has(`${r.key}#${r.step}`))
-      .map((r) => ({ r, part: m.parts.find((p) => p.key === r.key && catOf.get(p.category)?.step === r.step && !catOf.get(p.category)?.mc) }))
-      .filter((x) => x.part)
-      .sort((a, b) => b.r.need - b.r.est - (a.r.need - a.r.est));
+  let flows = poFlow(compute(m, cur, T, now), po);
+  let obj = [...flows.values()].reduce((a, f) => a + flowCost(f), 0);
+  for (let guard = 0; moves.length < maxMoves && obj > 0 && guard < 80; guard++) {
+    // Sel tujuan: sortir kurang -> Seiretsu type itu; sortir cukup tapi cek akhir kurang -> Senbetsu.
+    const cells = [...flows.values()]
+      .flatMap((f) => {
+        const out: { key: string; step: Step; gap: number }[] = [];
+        if (f.gapSortir > 0) out.push({ key: f.key, step: "seiretsu", gap: f.gapSortir });
+        if (f.gapSen > 0 && f.sen < f.sortir) out.push({ key: f.key, step: "senbetsu", gap: f.gapSen });
+        return out;
+      })
+      .filter((c) => !stuck.has(`${c.key}#${c.step}`) && manualPart(c.key, c.step))
+      .sort((a, b) => b.gap - a.gap);
     if (!cells.length) break;
-    const { r, part } = cells[0];
-    let best: { st: PlanState; obj: number; move: Move } | null = null;
+    const cell = cells[0];
+    const part = manualPart(cell.key, cell.step)!;
+    let best: { st: PlanState; obj: number; flows: Map<string, Flow>; move: Move } | null = null;
     // Yang belum bekerja dicoba dulu, jadi dipilih bila hasilnya sama.
     const order = [...cur.people].sort((a, b) => Number(!!nowSeg(a)?.cat) - Number(!!nowSeg(b)?.cat));
     for (const p of order) {
       if (p.absent || moves.some((x) => x.name === p.name)) continue; // satu orang dipindah sekali saja
       const s = nowSeg(p);
       if (s?.cat && (catOf.get(s.cat)?.mc ?? true)) continue; // operator MC / kategori lain tidak dipindah
-      if (s?.cat === part!.category && s.part === part!.id) continue;
-      const next = { ...cur, people: cur.people.map((x) => (x.name === p.name ? assign(x, { at, cat: part!.category, part: part!.id }) : x)) };
-      const rr = compute(m, next, T, now).rows;
-      const o = rr.reduce((acc, x) => acc + (x.need > 0 ? Math.max(0, x.need - x.est) : 0), 0);
-      // Type asal tidak boleh jadi kurang (hanya ambil dari yang lebih / tanpa PO).
-      const src = s?.part ? m.parts.find((x) => x.id === s.part) : undefined;
-      const srcRow = src && rr.find((x) => x.key === src.key && x.step === catOf.get(src.category)?.step);
-      if (srcRow && srcRow.need > 0 && srcRow.est < srcRow.need) continue;
+      if (s?.cat === part.category && s.part === part.id) continue;
+      const next = { ...cur, people: cur.people.map((x) => (x.name === p.name ? assign(x, { at, cat: part.category, part: part.id }) : x)) };
+      const nf = poFlow(compute(m, next, T, now), po);
+      const o = [...nf.values()].reduce((a, f) => a + flowCost(f), 0);
+      // Type asal tidak boleh jadi lebih kurang (hanya ambil dari yang lebih / tanpa PO).
+      const srcKey = s?.part ? m.parts.find((x) => x.id === s.part)?.key : undefined;
+      if (srcKey && srcKey !== cell.key && flows.get(srcKey) && flowCost(nf.get(srcKey)!) > flowCost(flows.get(srcKey)!)) continue;
       if (o < obj - 1 && (!best || o < best.obj))
-        best = { st: next, obj: o, move: { name: p.name, from: s?.cat ? { cat: s.cat, part: s.part ?? "" } : null, to: { cat: part!.category, part: part!.id }, gain: Math.round(obj - o) } };
+        best = { st: next, obj: o, flows: nf, move: { name: p.name, from: s?.cat ? { cat: s.cat, part: s.part ?? "" } : null, to: { cat: part.category, part: part.id }, gain: Math.round(obj - o) } };
     }
     if (!best) {
-      stuck.add(`${r.key}#${r.step}`);
-      round--;
-      if (stuck.size > 40) break;
+      stuck.add(`${cell.key}#${cell.step}`);
       continue;
     }
     moves.push(best.move);
     cur = best.st;
     obj = best.obj;
+    flows = best.flows;
   }
   return moves;
 }
