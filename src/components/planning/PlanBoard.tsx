@@ -16,6 +16,7 @@ import {
   mcKey,
   normalEnd,
   finishTimes,
+  ringkasan,
   freeAt,
   poFlow,
   parsePo,
@@ -43,6 +44,11 @@ import FloorView from "./FloorView";
 
 const ALASAN = ["Cuti", "Sakit", "Izin", "Alpa"];
 const n0 = (v: number) => Math.round(v).toLocaleString("id-ID");
+const dur = (min: number) => {
+  const h = Math.floor(min / 60);
+  const r = Math.round(min % 60);
+  return [h ? `${h} jam` : "", r ? `${r} menit` : ""].filter(Boolean).join(" ") || "0 menit";
+};
 const k0 = (v: number) => (v >= 10000 ? `${(v / 1000).toLocaleString("id-ID", { maximumFractionDigits: v >= 100000 ? 0 : 1 })}rb` : n0(v));
 const num = (s: string) => Number(s.replace(/\./g, "").replace(",", ".")) || 0;
 const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
@@ -307,6 +313,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
 
   // Jam PO tercapai per type (sortir & cek akhir) untuk simulasi "berapa jam orang ini dibutuhkan".
   const fin = useMemo(() => finishTimes(m, st, now), [m, st, now]);
+  // Jawaban singkat: PO total vs jam normal dengan orang yang ada.
+  const rk = useMemo(() => ringkasan(m, st, at, now), [m, st, at, now]);
   const up10 = (t: number) => Math.ceil(t / 10) * 10;
   const freeCell = (names: string[], t: number, label: string) => {
     const tt = up10(t);
@@ -440,6 +448,58 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     const deadlines = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => h * 60).filter((x) => x > START && x <= dayEnd(m, m.otLimitMin));
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        {rk.po > 0 && (
+          <div className={`border-b px-4 py-3 ${rk.kurang ? "border-red-100 bg-red-50/70" : "border-emerald-100 bg-emerald-50/70"}`}>
+            <div className="text-[13px] text-slate-600">
+              PO total <b className="text-[15px] tabular-nums text-slate-900">{n0(rk.po)}</b> · jam normal {toClock(START)}–{toClock(nEnd)} · <b className="text-slate-900">{rk.orang} orang</b> bekerja
+            </div>
+            {!rk.kurang ? (
+              <div className="mt-1 text-[16px] font-bold text-emerald-700">
+                ✓ Selesai jam {rk.selesai !== null ? toClock(rk.selesai) : toClock(nEnd)}
+                {rk.sisaMin > 0 && (
+                  <span className="font-semibold">
+                    {" "}
+                    · sisa waktu {dur(rk.sisaMin)} <span className="text-[13px] font-normal text-emerald-800">(orang bisa dilepas atau dipindah setelah itu)</span>
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="mt-1 text-[16px] font-bold text-red-700">
+                  Jam normal hanya jadi <span className="tabular-nums">{n0(rk.normal)}</span> · kurang <span className="tabular-nums">{n0(rk.kurang)}</span>
+                </div>
+                <div className="mt-1.5 flex flex-col gap-1 text-[13.5px] text-slate-700">
+                  <span className="text-[12px] font-semibold uppercase tracking-wide text-slate-400">Supaya tertutup, pilih salah satu</span>
+                  <span>
+                    ⏱{" "}
+                    {rk.lemburSampai !== null ? (
+                      <>
+                        Lembur semua yang bekerja sampai <b>{toClock(rk.lemburSampai)}</b> (+{dur(rk.lemburSampai - nEnd)})
+                      </>
+                    ) : (
+                      <>
+                        Lembur maksimal sampai {toClock(dayEnd(m, m.otLimitMin))} pun masih kurang <b className="tabular-nums">{n0(rk.kurangMaxOt)}</b>
+                      </>
+                    )}
+                  </span>
+                  {rk.tambah.length > 0 && (
+                    <span>
+                      👥 Tambah{" "}
+                      {rk.tambah.map((t, i) => (
+                        <span key={t.step}>
+                          {i > 0 && " + "}
+                          <b>{t.orang !== null ? `${t.orang} orang ${STEP_NAME[t.step]}` : `orang ${STEP_NAME[t.step]}`}</b>
+                          <span className="text-slate-500"> ({t.step === "senbetsu" ? "cek akhir" : "sortir"} kurang {n0(t.pcs)})</span>
+                        </span>
+                      ))}{" "}
+                      mulai jam {toClock(Math.max(at, now))}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-100 px-4 py-2.5">
           <label className="flex items-center gap-2 text-[13px] text-slate-500">
             PO harus selesai jam

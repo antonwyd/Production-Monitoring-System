@@ -661,3 +661,83 @@ export function finishTimes(m: PMaster, st: PlanState, now = START, stepMin = 30
 export function freeAt(p: PPerson, t: number): PPerson {
   return { ...p, segs: [...p.segs.filter((s) => s.at < t), { at: t, cat: "" }, ...p.segs.filter((s) => s.at > t)] };
 }
+
+/**
+ * Ringkasan PO total untuk jam normal: berapa yang jadi dengan orang yang ada, kapan selesai / sisa waktu,
+ * dan bila kurang: berapa kurangnya, lembur sampai jam berapa, atau tambah berapa orang (mulai jam `from`).
+ */
+export type Ringkas = {
+  po: number;
+  normal: number;
+  kurang: number;
+  orang: number;
+  selesai: number | null;
+  sisaMin: number;
+  lemburSampai: number | null;
+  kurangMaxOt: number;
+  tambah: { step: Step; pcs: number; orang: number | null }[];
+};
+export function ringkasan(m: PMaster, st: PlanState, from = START, now = START): Ringkas {
+  const po = poOf(st);
+  const NE = normalEnd(m);
+  const total = Object.values(po).reduce((a, b) => a + b, 0);
+  const resN = compute(m, st, NE, now);
+  const fl = poFlow(resN, po);
+  let normal = 0;
+  for (const f of fl.values()) normal += Math.min(f.po, f.final);
+  const orang = st.people.filter((p) => !p.absent && spans(p, NE).some((s) => s.cat && s.at < NE)).length;
+  const lastDone = (ft: Map<string, { sen: number | null }>) => {
+    let t = START;
+    for (const v of ft.values()) {
+      if (v.sen === null) return null;
+      t = Math.max(t, v.sen);
+    }
+    return t;
+  };
+  const kurang = Math.max(0, Math.round(total - normal));
+  const selesaiAll = total > 0 ? lastDone(finishTimes(m, { ...st, ot: 0 }, now)) : null;
+  const selesai = selesaiAll !== null && selesaiAll <= NE && !kurang ? selesaiAll : null;
+  // Lembur: semua yang masih bekerja di jam pulang lanjut sampai PO selesai (maks batas lembur).
+  let lemburSampai: number | null = null;
+  let kurangMaxOt = 0;
+  if (kurang) {
+    const stx: PlanState = {
+      ...st,
+      ot: m.otLimitMin,
+      // Penanda pulang di jam normal dibuang supaya yang bekerja sampai 16:00 ikut lembur.
+      people: st.people.map((p) => ({ ...p, segs: p.segs.filter((s) => !(s.at === NE && !s.cat)) })),
+    };
+    lemburSampai = lastDone(finishTimes(m, stx, now, 15));
+    if (lemburSampai === null) {
+      for (const f of poFlow(compute(m, stx, dayEnd(m, m.otLimitMin), now), po).values()) kurangMaxOt += f.gap;
+      kurangMaxOt = Math.round(kurangMaxOt);
+    }
+  }
+  // Tambah orang manual (Seiretsu untuk sortir, Senbetsu untuk cek akhir) dari jam `from` s/d jam normal.
+  const h = prodBetween(m, 0, Math.max(from, now), NE) / 60;
+  const rateOf = (key: string, step: Step) => {
+    const row = resN.rows.find((r) => r.key === key && r.step === step && r.unit > 0 && !r.mcs.length);
+    if (row) return row.unit;
+    const cats = new Map(m.cats.map((c) => [c.name, c]));
+    const p = m.parts.find((x) => x.key === key && x.rate > 0 && cats.get(x.category)?.step === step && !cats.get(x.category)?.mc);
+    return p ? p.rate * (m.eff[p.category] ?? 1) : 0;
+  };
+  const tambah: Ringkas["tambah"] = [];
+  if (kurang) {
+    for (const step of ["seiretsu", "senbetsu"] as Step[]) {
+      let pcs = 0;
+      let need = 0;
+      let unknown = false;
+      for (const f of fl.values()) {
+        const g = step === "seiretsu" ? f.gapSortir : f.gapSen;
+        if (g <= 0) continue;
+        pcs += g;
+        const r = rateOf(f.key, step);
+        if (!r || h <= 0) unknown = true;
+        else need += g / (r * h);
+      }
+      if (pcs > 0) tambah.push({ step, pcs: Math.round(pcs), orang: unknown ? null : Math.ceil(need - 1e-6) });
+    }
+  }
+  return { po: total, normal: Math.round(normal), kurang, orang, selesai, sisaMin: selesai !== null ? prodBetween(m, 0, selesai, NE) : 0, lemburSampai, kurangMaxOt, tambah };
+}

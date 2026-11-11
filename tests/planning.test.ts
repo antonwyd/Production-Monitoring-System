@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, assignRange, balance, buildMaster, finishTimes, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, balance, buildMaster, finishTimes, ringkasan, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -177,5 +177,23 @@ describe("Perencanaan: jam PO tercapai", () => {
     expect(f.sortir).toBeGreaterThanOrEqual(toMin("09:15"));
     expect(f.sortir).toBeLessThanOrEqual(toMin("09:25"));
     expect(f.sen).toBeNull();
+  });
+});
+
+describe("Perencanaan: ringkasan PO jam normal", () => {
+  it("PO kecil selesai sebelum 16:00 → sisa waktu; PO besar → kurang + lembur/tambah orang", () => {
+    const people = [
+      { name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Senbetsu Iron Cage", part: "Senbetsu Iron Cage|629-J|D2" }] },
+    ];
+    const kecil = ringkasan(m, base(people, { [KEY]: { seiretsu: 1200 } }));
+    expect(kecil.kurang).toBe(0);
+    expect(kecil.normal).toBe(1200);
+    const besar = ringkasan(m, base(people, { [KEY]: { seiretsu: 10000 } }));
+    expect(besar.kurang).toBeGreaterThan(0);
+    expect(besar.normal + besar.kurang).toBe(10000);
+    expect(besar.tambah.find((t) => t.step === "seiretsu")?.orang).toBeGreaterThan(0);
+    expect(kecil.selesai).not.toBeNull();
+    expect(kecil.sisaMin).toBeGreaterThan(0);
   });
 });
