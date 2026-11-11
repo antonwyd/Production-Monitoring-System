@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, assignRange, balance, buildMaster, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, balance, buildMaster, finishTimes, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -167,5 +167,15 @@ describe("Perencanaan: alur PO (sortir PF+Seiretsu, cek akhir Senbetsu)", () => 
     for (const x of mv) s2 = { ...s2, people: s2.people.map((p) => (p.name === x.name ? assign(p, { at: 420, ...x.to }) : p)) };
     expect(shortfall(m, s2, 960)).toBeLessThan(shortfall(m, st, 960));
     expect(poFlow(compute(m, s2, 960), poOf(s2)).get(KEY)!.gap).toBe(0);
+  });
+});
+
+describe("Perencanaan: jam PO tercapai", () => {
+  it("1 orang Seiretsu 600/jam, PO 1200 → selesai ±2 jam setelah 07:20", () => {
+    const st = base([{ name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }], { [KEY]: { seiretsu: 1200 } });
+    const f = finishTimes(m, st, 420, 10).get(KEY)!;
+    expect(f.sortir).toBeGreaterThanOrEqual(toMin("09:15"));
+    expect(f.sortir).toBeLessThanOrEqual(toMin("09:25"));
+    expect(f.sen).toBeNull();
   });
 });

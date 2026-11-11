@@ -15,6 +15,8 @@ import {
   mcHolders,
   mcKey,
   normalEnd,
+  finishTimes,
+  freeAt,
   poFlow,
   parsePo,
   poTypes,
@@ -303,6 +305,14 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       return { ...s, targets };
     });
 
+  // Jam PO tercapai per type (sortir & cek akhir) untuk simulasi "berapa jam orang ini dibutuhkan".
+  const fin = useMemo(() => finishTimes(m, st, now), [m, st, now]);
+  const up10 = (t: number) => Math.ceil(t / 10) * 10;
+  const freeCell = (names: string[], t: number, label: string) => {
+    const tt = up10(t);
+    update((s) => ({ ...s, people: s.people.map((p) => (names.includes(p.name) ? freeAt(p, tt) : p)) }));
+    setMsg({ kind: "ok", text: `${names.map(first).join(", ")} selesai ${label} jam ${toClock(tt)}, lalu bebas. Pilih jam ${toClock(tt)} di "Berlaku mulai" untuk memberi tugas berikutnya.` });
+  };
   // Matriks: baris = type (yang ada PO atau ada orangnya), kolom = PF → Seiretsu → Senbetsu.
   const matrix = useMemo(() => {
     const catOf = new Map(m.cats.map((c) => [c.name, c]));
@@ -342,10 +352,10 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         const f = flows.get(t.key);
         const sortir = cells[0].est + cells[1].est;
         const hasil = f ? f.final : Math.min(sortir, cells[2].est);
-        return { ...t, po: q, cells, sortir, sen: cells[2].est, hasil, gap: q - hasil };
+        return { ...t, po: q, cells, sortir, sen: cells[2].est, hasil, gap: q - hasil, fin: fin.get(t.key) };
       })
       .sort((a, b) => Number(!a.po) - Number(!b.po));
-  }, [m, po, where, resT, st.machines]);
+  }, [m, po, where, resT, st.machines, fin]);
   const mxPo = matrix.filter((r) => r.po);
   const mxTot = { po: mxPo.reduce((a, r) => a + r.po, 0), hasil: mxPo.reduce((a, r) => a + Math.min(r.po, r.hasil), 0), kurang: mxPo.reduce((a, r) => a + Math.max(0, r.gap), 0) };
   const runBalance = () => {
@@ -537,6 +547,24 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                                 <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cc }} />
                               </div>
                             )}
+                            {(() => {
+                              const t = c.step === "seiretsu" ? r.fin?.sortir : c.step === "senbetsu" ? r.fin?.sen : null;
+                              if (!r.po || c.mc || !c.names.length || !t || up10(t) >= end || up10(t) <= at) return null;
+                              if (st.people.filter((p) => c.names.includes(p.name)).every((p) => p.segs.some((g) => g.at === up10(t) && !g.cat)))
+                                return <span className="mt-1 text-[11px] font-semibold text-slate-500">✓ dilepas jam {toClock(up10(t))}</span>;
+                              return (
+                                <button
+                                  className="mt-1 self-start rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-300 hover:bg-slate-900 hover:text-white"
+                                  title="Orang di sini selesai saat PO tercapai, lalu bebas untuk tugas lain"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    freeCell(c.names, t, `${r.label} ${STEP_NAME[c.step]}`);
+                                  }}
+                                >
+                                  ⏹ Cukup sampai {toClock(up10(t))}
+                                </button>
+                              );
+                            })()}
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {c.names.map((n) => chip(n, c.step, false, c.mcsOf(n)))}
                               {!c.names.length && <span className="w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-center text-[11px] text-slate-400">{can ? "Taruh di sini" : "Seret orang ke sini"}</span>}
@@ -562,8 +590,11 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                             <span className={`shrink-0 text-[12px] font-bold tabular-nums ${r.sortir >= r.po ? "text-emerald-700" : "text-red-600"}`}>
                               {k0(r.sortir)} / {k0(r.po)} {r.sortir >= r.po ? "✓" : `(−${k0(r.po - r.sortir)})`}
                             </span>
+                            <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold ${r.fin?.sortir ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                              {r.fin?.sortir ? `⏱ PO tercapai ${toClock(up10(r.fin.sortir))}` : `⏱ tidak tercapai s/d ${toClock(end)}`}
+                            </span>
                           </div>
-                          <span className="-mt-1 self-center text-[11px] text-slate-400">cek semua hasil sortir</span>
+                          <span className={`-mt-1 self-center text-[11.5px] font-bold ${r.fin?.sen ? "text-emerald-700" : "text-red-600"}`}>{r.fin?.sen ? `⏱ cek akhir selesai ${toClock(up10(r.fin.sen))}` : `⏱ cek akhir belum selesai s/d ${toClock(end)}`}</span>
                           <span />
                         </>
                       )}

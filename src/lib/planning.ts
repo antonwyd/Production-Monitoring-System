@@ -627,3 +627,37 @@ export function balance(m: PMaster, st: PlanState, at: number, T: number, now = 
   }
   return moves;
 }
+
+/**
+ * Jam PO tercapai (simulasi): sortir = PF + Seiretsu >= PO, cek akhir = min(Senbetsu, sortir) >= PO.
+ * Dihitung tiap `stepMin` menit sampai akhir hari rencana lalu diinterpolasi; null = tidak tercapai.
+ */
+export function finishTimes(m: PMaster, st: PlanState, now = START, stepMin = 30): Map<string, { sortir: number | null; sen: number | null }> {
+  const po = poOf(st);
+  const end = dayEnd(m, st.ot);
+  const pts: number[] = [START];
+  for (let t = START + stepMin; t < end; t += stepMin) pts.push(t);
+  pts.push(end);
+  const series = pts.map((t) => (t === START ? new Map<string, Flow>() : poFlow(compute(m, st, t, now), po)));
+  const at = (vals: number[], q: number) => {
+    for (let i = 1; i < vals.length; i++)
+      if (vals[i] >= q) {
+        const a = vals[i - 1];
+        const b = vals[i];
+        return Math.round(pts[i - 1] + ((q - a) / Math.max(1e-9, b - a)) * (pts[i] - pts[i - 1]));
+      }
+    return null;
+  };
+  const out = new Map<string, { sortir: number | null; sen: number | null }>();
+  for (const [key, q] of Object.entries(po)) {
+    const so = series.map((s) => s.get(key)?.sortir ?? 0);
+    const fi = series.map((s) => s.get(key)?.final ?? 0);
+    out.set(key, { sortir: at(so, q), sen: at(fi, q) });
+  }
+  return out;
+}
+
+/** Orang selesai di jam `t` lalu bebas (rencana sesudahnya tetap). */
+export function freeAt(p: PPerson, t: number): PPerson {
+  return { ...p, segs: [...p.segs.filter((s) => s.at < t), { at: t, cat: "" }, ...p.segs.filter((s) => s.at > t)] };
+}
