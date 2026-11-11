@@ -225,10 +225,10 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     setSel([]);
     setMsg(null);
   };
-  const setMcs = (name: string, cat: string, part: string, mcs: string[]) => {
+  const setMcs = (name: string, cat: string, part: string, mcs: string[], types: Record<string, string> = {}) => {
     update((s) => ({
       ...s,
-      machines: { ...s.machines, ...Object.fromEntries(mcs.filter((x) => !s.machines[mcKey(cat, x)]).map((x) => [mcKey(cat, x), part])) },
+      machines: { ...s.machines, ...Object.fromEntries(mcs.filter((x) => !s.machines[mcKey(cat, x)]).map((x) => [mcKey(cat, x), part])), ...Object.fromEntries(Object.entries(types).filter(([, v]) => v).map(([x, v]) => [mcKey(cat, x), v])) },
       people: s.people.map((p) => (p.name === name ? (mcs.length ? assign(p, { at, cat, mcs }) : release(p, at)) : p)),
     }));
     setSheet(null);
@@ -308,13 +308,19 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     const partOf = new Map(m.parts.map((p) => [p.id, p]));
     const cellPeople = new Map<string, string[]>();
     const busy = new Set<string>();
+    const mcIn = new Map<string, string[]>(); // `${key}#${step}|${name}` -> MC orang itu di type tsb
     for (const [name, w] of where) {
       const c = w && catOf.get(w.cat);
-      const p = w && partOf.get(w.part);
-      if (!c || !p) continue;
-      const k = `${p.key}#${c.step}`;
-      cellPeople.set(k, [...(cellPeople.get(k) ?? []), name]);
-      busy.add(p.key);
+      if (!w || !c) continue;
+      const parts = c.mc && w.mcs.length ? [...new Set(w.mcs.map((x) => st.machines[mcKey(w.cat, x)] ?? ""))] : [w.part];
+      for (const pid of parts) {
+        const p = partOf.get(pid);
+        if (!p) continue;
+        const k = `${p.key}#${c.step}`;
+        if (!(cellPeople.get(k) ?? []).includes(name)) cellPeople.set(k, [...(cellPeople.get(k) ?? []), name]);
+        if (c.mc) mcIn.set(`${k}|${name}`, w.mcs.filter((x) => st.machines[mcKey(w.cat, x)] === pid));
+        busy.add(p.key);
+      }
     }
     const flows = poFlow(resT, po);
     return poTypes(m)
@@ -329,7 +335,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           const est = r?.est ?? 0;
           // Status per sel hanya untuk Senbetsu (cek akhir); PF & Seiretsu dinilai bersama sebagai sortir.
           const status: Status | undefined = !q || step !== "senbetsu" ? undefined : est >= q * 1.1 ? "SAFE" : est >= q ? "WARNING" : "CRITICAL";
-          return { step, ok: parts.length > 0, names, est, mcs: r?.mcs.length ?? 0, cat: tgt?.category ?? "", pid: tgt?.id ?? "", status, mc: !!(tgt && catOf.get(tgt.category)?.mc) };
+          const mcsOf = (n: string) => mcIn.get(`${t.key}#${step}|${n}`);
+          return { step, ok: parts.length > 0, names, mcsOf, est, mcs: r?.mcs.length ?? 0, cat: tgt?.category ?? "", pid: tgt?.id ?? "", status, mc: !!(tgt && catOf.get(tgt.category)?.mc) };
         });
         const f = flows.get(t.key);
         const sortir = cells[0].est + cells[1].est;
@@ -337,7 +344,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         return { ...t, po: q, cells, sortir, sen: cells[2].est, hasil, gap: q - hasil };
       })
       .sort((a, b) => Number(!a.po) - Number(!b.po));
-  }, [m, po, where, resT]);
+  }, [m, po, where, resT, st.machines]);
   const mxPo = matrix.filter((r) => r.po);
   const mxTot = { po: mxPo.reduce((a, r) => a + r.po, 0), hasil: mxPo.reduce((a, r) => a + Math.min(r.po, r.hasil), 0), kurang: mxPo.reduce((a, r) => a + Math.max(0, r.gap), 0) };
   const runBalance = () => {
@@ -371,9 +378,12 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     },
   });
 
-  const chip = (name: string, step?: Step, wide?: boolean) => {
+  const chip = (name: string, step?: Step, wide?: boolean, mcsHere?: string[]) => {
     const on = sel.includes(name);
-    const w = where.get(name);
+    const w0 = where.get(name);
+    // Di matriks, operator PF dengan MC beda type tampil di tiap baris type dengan MC miliknya di type itu.
+    const w = w0 && mcsHere ? { ...w0, mcs: mcsHere } : w0;
+    const other = w0 && mcsHere ? w0.mcs.length - mcsHere.length : 0;
     const hasSub = !!(w?.mcs.length || w?.ot || w?.next);
     return (
       <button
@@ -405,6 +415,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           {hasSub && (
             <span className="flex flex-wrap gap-x-1.5 text-[10.5px] font-semibold">
               {w?.mcs.length ? <span className="text-slate-500">MC {w.mcs.map((x) => x.replace("MC ", "")).join(",")}</span> : null}
+              {other > 0 ? <span className="text-sky-600">+{other} MC type lain</span> : null}
               {w?.ot ? <span className="text-amber-600">⏱ {toClock(w.ot)}</span> : null}
               {w?.next ? <span className="text-violet-600">→ {w.next}</span> : null}
             </span>
@@ -480,7 +491,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                       {ICON[step]}
                     </span>
                     {STEP_NAME[step]}
-                    <span className="font-normal text-slate-400">{step === "senbetsu" ? "cek akhir · " : "sortir · "}{matrix.reduce((a, r) => a + r.cells.find((c) => c.step === step)!.names.length, 0)} orang</span>
+                    <span className="font-normal text-slate-400">{step === "senbetsu" ? "cek akhir · " : "sortir · "}{new Set(matrix.flatMap((r) => r.cells.find((c) => c.step === step)!.names)).size} orang</span>
                   </span>
                 ))}
                 <span className="self-end text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">Hasil vs PO</span>
@@ -526,7 +537,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                               </div>
                             )}
                             <div className="mt-1.5 flex flex-wrap gap-1">
-                              {c.names.map((n) => chip(n, c.step))}
+                              {c.names.map((n) => chip(n, c.step, false, c.mcsOf(n)))}
                               {!c.names.length && <span className="w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-center text-[11px] text-slate-400">{can ? "Taruh di sini" : "Seret orang ke sini"}</span>}
                             </div>
                           </div>
@@ -892,7 +903,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         </Sheet>
       )}
       {sheet === "mc" && sel.length === 1 && where.get(sel[0]) && (
-        <McSheet m={m} st={st} at={at} name={sel[0]} w={where.get(sel[0])!} onClose={() => setSheet(null)} onSave={(mcs) => setMcs(sel[0], where.get(sel[0])!.cat, where.get(sel[0])!.part, mcs)} />
+        <McSheet m={m} st={st} at={at} name={sel[0]} w={where.get(sel[0])!} onClose={() => setSheet(null)} onSave={(mcs, types) => setMcs(sel[0], where.get(sel[0])!.cat, where.get(sel[0])!.part, mcs, types)} />
       )}
       {bigFloor && (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setBigFloor(false)}>
@@ -1043,8 +1054,10 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function McSheet({ m, st, at, name, w, onClose, onSave }: { m: PMaster; st: PlanState; at: number; name: string; w: NonNullable<Where>; onClose: () => void; onSave: (mcs: string[]) => void }) {
+function McSheet({ m, st, at, name, w, onClose, onSave }: { m: PMaster; st: PlanState; at: number; name: string; w: NonNullable<Where>; onClose: () => void; onSave: (mcs: string[], types: Record<string, string>) => void }) {
   const [pick, setPick] = useState<string[]>(w.mcs);
+  // Type per MC: satu operator boleh memegang MC dengan type berbeda.
+  const [types, setTypes] = useState<Record<string, string>>(() => Object.fromEntries(m.machines.filter((x) => x.category === w.cat).map((x) => [x.mc, st.machines[mcKey(w.cat, x.mc)] ?? w.part])));
   const holders = mcHolders(st, m, at, name);
   const limit = m.maxMc[w.cat] ?? 3;
   return (
@@ -1073,7 +1086,29 @@ function McSheet({ m, st, at, name, w, onClose, onSave }: { m: PMaster; st: Plan
             );
           })}
       </div>
-      <button className="btn-primary mt-4 w-full" onClick={() => onSave(pick)}>
+      {pick.length > 0 && (
+        <div className="mt-4 flex flex-col gap-1.5">
+          <div className="text-[12px] font-bold uppercase tracking-wide text-slate-400">Type tiap MC</div>
+          {m.machines
+            .filter((x) => x.category === w.cat && pick.includes(x.mc))
+            .map((x) => {
+              const opts = [...new Set([...x.opts, types[x.mc]].filter(Boolean))];
+              return (
+                <label key={x.mc} className="flex items-center justify-between gap-3 text-sm">
+                  <b className="w-16">{x.mc}</b>
+                  <select className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm font-semibold" value={types[x.mc] ?? ""} onChange={(e) => setTypes({ ...types, [x.mc]: e.target.value })}>
+                    {opts.map((pid) => (
+                      <option key={pid} value={pid}>
+                        {partLabel(m, pid)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+        </div>
+      )}
+      <button className="btn-primary mt-4 w-full" onClick={() => onSave(pick, Object.fromEntries(pick.map((x) => [x, types[x]])))}>
         Simpan {pick.length} MC
       </button>
     </Sheet>
