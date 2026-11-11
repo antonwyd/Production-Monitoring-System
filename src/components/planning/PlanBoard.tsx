@@ -88,7 +88,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const isToday = st.date === today;
   const nEnd = normalEnd(m);
   const nowSlot = isToday && nowMin > START ? Math.min(nEnd - 60, Math.floor(nowMin / 60) * 60) : START;
-  const [at, setAt] = useState(nowSlot);
+  // Rencana dimulai dari pagi (07:00); jam lain bisa dipilih di "Berlaku mulai".
+  const [at, setAt] = useState(START);
   const [sel, setSel] = useState<string[]>([]);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -348,13 +349,13 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const mxPo = matrix.filter((r) => r.po);
   const mxTot = { po: mxPo.reduce((a, r) => a + r.po, 0), hasil: mxPo.reduce((a, r) => a + Math.min(r.po, r.hasil), 0), kurang: mxPo.reduce((a, r) => a + Math.max(0, r.gap), 0) };
   const runBalance = () => {
-    const moves = balance(m, st, Math.max(at, isToday ? now : START), T, now);
+    const moves = balance(m, st, at, T, now);
     setPlan({ moves, pick: moves.map(() => true) });
     setSheet("balance");
   };
   const applyBalance = () => {
     if (!plan) return;
-    const from = Math.max(at, isToday ? now : START);
+    const from = at;
     const chosen = plan.moves.filter((_, i) => plan.pick[i]);
     update((s) => ({ ...s, people: s.people.map((p) => chosen.filter((x) => x.name === p.name).reduce((q, x) => assign({ ...q, absent: undefined }, { at: from, ...x.to }), p)) }));
     setFocus((f) => ({ cat: chosen[0]?.to.cat ?? "", n: (f?.n ?? 0) + 1 }));
@@ -923,7 +924,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
           {plan.moves.length ? (
             <>
               <p className="mb-3 text-sm text-slate-500">
-                Mulai jam {toClock(Math.max(at, isToday ? now : START))}. Hanya memindah orang dari type yang lebih (atau yang belum bekerja), operator MC tidak dipindah. Hilangkan centang yang tidak mau.
+                Mulai jam {toClock(at)}. Hanya memindah orang dari type yang lebih (atau yang belum bekerja), operator MC tidak dipindah. Hilangkan centang yang tidak mau.
               </p>
               <div className="flex flex-col gap-1.5">
                 {plan.moves.map((x, i) => (
