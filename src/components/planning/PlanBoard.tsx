@@ -812,7 +812,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
 
       {/* Bar aksi: hanya saat ada nama terpilih */}
       {sel.length > 0 && (
-        <div className="fixed inset-x-0 bottom-16 z-30 px-3 lg:bottom-5 lg:pl-[calc(var(--sb-w)+1rem)]">
+        <div className="fixed inset-x-0 bottom-16 z-30 px-3 lg:bottom-auto lg:top-3 lg:pl-[calc(var(--sb-w)+1rem)]">
           <div className="mx-auto flex max-w-4xl flex-col gap-2 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between gap-2 text-[13px]">
               <span>
@@ -822,7 +822,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                 ✕ Batal pilih
               </button>
             </div>
-            <div className="flex gap-1.5 overflow-x-auto">
+            <div className="flex flex-wrap gap-1.5">
               <Act strong onClick={() => setSheet("dest")}>
                 Pindah ke…
               </Act>
