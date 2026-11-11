@@ -61,7 +61,7 @@ export function buildAreas(m: PMaster, st: PlanState, at: number): Area[] {
   });
 }
 
-export default function FloorView({ m, st, initialAt }: { m: PMaster; st: PlanState; initialAt: number }) {
+export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st: PlanState; initialAt: number; focus?: { cat: string; n: number } }) {
   const end = dayEnd(m, st.ot);
   const [at, setAt] = useState(Math.min(end - 1, Math.max(START, initialAt)));
   const areas = useMemo(() => buildAreas(m, st, at), [m, st, at]);
@@ -71,6 +71,13 @@ export default function FloorView({ m, st, initialAt }: { m: PMaster; st: PlanSt
       areas.findIndex((a) => a.people.length),
     ),
   );
+  // Saat orang dipindah di papan, langsung tampilkan area tujuan.
+  useEffect(() => {
+    if (!focus) return;
+    const i = areas.findIndex((a) => a.id === focus.cat);
+    if (i >= 0) setCur(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.n]);
   const [speed, setSpeed] = useState(1);
   const cv = useRef<HTMLCanvasElement>(null);
   const speedRef = useRef(speed);

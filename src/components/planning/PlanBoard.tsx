@@ -71,6 +71,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [at, setAt] = useState(nowSlot);
   const [sel, setSel] = useState<string[]>([]);
   const [drag, setDrag] = useState<string | null>(null);
+  const [focus, setFocus] = useState<{ cat: string; n: number } | undefined>();
   const [extra, setExtra] = useState<Record<string, string[]>>({}); // type tambahan per kategori (kosong)
   const [sheet, setSheet] = useState<null | "dest" | "hadir" | { addType: string } | { target: Row }>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -106,6 +107,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   /** Pindahkan orang-orang ke (kategori, type) mulai jam `at`. PF: MC dipilih otomatis. */
   function moveTo(names: string[], cat: string, part: string) {
     const c = m.cats.find((x) => x.name === cat)!;
+    setFocus((f) => ({ cat, n: (f?.n ?? 0) + 1 }));
     update((s) => {
       let machines = s.machines;
       const people = [...s.people];
@@ -246,7 +248,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       </header>
 
       <section className="card overflow-hidden p-3 sm:p-4">
-        <FloorView key={`${at}`} m={m} st={st} initialAt={at} />
+        <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} />
       </section>
 
       {/* Jam berlaku */}
