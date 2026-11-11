@@ -101,6 +101,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     for (const p of page.state.people) for (const g of p.segs) if (g.cat) g.mcs?.length ? g.mcs.forEach((x) => add(g.cat, page.state.machines[mcKey(g.cat, x)] ?? "")) : add(g.cat, g.part ?? "");
     return out;
   });
+  // Kartu type yang sengaja dihapus dari papan (tombol ✕).
+  const [hidden, setHidden] = useState<string[]>([]);
   const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | "po" | { addType: string }>(null);
   const [hist, setHist] = useState<PlanState[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -182,6 +184,13 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     update((s) => ({ ...s, people: s.people.map((p) => (names.includes(p.name) ? release({ ...p, absent: undefined }, at) : p)) }));
     setSel([]);
   };
+  /** Hapus kartu type dari papan; orang di kartu itu kembali ke "Belum bekerja" mulai jam `at`. */
+  const removeCard = (cat: string, pid: string, names: string[]) => {
+    if (names.length && !window.confirm(`Hapus ${partLabel(m, pid)} dari ${cat}?\n${names.length} orang kembali ke "Belum bekerja" mulai ${toClock(at)}.`)) return;
+    if (names.length) unassign(names);
+    setExtra((x) => ({ ...x, [cat]: (x[cat] ?? []).filter((p) => p !== pid) }));
+    setHidden((h) => [...h, `${cat}|${pid}`]);
+  };
   const setAbsent = (names: string[], a: string) => {
     update((s) => ({ ...s, people: s.people.map((p) => (names.includes(p.name) ? { ...p, absent: a || undefined } : p)) }));
     setSel([]);
@@ -251,7 +260,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     for (const [name, w] of where) if (w && w.cat === c.name) byPart.set(w.part, [...(byPart.get(w.part) ?? []), name]);
     for (const pid of extra[c.name] ?? []) if (!byPart.has(pid)) byPart.set(pid, []);
     // Type yang ada PO-nya selalu tampil sebagai tempat tujuan, walau belum ada orang.
-    for (const p of m.parts) if (p.category === c.name && st.targets[p.key] && !byPart.has(p.id)) byPart.set(p.id, []);
+    for (const p of m.parts) if (p.category === c.name && st.targets[p.key] && !byPart.has(p.id) && !hidden.includes(`${c.name}|${p.id}`)) byPart.set(p.id, []);
     const groups = [...byPart.entries()]
       .map(([pid, names]) => ({ pid, names: names.sort(), row: rowFor(m, res, c, pid) }))
       .sort((a, b) => b.names.length - a.names.length || partLabel(m, a.pid).localeCompare(partLabel(m, b.pid)));
@@ -561,9 +570,22 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                             <span className="rounded-md px-2 py-0.5 text-[11px] font-bold text-white" style={{ background: COLOR[c.step] }}>
                               Taruh di sini
                             </span>
-                          ) : row?.need ? (
-                            <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${PILL[row.status]}`}>{WORD[row.status]}</span>
-                          ) : null}
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              {row?.need ? <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${PILL[row.status]}`}>{WORD[row.status]}</span> : null}
+                              <button
+                                className="grid h-6 w-6 place-items-center rounded-md text-[13px] text-slate-300 hover:bg-red-50 hover:text-red-600"
+                                title="Hapus type ini dari papan"
+                                aria-label={`Hapus ${partLabel(m, pid)}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeCard(c.name, pid, names);
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          )}
                         </div>
                         <Meter step={c.step} est={row?.estEnd ?? 0} target={row?.need ?? 0} actual={act} status={row?.need ? row.status : undefined} />
                         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 whitespace-nowrap text-[11.5px] text-slate-500">
@@ -673,6 +695,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
                 onClick={() => {
                   if (sel.length) moveTo(sel, sheet.addType, p.id);
                   else setExtra((x) => ({ ...x, [sheet.addType]: [...(x[sheet.addType] ?? []), p.id] }));
+                  setHidden((h) => h.filter((k) => k !== `${sheet.addType}|${p.id}`));
                   setSheet(null);
                 }}
               >
