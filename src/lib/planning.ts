@@ -388,6 +388,31 @@ export function assign(p: PPerson, seg: Seg): PPerson {
   const keep = seg.at <= START ? [] : p.segs.filter((s) => s.at < seg.at);
   return { ...p, segs: [...keep, { ...seg, at: Math.max(START, seg.at) }] };
 }
+/** Tugaskan orang hanya dari `seg.at` sampai `until`; sesudah `until` kembali ke tugas lamanya (atau cadangan). */
+export function assignRange(p: PPerson, seg: Seg, until: number, end: number): PPerson {
+  if (until >= end) return assign(p, seg);
+  const old = spans(p, end).find((s) => s.at <= until && until < s.to);
+  const pre = seg.at <= START ? [] : p.segs.filter((s) => s.at < seg.at);
+  const post = p.segs.filter((s) => s.at > until);
+  const back: Seg = old && old.cat ? { at: until, cat: old.cat, part: old.part, mcs: old.mcs } : { at: until, cat: "" };
+  const clean = (x: Seg): Seg => Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined)) as Seg;
+  return { ...p, segs: [...pre, { ...seg, at: Math.max(START, seg.at) }, clean(back), ...post] };
+}
+
+/** Naikkan lembur ke `ot`: orang lain tetap pulang di jam akhir lama (tidak ikut lembur otomatis). */
+export function extendOt(m: Pick<PMaster, "normalMin">, st: PlanState, ot: number): PlanState {
+  if (ot <= st.ot) return st;
+  const oldEnd = dayEnd(m, st.ot);
+  return {
+    ...st,
+    ot,
+    people: st.people.map((p) => {
+      const last = spans(p, oldEnd).at(-1);
+      return last && last.cat ? { ...p, segs: [...p.segs, { at: oldEnd, cat: "" }] } : p;
+    }),
+  };
+}
+
 /** Lepas orang (cadangan) mulai jam `at`. */
 export function release(p: PPerson, at: number): PPerson {
   if (at <= START) return { ...p, segs: [] };

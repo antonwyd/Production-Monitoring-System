@@ -512,7 +512,7 @@ export default function FloorView({ m, st, initialAt }: { m: PMaster; st: PlanSt
         <button className="btn-secondary h-9 px-3 text-sm" onClick={() => setSpeed(speed === 1 ? 3 : speed === 3 ? 6 : 1)}>
           Kecepatan {speed}x
         </button>
-        <span className="text-xs text-slate-500">Ilustrasi sesuai rencana di atas: ganti jam untuk melihat orang yang dipindah.</span>
+        <span className="text-xs text-slate-500">Ganti jam untuk melihat siapa mengerjakan apa.</span>
       </div>
       <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist">
         {areas.map((a, i) => (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, buildMaster, compute, machineOpts, mcHolders, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, buildMaster, extendOt, compute, machineOpts, mcHolders, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -112,5 +112,24 @@ describe("Perencanaan: status & saran", () => {
   it("kelebihan orang terdeteksi", () => {
     const people = ["A", "B", "C"].map((name) => ({ name, segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }));
     expect(row(compute(m, base(people, { [KEY]: { seiretsu: 4000 } }), 960), "seiretsu").surplus).toBe(2);
+  });
+});
+
+describe("Perencanaan: jam dari-sampai", () => {
+  it("PF 07-11 lalu kembali ke Seiretsu", () => {
+    const p = assignRange({ name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }, { at: 420, cat: "PF Iron Cage", mcs: ["MC 12"] }, toMin("11:00"), 960);
+    expect(p.segs).toEqual([{ at: 420, cat: "PF Iron Cage", mcs: ["MC 12"] }, { at: 660, cat: "Seiretsu Iron Cage", part: S }]);
+    const r = compute(m, base([p]), 960);
+    expect(row(r, "pf").est).toBe(Math.round(1000 * (220 / 60))); // 07:20-11:00
+  });
+  it("lembur satu orang tidak membuat semua orang ikut lembur", () => {
+    const st = base([
+      { name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+    ]);
+    const st2 = extendOt(m, st, 120);
+    const end = toMin("18:00");
+    st2.people[0] = assignRange(st2.people[0], { at: toMin("16:00"), cat: "Seiretsu Iron Cage", part: S }, end, end);
+    expect(row(compute(m, st2, end), "seiretsu").est).toBe(4600 * 2 + 1200);
   });
 });
