@@ -159,6 +159,11 @@ export default function FloorView({ m, st, initialAt, focus, compact, maxH }: { 
       }
     };
     const person = (x: number, y: number, hue: number, walk: boolean, phase: number, arms: boolean) => {
+      // Orang digambar 1,6x supaya tetap kelihatan saat lantai diperkecil.
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1.6, 1.6);
+      ctx.translate(-x, -y);
       const bob = walk ? Math.sin(phase) * 3 : 0;
       ctx.fillStyle = "rgba(0,0,0,.15)";
       ctx.beginPath();
@@ -191,6 +196,7 @@ export default function FloorView({ m, st, initialAt, focus, compact, maxH }: { 
       ctx.beginPath();
       ctx.arc(x, y - 16, 6, Math.PI, 0);
       ctx.fill();
+      ctx.restore();
     };
 
     if (area.mc) {

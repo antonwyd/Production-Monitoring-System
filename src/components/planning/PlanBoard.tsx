@@ -14,6 +14,7 @@ import {
   mcHolders,
   mcKey,
   normalEnd,
+  prodBetween,
   release,
   spans,
   START,
@@ -86,7 +87,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [floor, setFloor] = useState(true);
+  const [tab, setTab] = useState<"hasil" | "lantai" | "tutup">("hasil");
+  const [bigFloor, setBigFloor] = useState(false);
+  const [until, setUntil] = useState(nEnd);
   const [focus, setFocus] = useState<{ cat: string; n: number } | undefined>();
   // Type hari kerja terakhir tampil sebagai tujuan kosong, supaya bisa langsung diseret.
   const [extra, setExtra] = useState<Record<string, string[]>>(() => {
@@ -104,6 +107,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const end = dayEnd(m, st.ot);
   const now = isToday ? Math.max(START, nowMin) : START;
   const res = useMemo(() => compute(m, st, end, now), [m, st, end, now]);
+  // Hasil simulasi sampai jam tertentu (mis. "PO 800rb, sampai 14:00 baru 500rb?").
+  const T = Math.min(until, end);
+  const resT = useMemo(() => compute(m, st, T, now), [m, st, T, now]);
 
   const update = (fn: (s: PlanState) => PlanState) => {
     setHist((h) => [...h.slice(-40), st]);
@@ -256,6 +262,25 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const hours: number[] = [];
   for (let t = START; t < end; t += 60) if (t !== 12 * 60) hours.push(t);
   const moving = sel.length > 0 || !!drag;
+  const hasil = useMemo(() => {
+    const left = prodBetween(m, st.ot, Math.max(now, at, START), T) / 60;
+    return resT.rows
+      .filter((r) => r.need > 0)
+      .map((r) => {
+        const gap = r.need - r.est;
+        const status: Status = r.est >= r.need * 1.1 ? "SAFE" : r.est >= r.need ? "WARNING" : "CRITICAL";
+        const add = gap > 0 && r.unit > 0 && left > 0 ? Math.ceil(gap / (r.unit * left)) : 0;
+        const p = m.parts.find((x) => x.key === r.key && (r.cats.length ? r.cats.includes(x.category) : m.cats.find((c) => c.name === x.category)?.step === r.step));
+        const cat = p?.category ?? "";
+        const pid = p?.id ?? "";
+        // MC kosong yang bisa jalan type ini (untuk PF).
+        const held = mcHolders(st, m, at, "");
+        const free = m.machines.filter((x) => x.category === cat && !held.get(mcKey(cat, x.mc)) && (st.machines[mcKey(cat, x.mc)] === pid || x.opts.includes(pid))).length;
+        return { r, gap, status, add, cat, pid, free };
+      })
+      .sort((a, b) => ({ CRITICAL: 0, WARNING: 1, SAFE: 2 })[a.status] - ({ CRITICAL: 0, WARNING: 1, SAFE: 2 })[b.status] || b.gap - a.gap);
+  }, [resT, m, st, now, at, T]);
+  const kurang = hasil.filter((h) => h.status === "CRITICAL").length;
 
   const dropProps = (id: string, onDrop: (names: string[]) => void) => ({
     onDragOver: (e: React.DragEvent) => {
@@ -403,22 +428,54 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         </aside>
 
         <div className="flex min-h-0 flex-col gap-3">
-          {/* Lantai produksi */}
+          {/* Panel atas: hasil simulasi vs target, atau lantai produksi */}
           <section className="shrink-0 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center justify-between px-4 pt-2.5">
-              <span className="text-[13px] font-bold text-slate-700">
-                Lantai produksi <span className="font-normal text-slate-400">· jam {toClock(at)}</span>
-              </span>
-              <button className="text-[12px] font-semibold text-slate-500 hover:text-slate-800" onClick={() => setFloor(!floor)}>
-                {floor ? "Sembunyikan ▴" : "Tampilkan ▾"}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+              <div className="flex gap-0.5 rounded-xl bg-slate-100 p-1">
+                {(
+                  [
+                    ["hasil", "📊 Hasil vs Target"],
+                    ["lantai", "▶ Lantai produksi"],
+                  ] as const
+                ).map(([k, l]) => (
+                  <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-3 py-1 text-[13px] font-semibold transition ${tab === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+                    {l}
+                    {k === "hasil" && kurang > 0 && <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">{kurang}</span>}
+                  </button>
+                ))}
+              </div>
+              {tab === "hasil" && (
+                <div className="flex items-center gap-1.5 text-[12px] text-slate-500">
+                  <span>sampai jam</span>
+                  <select className="h-7 rounded-lg border border-slate-200 bg-white px-1.5 text-[13px] font-semibold text-slate-900" value={until} onChange={(e) => setUntil(Number(e.target.value))}>
+                    {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+                      .map((h) => h * 60)
+                      .filter((x) => x > START && x <= dayEnd(m, m.otLimitMin))
+                      .map((x) => (
+                        <option key={x} value={x}>
+                          {toClock(x)}
+                          {x > nEnd ? " (lembur)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                  {until > end && <span className="text-amber-600">· belum ada yang lembur sampai jam ini</span>}
+                </div>
+              )}
+              {tab === "lantai" && (
+                <button className="text-[12px] font-semibold text-slate-500 hover:text-slate-900" onClick={() => setBigFloor(true)}>
+                  ⤢ Layar penuh
+                </button>
+              )}
+              <button className="ml-auto text-[12px] font-semibold text-slate-400 hover:text-slate-800" onClick={() => setTab(tab === "tutup" ? "hasil" : "tutup")}>
+                {tab === "tutup" ? "Tampilkan ▾" : "Sembunyikan ▴"}
               </button>
             </div>
-            {floor && (
-              <div className="p-3 pt-2">
-                <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} compact maxH={200} />
+            {tab === "lantai" && (
+              <div className="p-3">
+                <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} compact maxH={300} />
               </div>
             )}
-            {!floor && <div className="h-2" />}
+            {tab === "hasil" && <Hasil m={m} rows={hasil} T={T} pool={pool} onAdd={(names, cat, pid) => moveTo(names, cat, pid)} />}
           </section>
 
           {/* Papan per proses */}
@@ -591,6 +648,19 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       {sheet === "mc" && sel.length === 1 && where.get(sel[0]) && (
         <McSheet m={m} st={st} at={at} name={sel[0]} w={where.get(sel[0])!} onClose={() => setSheet(null)} onSave={(mcs) => setMcs(sel[0], where.get(sel[0])!.cat, where.get(sel[0])!.part, mcs)} />
       )}
+      {bigFloor && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setBigFloor(false)}>
+          <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-2 rounded-2xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <b>Lantai produksi · jam {toClock(at)}</b>
+              <button className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setBigFloor(false)} aria-label="Tutup">
+                ✕
+              </button>
+            </div>
+            <FloorView m={m} st={st} initialAt={at} focus={focus} maxH={typeof window !== "undefined" ? window.innerHeight - 260 : 600} />
+          </div>
+        </div>
+      )}
       {sheet === "hadir" && <HadirSheet st={st} onClose={() => setSheet(null)} onSet={(name, a) => setAbsent([name], a)} />}
     </div>
   );
@@ -606,6 +676,101 @@ const typeOpts = (m: PMaster, c: PCat, current: string[]): PPart[] => {
   return [...all.filter((p) => current.includes(p.id)), ...all.filter((p) => !current.includes(p.id))];
 };
 const countMc = (st: PlanState, m: PMaster, cat: string, at: number) => [...mcHolders(st, m, at).keys()].filter((k) => k.startsWith(cat + "|")).length;
+
+type HasilRow = { r: Row; gap: number; status: Status; add: number; cat: string; pid: string; free: number };
+
+/** Hasil simulasi vs target per type: yang kurang di atas, lengkap dengan tindakan. */
+function Hasil({ m, rows, T, pool, onAdd }: { m: PMaster; rows: HasilRow[]; T: number; pool: string[]; onAdd: (names: string[], cat: string, pid: string) => void }) {
+  if (!rows.length)
+    return (
+      <div className="flex items-center gap-3 px-4 py-5 text-[13px] text-slate-500">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-lg">🎯</span>
+        <span>
+          Isi <b className="text-slate-700">Target</b> di kartu type (klik &quot;Target + isi&quot;). Hasil simulasi dan apa yang harus dilakukan akan tampil di sini.
+        </span>
+      </div>
+    );
+  const cnt = (s: Status) => rows.filter((x) => x.status === s).length;
+  return (
+    <div className="max-h-[260px] overflow-auto">
+      <div className="sticky top-0 z-10 flex gap-4 bg-white px-4 py-2 text-[12px] font-semibold">
+        <span className="text-red-600">● {cnt("CRITICAL")} kurang</span>
+        <span className="text-amber-600">● {cnt("WARNING")} mepet</span>
+        <span className="text-emerald-600">● {cnt("SAFE")} cukup</span>
+        <span className="ml-auto font-normal text-slate-400">Estimasi = hasil susunan orang di papan sampai jam {toClock(T)}</span>
+      </div>
+      <table className="w-full min-w-[640px] text-[13px]">
+        <thead className="text-[11px] uppercase tracking-wide text-slate-400">
+          <tr>
+            <th className="px-4 py-1 text-left font-semibold">Type</th>
+            <th className="px-2 py-1 text-right font-semibold">Target</th>
+            <th className="px-2 py-1 text-right font-semibold">Estimasi s/d {toClock(T)}</th>
+            <th className="hidden w-[22%] px-2 py-1 md:table-cell" />
+            <th className="px-2 py-1 text-right font-semibold">Selisih</th>
+            <th className="px-4 py-1 text-left font-semibold">Yang perlu dilakukan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ r, gap, status, add, cat, pid, free }) => {
+            const c = m.cats.find((x) => x.name === cat);
+            const step = r.step;
+            const pct = Math.min(100, (r.est / r.need) * 100);
+            const col = status === "CRITICAL" ? "#ef4444" : status === "WARNING" ? "#f59e0b" : "#10b981";
+            const perPerson = c?.mc ? (m.maxMc[cat] ?? 3) : 1;
+            const mcAdd = c?.mc ? Math.min(add, free) : 0;
+            const needPeople = c?.mc ? Math.ceil(mcAdd / perPerson) : add;
+            const take = pool.slice(0, needPeople);
+            return (
+              <tr key={`${r.key}#${r.step}`} className={`border-t border-slate-100 ${status === "CRITICAL" ? "bg-red-50/40" : ""}`}>
+                <td className="px-4 py-2">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLOR[step] }} />
+                    <span className="font-bold text-slate-900">{r.label}</span>
+                    <span className="text-[11.5px] text-slate-400">{cat || STEP_NAME[step]}</span>
+                  </div>
+                </td>
+                <td className="px-2 py-2 text-right font-semibold tabular-nums">{n0(r.need)}</td>
+                <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: col }}>
+                  {n0(r.est)}
+                </td>
+                <td className="hidden px-2 py-2 md:table-cell">
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: col }} />
+                  </div>
+                </td>
+                <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: col }}>
+                  {gap > 0 ? `−${n0(gap)}` : `+${n0(-gap)}`}
+                </td>
+                <td className="px-4 py-2">
+                  {status === "SAFE" ? (
+                    <span className="text-emerald-700">Aman</span>
+                  ) : status === "WARNING" ? (
+                    <span className="text-amber-700">Pas-pasan, pantau</span>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-semibold text-red-700">
+                        {c?.mc ? `Butuh ${add} MC lagi` : `Tambah ${add} orang`}
+                        {r.rateEnd > 0 && T >= nEndOf(m) ? ` atau lembur ±${(Math.ceil(r.extraHours * 2) / 2).toLocaleString("id-ID")} jam` : ""}
+                      </span>
+                      {c?.mc && <span className="text-[12px] text-slate-500">{free ? `MC kosong untuk type ini: ${free}` : "Tidak ada MC kosong untuk type ini: ganti MC lain ke type ini (Atur MC) atau lembur."}</span>}
+                      {take.length > 0 && cat && pid && (!c?.mc || mcAdd > 0) && (
+                        <button className="rounded-md bg-red-600 px-2 py-0.5 text-[12px] font-semibold text-white hover:bg-red-700" onClick={() => onAdd(take, cat, pid)}>
+                          + {take.map(first).join(", ")}
+                        </button>
+                      )}
+                      {!take.length && (!c?.mc || free > 0) && <span className="text-[12px] text-slate-500">Seret orang dari type yang &quot;Cukup&quot; ke type ini.</span>}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+const nEndOf = (m: PMaster) => normalEnd(m);
 
 function Stat({ label, value, tone = "" }: { label: string; value: number; tone?: string }) {
   return (
