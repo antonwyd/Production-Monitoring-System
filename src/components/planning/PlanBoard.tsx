@@ -63,8 +63,17 @@ const BAR: Record<Status, string> = { SAFE: "bg-emerald-500", WARNING: "bg-amber
 type Where = { cat: string; part: string } | null;
 
 export default function PlanBoard({ page, today, nowMin, canSave }: { page: PlanPage; today: string; nowMin: number; canSave: boolean }) {
-  const m = useMemo(() => buildMaster(page.raw), [page.raw]);
-  const [st, setSt] = useState<PlanState>(page.state);
+  // Shield tidak direncanakan di sini (permintaan Anton 11 Nov).
+  const m = useMemo(() => {
+    const b = buildMaster(page.raw);
+    const cats = b.cats.filter((c) => !/shield/i.test(c.name));
+    const ok = new Set(cats.map((c) => c.name));
+    return { ...b, cats, parts: b.parts.filter((p) => ok.has(p.category)), machines: b.machines.filter((x) => ok.has(x.category)) };
+  }, [page.raw]);
+  const okCat = (s: PlanState): PlanState => ({ ...s, people: s.people.map((p) => ({ ...p, segs: p.segs.filter((x) => !x.cat || m.cats.some((c) => c.name === x.cat)) })) });
+  // Belum ada rencana tersimpan: semua orang mulai di panel kiri (belum bekerja).
+  const base = useMemo(() => (page.saved ? okCat(page.state) : { ...page.state, people: page.state.people.map((p) => ({ ...p, segs: [] })) }), [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [st, setSt] = useState<PlanState>(base);
   const isToday = st.date === today;
   const nEnd = normalEnd(m);
   const nowSlot = isToday && nowMin > START ? Math.min(nEnd - 60, Math.floor(nowMin / 60) * 60) : START;
@@ -72,7 +81,13 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const [sel, setSel] = useState<string[]>([]);
   const [drag, setDrag] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ cat: string; n: number } | undefined>();
-  const [extra, setExtra] = useState<Record<string, string[]>>({}); // type tambahan per kategori (kosong)
+  // Type yang dikerjakan di hari kerja terakhir tampil sebagai tempat tujuan (masih kosong), supaya bisa langsung diseret.
+  const [extra, setExtra] = useState<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    const add = (cat: string, pid: string) => pid && m.parts.some((p) => p.id === pid) && !(out[cat] ??= []).includes(pid) && out[cat].push(pid);
+    for (const p of page.state.people) for (const g of p.segs) if (g.cat) g.mcs?.length ? g.mcs.forEach((x) => add(g.cat, page.state.machines[mcKey(g.cat, x)] ?? "")) : add(g.cat, g.part ?? "");
+    return out;
+  });
   const [sheet, setSheet] = useState<null | "dest" | "hadir" | { addType: string } | { target: Row }>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -166,9 +181,9 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   const toggle = (name: string) => setSel((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));
 
   const changes = st.people.filter((p) => {
-    const o = page.initial.people.find((x) => x.name === p.name);
+    const o = base.people.find((x) => x.name === p.name);
     const sig = (x: PPerson, e: number) => JSON.stringify(spans(x, e).filter((s) => s.cat));
-    return !o || sig(o, dayEnd(m, page.initial.ot)) !== sig(p, end) || !!o.absent !== !!p.absent;
+    return !o || sig(o, dayEnd(m, base.ot)) !== sig(p, end) || !!o.absent !== !!p.absent;
   }).length;
   const errors = res.issues.filter((i) => i.level === "error");
 
@@ -211,7 +226,7 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
       setDrag(null);
     },
   });
-  const chip = (name: string, color?: string) => {
+  const chip = (name: string, color?: string, full?: boolean) => {
     const on = sel.includes(name);
     return (
       <button
@@ -220,47 +235,31 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         onDragStart={() => setDrag(name)}
         onDragEnd={() => setDrag(null)}
         onClick={() => toggle(name)}
-        className={`group flex items-center gap-1.5 rounded-full border bg-white py-1 pl-1 pr-3 text-sm font-medium shadow-sm transition active:scale-95 ${on ? "border-slate-900 ring-2 ring-slate-900" : "border-slate-200 hover:border-slate-400"}`}
+        className={`group flex items-center gap-1.5 rounded-full border bg-white py-1 pl-1 pr-3 text-left text-sm font-medium shadow-sm transition active:scale-95 ${full ? "w-full" : ""} ${on ? "border-slate-900 ring-2 ring-slate-900" : "border-slate-200 hover:border-slate-400"}`}
       >
         <span className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: on ? "#0f172a" : (color ?? "#94a3b8") }}>
           {on ? "✓" : initials(name)}
         </span>
-        {first(name)}
+        <span className="truncate">{full ? name : first(name)}</span>
       </button>
     );
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 pb-36 pt-5 sm:px-6">
-      <header className="flex items-end justify-between gap-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Rencana manpower</div>
-          <h1 className="text-2xl font-bold tracking-tight">{tgl(st.date)}</h1>
+    <div className="flex flex-col gap-3 px-4 pb-36 pt-4 sm:px-6 lg:h-[100dvh] lg:overflow-hidden lg:pb-3">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="mr-auto">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Rencana manpower</div>
+          <h1 className="text-xl font-bold tracking-tight">{tgl(st.date)}</h1>
         </div>
-        <div className="flex items-center gap-1">
-          <Link className="btn-secondary h-10 w-10 px-0" href={`/perencanaan?date=${shift(st.date, -1)}`} aria-label="Hari sebelumnya">
-            ‹
-          </Link>
-          <Link className="btn-secondary h-10 w-10 px-0" href={`/perencanaan?date=${shift(st.date, 1)}`} aria-label="Hari berikutnya">
-            ›
-          </Link>
-        </div>
-      </header>
-
-      <section className="card overflow-hidden p-3 sm:p-4">
-        <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} />
-      </section>
-
-      {/* Jam berlaku */}
-      <section className="sticky top-0 z-20 -mx-4 bg-[var(--color-bg,#f4f6f9)]/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
-        <div className="flex items-center gap-3">
-          <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-slate-500">Atur mulai jam</span>
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-slate-500">Mulai jam</span>
+          <div className="flex gap-1 overflow-x-auto">
             {hours.map((h) => (
               <button
                 key={h}
                 onClick={() => setAt(h)}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold tabular-nums transition ${at === h ? "bg-slate-900 text-white shadow" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-400"}`}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums transition ${at === h ? "bg-slate-900 text-white shadow" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-400"}`}
               >
                 {toClock(h)}
                 {h === nowSlot && isToday ? " •" : ""}
@@ -268,81 +267,113 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
             ))}
           </div>
         </div>
-      </section>
-
-      {/* Belum ada tugas */}
-      <section className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-3" onDragOver={(e) => drag && e.preventDefault()} onDrop={() => drag && (unassign(sel.includes(drag) ? sel : [drag]), setDrag(null))}>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-700">
-            Belum ada tugas <span className="font-normal text-slate-400">· {pool.length}</span>
-          </span>
-          <button className="text-xs font-semibold text-slate-500 underline" onClick={() => setSheet("hadir")}>
-            {absent.length ? `${absent.length} tidak masuk` : "Kehadiran"}
-          </button>
+        <div className="flex items-center gap-1">
+          <Link className="btn-secondary h-9 w-9 px-0" href={`/perencanaan?date=${shift(st.date, -1)}`} aria-label="Hari sebelumnya">
+            ‹
+          </Link>
+          <Link className="btn-secondary h-9 w-9 px-0" href={`/perencanaan?date=${shift(st.date, 1)}`} aria-label="Hari berikutnya">
+            ›
+          </Link>
         </div>
-        <div className="flex flex-wrap gap-1.5">{pool.length ? pool.map((n) => chip(n)) : <span className="text-sm text-slate-400">Semua sudah punya tugas.</span>}</div>
-      </section>
+      </header>
 
-      {/* Papan per proses */}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {lanes.map(({ c, groups, count }) => (
-          <div key={c.name} className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center justify-between px-4 py-3" style={{ background: SOFT[c.step], borderTop: `4px solid ${COLOR[c.step]}` }}>
-              <div>
-                <div className="font-bold">{c.name}</div>
-                <div className="text-xs text-slate-500">
-                  {count} orang{c.mc ? ` · ${countMc(st, m, c.name, at)} MC jalan` : ""}
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+        {/* Kiri: semua member yang belum bekerja */}
+        <aside
+          className={`flex max-h-80 min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 lg:max-h-none ${drag ? "ring-2 ring-slate-400" : "ring-slate-200"}`}
+          onDragOver={(e) => drag && e.preventDefault()}
+          onDrop={() => drag && (unassign(sel.includes(drag) ? sel : [drag]), setDrag(null))}
+        >
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="font-bold">Belum bekerja</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{pool.length}</span>
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">Seret atau ketuk nama, lalu ketuk type tujuan.</div>
+            {!page.saved && pool.length === st.people.length - absent.length && page.state.people.some((p) => p.segs.length) && (
+              <button className="mt-2 w-full rounded-lg bg-slate-100 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200" onClick={() => update(() => okCat(page.state))}>
+                Isi seperti hari kerja terakhir
+              </button>
+            )}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-3">
+            {pool.length ? pool.map((n) => chip(n, undefined, true)) : <span className="py-6 text-center text-sm text-slate-400">Semua sudah bekerja</span>}
+          </div>
+          <button className="border-t border-slate-100 px-4 py-2.5 text-left text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setSheet("hadir")}>
+            {absent.length ? <span className="text-red-600">{absent.length} tidak masuk: {absent.map((p) => first(p.name)).join(", ")}</span> : "Atur kehadiran (tidak masuk)"}
+          </button>
+        </aside>
+
+        <div className="flex min-h-0 flex-col gap-3">
+          <section className="card shrink-0 overflow-hidden p-3">
+            <FloorView key={`${at}`} m={m} st={st} initialAt={at} focus={focus} compact maxH={230} />
+          </section>
+
+          <section className="grid min-h-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {lanes.map(({ c, groups, count }) => (
+              <div key={c.name} className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                <div className="flex shrink-0 items-center justify-between px-4 py-2.5" style={{ background: SOFT[c.step], borderTop: `4px solid ${COLOR[c.step]}` }}>
+                  <div>
+                    <div className="font-bold">{c.name}</div>
+                    <div className="text-xs text-slate-500">
+                      {count} orang{c.mc ? ` · ${countMc(st, m, c.name, at)} MC jalan` : ""}
+                    </div>
+                  </div>
+                  <button className="rounded-full bg-white px-3 py-1 text-xs font-semibold shadow-sm ring-1 ring-slate-200" onClick={() => setSheet({ addType: c.name })}>
+                    + Type
+                  </button>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+                  {groups.length === 0 && (
+                    <button className="rounded-xl border border-dashed border-slate-300 py-6 text-center text-sm text-slate-400" onClick={() => setSheet({ addType: c.name })}>
+                      + Pilih type
+                    </button>
+                  )}
+                  {groups.map(({ pid, names, row }) => {
+                    const target = sel.length > 0 || !!drag;
+                    return (
+                      <div
+                        key={pid}
+                        {...dropProps(c.name, pid)}
+                        className={`rounded-xl border p-2.5 transition ${target ? "cursor-pointer border-slate-400 border-dashed bg-slate-50 hover:bg-slate-100" : "border-slate-100"}`}
+                        onClick={(e) => {
+                          if (sel.length && e.target === e.currentTarget) moveTo(sel, c.name, pid);
+                        }}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2" onClick={() => sel.length && moveTo(sel, c.name, pid)}>
+                          <span className="whitespace-nowrap font-semibold">{partLabel(m, pid) || "Type belum diatur"}</span>
+                          {sel.length ? (
+                            <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">Pindah ke sini</span>
+                          ) : (
+                            row && (
+                              <button
+                                className="text-right text-xs tabular-nums text-slate-500"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSheet({ target: row });
+                                }}
+                              >
+                                ≈ {n0(row.estEnd)} pcs
+                                {row.need > 0 && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 font-semibold ${PILL[row.status]}`}>{WORD[row.status]}</span>}
+                              </button>
+                            )
+                          )}
+                        </div>
+                        {row && row.need > 0 && (
+                          <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div className={`h-full ${BAR[row.status]}`} style={{ width: `${Math.min(100, (row.estEnd / row.need) * 100)}%` }} />
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">{names.length ? names.map((n) => chip(n, COLOR[c.step])) : <span className="text-xs text-slate-400">Seret nama ke sini</span>}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <button className="rounded-full bg-white px-3 py-1 text-xs font-semibold shadow-sm ring-1 ring-slate-200" onClick={() => setSheet({ addType: c.name })}>
-                + Type
-              </button>
-            </div>
-            <div className="flex flex-1 flex-col gap-2 p-3">
-              {groups.length === 0 && <div className="py-4 text-center text-sm text-slate-400">Kosong</div>}
-              {groups.map(({ pid, names, row }) => {
-                const target = sel.length > 0 || !!drag;
-                return (
-                  <div
-                    key={pid}
-                    {...dropProps(c.name, pid)}
-                    className={`rounded-xl border p-2.5 transition ${target ? "cursor-pointer border-slate-400 border-dashed bg-slate-50 hover:bg-slate-100" : "border-slate-100"}`}
-                    onClick={(e) => {
-                      if (sel.length && e.target === e.currentTarget) moveTo(sel, c.name, pid);
-                    }}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2" onClick={() => sel.length && moveTo(sel, c.name, pid)}>
-                      <span className="whitespace-nowrap font-semibold">{partLabel(m, pid) || "Type belum diatur"}</span>
-                      {sel.length ? (
-                        <span className="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">Pindah ke sini</span>
-                      ) : (
-                        row && (
-                          <button
-                            className="text-right text-xs tabular-nums text-slate-500"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSheet({ target: row });
-                            }}
-                          >
-                            ≈ {n0(row.estEnd)} pcs
-                            {row.need > 0 && <span className={`ml-1.5 rounded-full px-1.5 py-0.5 font-semibold ${PILL[row.status]}`}>{WORD[row.status]}</span>}
-                          </button>
-                        )
-                      )}
-                    </div>
-                    {row && row.need > 0 && (
-                      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                        <div className={`h-full ${BAR[row.status]}`} style={{ width: `${Math.min(100, (row.estEnd / row.need) * 100)}%` }} />
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-1.5">{names.map((n) => chip(n, COLOR[c.step]))}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
+            ))}
+          </section>
+        </div>
+      </div>
 
       {saved && !dirty && !msg && (
         <p className="text-center text-xs text-slate-400">

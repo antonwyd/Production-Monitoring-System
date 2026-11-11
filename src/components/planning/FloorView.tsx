@@ -61,7 +61,7 @@ export function buildAreas(m: PMaster, st: PlanState, at: number): Area[] {
   });
 }
 
-export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st: PlanState; initialAt: number; focus?: { cat: string; n: number } }) {
+export default function FloorView({ m, st, initialAt, focus, compact, maxH }: { m: PMaster; st: PlanState; initialAt: number; focus?: { cat: string; n: number }; compact?: boolean; maxH?: number }) {
   const end = dayEnd(m, st.ot);
   const [at, setAt] = useState(Math.min(end - 1, Math.max(START, initialAt)));
   const areas = useMemo(() => buildAreas(m, st, at), [m, st, at]);
@@ -376,13 +376,17 @@ export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st:
     const draw = () => {
       const dpr = window.devicePixelRatio || 1,
         cw = canvas.clientWidth || W,
-        sc = cw / W;
+        sc = maxH ? Math.min(cw / W, maxH / H) : cw / W,
+        ox = (cw - W * sc) / 2;
       if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(H * sc * dpr)) {
         canvas.width = Math.round(cw * dpr);
         canvas.height = Math.round(H * sc * dpr);
         canvas.style.height = `${H * sc}px`;
       }
-      ctx.setTransform(dpr * sc, 0, 0, dpr * sc, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = C.floor;
+      ctx.fillRect(0, 0, cw, H * sc);
+      ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, 0);
       ctx.fillStyle = C.floor;
       ctx.fillRect(0, 0, W, H);
       if (area.mc) {
@@ -505,7 +509,7 @@ export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st:
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={`flex flex-wrap items-center gap-2 ${compact ? "hidden" : ""}`}>
         <label className="flex items-center gap-2 text-sm">
           Jam
           <select className="input h-9 w-auto py-1" value={at} onChange={(e) => setAt(Number(e.target.value))}>
@@ -519,7 +523,7 @@ export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st:
         <button className="btn-secondary h-9 px-3 text-sm" onClick={() => setSpeed(speed === 1 ? 3 : speed === 3 ? 6 : 1)}>
           Kecepatan {speed}x
         </button>
-        <span className="text-xs text-slate-500">Ganti jam untuk melihat siapa mengerjakan apa.</span>
+        {!compact && <span className="text-xs text-slate-500">Ganti jam untuk melihat siapa mengerjakan apa.</span>}
       </div>
       <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist">
         {areas.map((a, i) => (
@@ -541,7 +545,7 @@ export default function FloorView({ m, st, initialAt, focus }: { m: PMaster; st:
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <canvas ref={cv} className="block w-full" aria-label={`Animasi lantai ${area?.id ?? ""} jam ${toClock(at)}`} />
       </div>
-      {area?.mc && (
+      {area?.mc && !compact && (
         <div className="flex flex-wrap gap-4 text-xs text-slate-600">
           <span>
             <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-emerald-600" />
