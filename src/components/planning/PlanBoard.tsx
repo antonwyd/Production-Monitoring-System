@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   assign,
+  balance,
   buildMaster,
   compute,
   dayEnd,
@@ -32,6 +33,7 @@ import {
   type Row,
   type Status,
   type Step,
+  type Move,
 } from "@/lib/planning";
 import type { PlanPage } from "@/lib/sheets/planning";
 import FloorView from "./FloorView";
@@ -103,7 +105,10 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   });
   // Kartu type yang sengaja dihapus dari papan (tombol ✕).
   const [hidden, setHidden] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | "po" | { addType: string }>(null);
+  // Tampilan utama: matriks PO (type × proses) atau papan per proses.
+  const [view, setView] = useState<"matriks" | "papan">("matriks");
+  const [plan, setPlan] = useState<{ moves: Move[]; pick: boolean[] } | null>(null);
+  const [sheet, setSheet] = useState<null | "dest" | "hadir" | "mc" | "po" | "balance" | { addType: string }>(null);
   const [hist, setHist] = useState<PlanState[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -323,6 +328,57 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
   }, [resT, m, st, now, at, T, po]);
   const kurang = hasil.filter((h) => h.status === "CRITICAL").length;
 
+  // Matriks: baris = type (yang ada PO atau ada orangnya), kolom = PF → Seiretsu → Senbetsu.
+  const matrix = useMemo(() => {
+    const catOf = new Map(m.cats.map((c) => [c.name, c]));
+    const partOf = new Map(m.parts.map((p) => [p.id, p]));
+    const cellPeople = new Map<string, string[]>();
+    const busy = new Set<string>();
+    for (const [name, w] of where) {
+      const c = w && catOf.get(w.cat);
+      const p = w && partOf.get(w.part);
+      if (!c || !p) continue;
+      const k = `${p.key}#${c.step}`;
+      cellPeople.set(k, [...(cellPeople.get(k) ?? []), name]);
+      busy.add(p.key);
+    }
+    return poTypes(m)
+      .filter((t) => po[t.key] || busy.has(t.key))
+      .map((t) => {
+        const q = po[t.key] ?? 0;
+        const cells = STEPS.map((step) => {
+          const parts = m.parts.filter((p) => p.key === t.key && catOf.get(p.category)?.step === step);
+          const names = (cellPeople.get(`${t.key}#${step}`) ?? []).sort();
+          const r = resT.rows.find((x) => x.key === t.key && x.step === step);
+          const tgt = parts.find((p) => names.some((n) => where.get(n)?.part === p.id)) ?? parts[0];
+          const est = r?.est ?? 0;
+          const status: Status | undefined = !q ? undefined : est >= q * 1.1 ? "SAFE" : est >= q ? "WARNING" : "CRITICAL";
+          return { step, ok: parts.length > 0, names, est, mcs: r?.mcs.length ?? 0, cat: tgt?.category ?? "", pid: tgt?.id ?? "", status, mc: !!(tgt && catOf.get(tgt.category)?.mc) };
+        });
+        const live = cells.filter((c) => c.ok);
+        const hasil = live.length ? Math.min(...live.map((c) => c.est)) : 0;
+        return { ...t, po: q, cells, hasil, gap: q - hasil };
+      })
+      .sort((a, b) => Number(!a.po) - Number(!b.po));
+  }, [m, po, where, resT]);
+  const mxPo = matrix.filter((r) => r.po);
+  const mxTot = { po: mxPo.reduce((a, r) => a + r.po, 0), hasil: mxPo.reduce((a, r) => a + Math.min(r.po, r.hasil), 0), kurang: mxPo.reduce((a, r) => a + Math.max(0, r.gap), 0) };
+  const runBalance = () => {
+    const moves = balance(m, st, Math.max(at, isToday ? now : START), T, now);
+    setPlan({ moves, pick: moves.map(() => true) });
+    setSheet("balance");
+  };
+  const applyBalance = () => {
+    if (!plan) return;
+    const from = Math.max(at, isToday ? now : START);
+    const chosen = plan.moves.filter((_, i) => plan.pick[i]);
+    update((s) => ({ ...s, people: s.people.map((p) => chosen.filter((x) => x.name === p.name).reduce((q, x) => assign({ ...q, absent: undefined }, { at: from, ...x.to }), p)) }));
+    setFocus((f) => ({ cat: chosen[0]?.to.cat ?? "", n: (f?.n ?? 0) + 1 }));
+    setSheet(null);
+    setPlan(null);
+    if (chosen.length) setMsg({ kind: "ok", text: `${chosen.length} pemindahan diterapkan mulai ${toClock(from)}. Tekan ↶ Batal untuk membatalkan.` });
+  };
+
   const dropProps = (id: string, onDrop: (names: string[]) => void) => ({
     onDragOver: (e: React.DragEvent) => {
       if (!drag) return;
@@ -381,6 +437,143 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
     );
   };
 
+  function renderMatrix() {
+    const deadlines = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((h) => h * 60).filter((x) => x > START && x <= dayEnd(m, m.otLimitMin));
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-100 px-4 py-2.5">
+          <label className="flex items-center gap-2 text-[13px] text-slate-500">
+            PO harus selesai jam
+            <select className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[14px] font-bold text-slate-900" value={until} onChange={(e) => setUntil(Number(e.target.value))}>
+              {deadlines.map((x) => (
+                <option key={x} value={x}>
+                  {toClock(x)}
+                  {x > nEnd ? " (lembur)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          {mxPo.length > 0 && (
+            <div className="flex items-baseline gap-4 text-[13px]">
+              <span className="text-slate-500">
+                PO <b className="text-[16px] tabular-nums text-slate-900">{k0(mxTot.po)}</b>
+              </span>
+              <span className="text-slate-500">
+                Terkejar <b className="text-[16px] tabular-nums text-slate-900">{k0(mxTot.hasil)}</b>
+              </span>
+              <span className={mxTot.kurang ? "text-red-600" : "text-emerald-600"}>
+                {mxTot.kurang ? (
+                  <>
+                    Kurang <b className="text-[16px] tabular-nums">{k0(mxTot.kurang)}</b>
+                  </>
+                ) : (
+                  <b>✓ Semua PO terkejar</b>
+                )}
+              </span>
+            </div>
+          )}
+          <div className="ml-auto flex gap-2">
+            <button className="h-9 rounded-lg px-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => setBigFloor(true)}>
+              ▶ Lantai
+            </button>
+            <button className="h-9 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-30" disabled={!mxTot.kurang} onClick={runBalance}>
+              ⚖ Seimbangkan
+            </button>
+          </div>
+        </div>
+        {!matrix.length ? (
+          <div className="grid flex-1 place-items-center p-8 text-center">
+            <div className="max-w-sm">
+              <div className="text-3xl">📋</div>
+              <p className="mt-2 font-bold">Mulai dari PO hari ini</p>
+              <p className="mt-1 text-sm text-slate-500">Setiap type yang ada PO-nya jadi satu baris. Lalu seret orang ke proses PF, Seiretsu, atau Senbetsu di baris itu.</p>
+              <button className="btn-primary mt-4 h-10 px-5" onClick={() => setSheet("po")}>
+                Input PO
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div className="min-w-[860px]">
+              <div className="sticky top-0 z-10 grid grid-cols-[190px_repeat(3,minmax(0,1fr))_130px] gap-2 border-b border-slate-100 bg-white/95 px-3 py-2 backdrop-blur">
+                <span className="self-end text-[11px] font-bold uppercase tracking-wide text-slate-400">Type · PO</span>
+                {STEPS.map((step) => (
+                  <span key={step} className="flex items-center gap-2 text-[13px] font-bold" style={{ color: COLOR[step] }}>
+                    <span className="grid h-6 w-6 place-items-center rounded-md text-[12px] text-white" style={{ background: COLOR[step] }}>
+                      {ICON[step]}
+                    </span>
+                    {STEP_NAME[step]}
+                    <span className="font-normal text-slate-400">{matrix.reduce((a, r) => a + r.cells.find((c) => c.step === step)!.names.length, 0)} orang</span>
+                  </span>
+                ))}
+                <span className="self-end text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">Hasil vs PO</span>
+              </div>
+              {matrix.map((r, ri) => {
+                const col = !r.po ? "#64748b" : r.gap <= 0 ? (r.hasil >= r.po * 1.1 ? "#059669" : "#d97706") : "#dc2626";
+                return (
+                  <div key={r.key}>
+                    {ri > 0 && !r.po && matrix[ri - 1].po > 0 && <div className="px-4 pb-1 pt-4 text-[11px] font-bold uppercase tracking-wide text-slate-400">Dikerjakan, tanpa PO</div>}
+                    <div className={`grid grid-cols-[190px_repeat(3,minmax(0,1fr))_130px] items-stretch gap-2 border-b border-slate-100 px-3 py-2 ${r.po && r.gap > 0 ? "bg-red-50/40" : ""}`}>
+                      <div className="flex flex-col justify-center">
+                        <span className="text-[16px] font-bold text-slate-900">{r.label}</span>
+                        <span className="text-[12px] text-slate-500">{r.po ? `PO ${n0(r.po)}` : "tanpa PO"}</span>
+                      </div>
+                      {r.cells.map((c) => {
+                        const id = `mx|${r.key}|${c.step}`;
+                        const hot = over === id;
+                        if (!c.ok) return <div key={c.step} className="grid place-items-center rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-300">tidak lewat proses ini</div>;
+                        const can = moving && !!c.pid;
+                        const pct = r.po ? Math.min(100, (c.est / r.po) * 100) : 0;
+                        const cc = c.status === "CRITICAL" ? "#dc2626" : c.status === "WARNING" ? "#d97706" : c.status === "SAFE" ? "#059669" : "#94a3b8";
+                        return (
+                          <div
+                            key={c.step}
+                            {...dropProps(id, (ns) => moveTo(ns, c.cat, c.pid))}
+                            onClick={() => can && moveTo(sel, c.cat, c.pid)}
+                            className={`flex min-h-[86px] flex-col rounded-xl p-2 transition ${can ? "cursor-pointer" : ""} ${hot ? "ring-2" : "ring-1 ring-slate-200"}`}
+                            style={{ background: hot ? TINT[c.step] : SOFT[c.step], ...(hot ? ({ "--tw-ring-color": COLOR[c.step] } as React.CSSProperties) : {}) }}
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-[15px] font-bold tabular-nums" style={{ color: cc }}>
+                                {k0(c.est)}
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                {c.mc ? `${c.mcs} MC · ` : ""}
+                                {r.po ? (c.est >= r.po ? `+${k0(c.est - r.po)}` : `−${k0(r.po - c.est)}`) : `${c.names.length} orang`}
+                              </span>
+                            </div>
+                            {r.po > 0 && (
+                              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white">
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cc }} />
+                              </div>
+                            )}
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {c.names.map((n) => chip(n, c.step))}
+                              {!c.names.length && <span className="w-full rounded-lg border border-dashed border-slate-300 py-1.5 text-center text-[11px] text-slate-400">{can ? "Taruh di sini" : "Seret orang ke sini"}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="flex flex-col items-end justify-center text-right">
+                        <span className="text-[18px] font-extrabold tabular-nums" style={{ color: col }}>
+                          {r.po ? (r.gap > 0 ? `−${n0(r.gap)}` : "✓") : k0(r.hasil)}
+                        </span>
+                        <span className="text-[11px] text-slate-500">{r.po ? (r.gap > 0 ? `terkejar ${k0(r.hasil)}` : `terkejar ${k0(r.hasil)}`) : "hasil"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <button className="m-3 rounded-lg border border-dashed border-slate-300 px-4 py-2 text-[13px] font-semibold text-slate-500 hover:border-slate-500" onClick={() => setSheet("po")}>
+                + Tambah / ubah PO
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3 px-3 pb-36 pt-3 sm:px-5 lg:h-[100dvh] lg:overflow-hidden lg:pb-3">
       {/* Bar atas: tanggal, jam berlaku, ringkasan, simpan */}
@@ -423,6 +616,18 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
 
         <div className="ml-auto flex items-center gap-2">
           {saved && !dirty && <span className="hidden text-[11px] text-slate-400 xl:inline">Tersimpan · {saved.by}</span>}
+          <div className="flex rounded-lg bg-slate-100 p-0.5 text-[13px] font-semibold">
+            {(
+              [
+                ["matriks", "▦ Matriks PO"],
+                ["papan", "☰ Papan proses"],
+              ] as const
+            ).map(([k, l]) => (
+              <button key={k} onClick={() => setView(k)} className={`rounded-md px-2.5 py-1.5 transition ${view === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
           <button className="h-9 rounded-lg bg-sky-50 px-3 text-sm font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100" onClick={() => setSheet("po")}>
             📋 PO{Object.keys(po).length ? ` (${Object.keys(po).length})` : ""}
           </button>
@@ -472,6 +677,10 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
         </aside>
 
         <div className="flex min-h-0 flex-col gap-3">
+          {view === "matriks" ? (
+            renderMatrix()
+          ) : (
+          <>
           {/* Panel atas: hasil simulasi vs target, atau lantai produksi */}
           <section className="shrink-0 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
@@ -610,6 +819,8 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
               </div>
             ))}
           </section>
+          </>
+          )}
         </div>
       </div>
 
@@ -720,6 +931,36 @@ export default function PlanBoard({ page, today, nowMin, canSave }: { page: Plan
             <FloorView m={m} st={st} initialAt={at} focus={focus} maxH={typeof window !== "undefined" ? window.innerHeight - 260 : 600} />
           </div>
         </div>
+      )}
+      {sheet === "balance" && plan && (
+        <Sheet title="Usulan pemindahan" onClose={() => (setSheet(null), setPlan(null))}>
+          {plan.moves.length ? (
+            <>
+              <p className="mb-3 text-sm text-slate-500">
+                Mulai jam {toClock(Math.max(at, isToday ? now : START))}. Hanya memindah orang dari type yang lebih (atau yang belum bekerja), operator MC tidak dipindah. Hilangkan centang yang tidak mau.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {plan.moves.map((x, i) => (
+                  <label key={i} className={`flex cursor-pointer items-center gap-3 rounded-xl p-2.5 ring-1 ${plan.pick[i] ? "bg-slate-50 ring-slate-300" : "ring-slate-200 opacity-50"}`}>
+                    <input type="checkbox" className="h-4 w-4" checked={plan.pick[i]} onChange={() => setPlan({ ...plan, pick: plan.pick.map((v, j) => (j === i ? !v : v)) })} />
+                    <span className="min-w-0 flex-1 text-[13px]">
+                      <b>{x.name}</b>
+                      <span className="block text-slate-500">
+                        {x.from ? `${partLabel(m, x.from.part)} ${STEP_NAME[m.cats.find((c) => c.name === x.from!.cat)!.step]}` : "Belum bekerja"} → <b className="text-slate-800">{partLabel(m, x.to.part)} {STEP_NAME[m.cats.find((c) => c.name === x.to.cat)!.step]}</b>
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right text-[11.5px] font-semibold text-emerald-700">kurang turun<br /><b className="text-[13px]">{k0(x.gain)}</b></span>
+                  </label>
+                ))}
+              </div>
+              <button className="btn-primary mt-4 w-full" disabled={!plan.pick.some(Boolean)} onClick={applyBalance}>
+                Terapkan {plan.pick.filter(Boolean).length} pemindahan
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">Tidak ada pemindahan yang bisa mengurangi kekurangan: semua type sudah pas atau orangnya tidak cukup. Pilihannya: tambah orang (perbantuan), lembur, atau ganti MC di PF.</p>
+          )}
+        </Sheet>
       )}
       {sheet === "po" && <PoSheet m={m} po={po} onClose={() => setSheet(null)} onSave={(map) => (setPoAll(map), setSheet(null))} />}
       {sheet === "hadir" && <HadirSheet st={st} onClose={() => setSheet(null)} onSet={(name, a) => setAbsent([name], a)} />}

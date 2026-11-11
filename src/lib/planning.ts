@@ -530,3 +530,62 @@ export function parsePo(text: string, m: Pick<PMaster, "parts" | "cats">): { po:
   }
   return { po, miss };
 }
+
+export type Move = { name: string; from: { cat: string; part: string } | null; to: { cat: string; part: string }; gain: number };
+
+/** Total kekurangan semua sel (type × proses) yang punya target, sampai jam T. */
+export function shortfall(m: PMaster, st: PlanState, T: number, now = START): number {
+  return compute(m, st, T, now).rows.reduce((a, r) => a + (r.need > 0 ? Math.max(0, r.need - r.est) : 0), 0);
+}
+
+/**
+ * Usulan "Seimbangkan": pindahkan orang (proses manual, bukan operator MC) mulai jam `at`
+ * ke sel yang kurang, hanya bila total kekurangan semua sel turun. Rakus: sel paling kurang dulu.
+ */
+export function balance(m: PMaster, st: PlanState, at: number, T: number, now = START, maxMoves = 20): Move[] {
+  const catOf = new Map(m.cats.map((c) => [c.name, c]));
+  const end = dayEnd(m, st.ot);
+  const nowSeg = (p: PPerson) => spans(p, end).find((s) => s.at <= at && at < s.to);
+  const moves: Move[] = [];
+  const stuck = new Set<string>();
+  let cur = st;
+  let obj = shortfall(m, cur, T, now);
+  for (let round = 0; round < maxMoves && obj > 0; round++) {
+    const res = compute(m, cur, T, now);
+    const cells = res.rows
+      .filter((r) => r.need > r.est && !stuck.has(`${r.key}#${r.step}`))
+      .map((r) => ({ r, part: m.parts.find((p) => p.key === r.key && catOf.get(p.category)?.step === r.step && !catOf.get(p.category)?.mc) }))
+      .filter((x) => x.part)
+      .sort((a, b) => b.r.need - b.r.est - (a.r.need - a.r.est));
+    if (!cells.length) break;
+    const { r, part } = cells[0];
+    let best: { st: PlanState; obj: number; move: Move } | null = null;
+    // Yang belum bekerja dicoba dulu, jadi dipilih bila hasilnya sama.
+    const order = [...cur.people].sort((a, b) => Number(!!nowSeg(a)?.cat) - Number(!!nowSeg(b)?.cat));
+    for (const p of order) {
+      if (p.absent || moves.some((x) => x.name === p.name)) continue; // satu orang dipindah sekali saja
+      const s = nowSeg(p);
+      if (s?.cat && (catOf.get(s.cat)?.mc ?? true)) continue; // operator MC / kategori lain tidak dipindah
+      if (s?.cat === part!.category && s.part === part!.id) continue;
+      const next = { ...cur, people: cur.people.map((x) => (x.name === p.name ? assign(x, { at, cat: part!.category, part: part!.id }) : x)) };
+      const rr = compute(m, next, T, now).rows;
+      const o = rr.reduce((acc, x) => acc + (x.need > 0 ? Math.max(0, x.need - x.est) : 0), 0);
+      // Type asal tidak boleh jadi kurang (hanya ambil dari yang lebih / tanpa PO).
+      const src = s?.part ? m.parts.find((x) => x.id === s.part) : undefined;
+      const srcRow = src && rr.find((x) => x.key === src.key && x.step === catOf.get(src.category)?.step);
+      if (srcRow && srcRow.need > 0 && srcRow.est < srcRow.need) continue;
+      if (o < obj - 1 && (!best || o < best.obj))
+        best = { st: next, obj: o, move: { name: p.name, from: s?.cat ? { cat: s.cat, part: s.part ?? "" } : null, to: { cat: part!.category, part: part!.id }, gain: Math.round(obj - o) } };
+    }
+    if (!best) {
+      stuck.add(`${r.key}#${r.step}`);
+      round--;
+      if (stuck.size > 40) break;
+      continue;
+    }
+    moves.push(best.move);
+    cur = best.st;
+    obj = best.obj;
+  }
+  return moves;
+}

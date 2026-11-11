@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, assignRange, buildMaster, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, balance, buildMaster, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -139,5 +139,20 @@ describe("Perencanaan: tempel PO", () => {
     const r = parsePo("627-J D1\t800.000\nGDD629*D2  J 300,000\n6901J D2 5000 pcs\nBaris aneh\n629-J D3 100", m);
     expect(r.po).toEqual({ "iron|627J|D1": 800000, "iron|629J|D2": 300000, "iron|6901J|D2": 5000 });
     expect(r.miss).toEqual(["Baris aneh", "629-J D3 100"]);
+  });
+});
+
+describe("Perencanaan: seimbangkan", () => {
+  it("pindahkan kelebihan orang ke type yang kurang, tanpa membuat type asal kurang", () => {
+    const people = ["A", "B", "C"].map((name) => ({ name, segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }));
+    const st = base([...people, { name: "Pool", segs: [] }], { [KEY]: { seiretsu: 4000 }, "iron|627J|D1": { seiretsu: 6000 } });
+    const mv = balance(m, st, 420, 960);
+    expect(mv.length).toBe(2);
+    expect(mv.every((x) => x.to.part === "Seiretsu Iron Cage|627-J|D1")).toBe(true);
+    expect(mv[0].name).toBe("Pool");
+    let s = st;
+    for (const x of mv) s = { ...s, people: s.people.map((p) => (p.name === x.name ? assign(p, { at: 420, ...x.to }) : p)) };
+    const r = compute(m, s, 960);
+    expect(r.rows.filter((x) => x.need > 0).every((x) => x.est >= x.need)).toBe(true);
   });
 });
