@@ -52,11 +52,15 @@ export type PlanPage = {
   basis: string | null;
   /** Efisiensi & batas MC: asal angkanya. */
   source: Record<string, string>;
+  /** Aktual (laporan sudah disetujui) tanggal ini per "Kategori|id part". */
+  actual?: Record<string, number>;
 };
 
 export async function loadPlanPage(date: string): Promise<PlanPage> {
   const [am, pm, set, master, absen, saved] = await Promise.all([apiMaster(), planMaster(), masterSettings(), loadMaster(), bacaKehadiran(date), readSaved(date)]);
-  const { facts } = await loadFacts(master, addDays(date, -30), addDays(date, -1));
+  const { facts: all } = await loadFacts(master, addDays(date, -30), date);
+  const facts = all.filter((f) => f.workDate < date);
+  const todayFacts = all.filter((f) => f.workDate === date);
 
   const categories = am.categories.map((c) => ({ name: c.name, process: c.process }));
   const eff: Record<string, number> = {};
@@ -147,8 +151,13 @@ export async function loadPlanPage(date: string): Promise<PlanPage> {
   const abs = new Map(absen.map((a) => [a.member, a.alasan]));
   state.people = state.people.map((p) => (abs.has(p.name) ? { ...p, absent: abs.get(p.name) } : saved ? p : { ...p, absent: undefined }));
   for (const k of Object.keys(machines)) if (!(k in state.machines)) state.machines[k] = machines[k];
+  const actual: Record<string, number> = {};
+  for (const f of todayFacts) {
+    const id = partIn(f.categoryName, f.part);
+    if (id) actual[`${f.categoryName}|${id}`] = (actual[`${f.categoryName}|${id}`] ?? 0) + f.qty;
+  }
 
-  return { raw, state, initial, saved: saved?.info ?? null, basis, source };
+  return { raw, state, initial, saved: saved?.info ?? null, basis, source, actual };
 }
 
 async function ensureTab() {
