@@ -83,7 +83,7 @@ describe("Master Data dari sheet", () => {
 describe("form member → leader → report", () => {
   it("alur lengkap tersimpan di sheet dengan format v1", async () => {
     const r = await qa.submitReport(payload());
-    expect(r.id).toMatch(/^QA\d{14}$/);
+    expect(r.id).toMatch(/^QA\d{16}$/);
     const q = fs.data["Antrian Validasi"][1];
     expect(q.slice(3, 8)).toEqual(["Harjuki", 1, 7920, 30, "Menunggu"]);
     expect(JSON.parse(String(q[11])).items[0].lot).toBe("012300001");

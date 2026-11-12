@@ -654,11 +654,15 @@ export async function submitReport(payload: Payload) {
     // Kiriman yang persis sama (member, tanggal, isi) dan masih Menunggu dianggap kiriman ganda, mis. tombol Kirim
     // ditekan dua kali atau dikirim ulang karena sinyal putus. Kembalikan kiriman yang sudah ada, jangan tambah baris.
     const inti = (x: { items: unknown; lostTimes: unknown; op?: unknown }) => JSON.stringify([x.items, x.lostTimes, x.op ?? null]);
-    const kembar = (await readQueue()).find(
+    const antrian = await readQueue();
+    const kembar = antrian.find(
       (x) => x.status === ST_WAIT && x.member === s(payload.member) && x.date === s(payload.date) && inti(x) === inti({ items, lostTimes: lost, op: payload.op }),
     );
     if (kembar) return { id: kembar.id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, duplicate: true };
-    const id = newSubmissionId();
+    // ID harus unik: dua member yang kirim di detik yang sama pernah dapat ID kembar (11 Nov, Yosi & Putri).
+    const dipakai = new Set(antrian.map((x) => x.id));
+    let id = newSubmissionId();
+    while (dipakai.has(id)) id = newSubmissionId();
     await io.append(`${q(SHEET_QUEUE)}!A:L`, [[id, nowJakarta(), s(payload.date), asText(payload.member), items.length, totalQty, ltMin, ST_WAIT, "", "", "", asText(data)]]);
     return { id, prod: rows.prodRows.length, lt: rows.ltRows.length, pending: true, ...(await pesanUntuk(s(payload.member))) };
   });
@@ -868,7 +872,10 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
   return locked(async () => {
     const hasil = { ok: 0, skip: 0, errors: [] as string[], detail: [] as { id: string; ok: boolean; message?: string; member?: string; date?: string }[] };
     const byId: Record<string, QueueEntry> = {};
-    (await readQueue()).forEach((x) => (byId[x.id] = x));
+    // Bila ada ID kembar (data lama), utamakan baris yang masih Menunggu supaya tetap bisa diputuskan.
+    (await readQueue()).forEach((x) => {
+      if (!byId[x.id] || (x.status === ST_WAIT && byId[x.id].status !== ST_WAIT)) byId[x.id] = x;
+    });
     for (const id of ids || []) {
       const x = byId[id];
       if (!x || x.status !== ST_WAIT) {

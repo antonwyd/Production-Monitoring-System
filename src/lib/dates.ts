@@ -41,10 +41,10 @@ export function isValidDate(s: unknown): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + "T00:00:00Z"));
 }
 
-/** ID kiriman: QA + yyMMddHHmmss (Asia/Jakarta) + 2 digit acak, sama seperti v1. */
+/** ID kiriman: QA + yyMMddHHmmss (Asia/Jakarta) + 4 digit acak (dulu 2 digit; bisa kembar bila 2 orang kirim di detik yang sama). */
 export function newSubmissionId(now = new Date()): string {
   const { y, m, d, hh, mm, ss } = jakartaParts(now);
-  const rnd = p2(Math.floor(Math.random() * 100));
+  const rnd = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
   return `QA${String(y).slice(2)}${p2(m)}${p2(d)}${p2(hh)}${p2(mm)}${p2(ss)}${rnd}`;
 }
 
