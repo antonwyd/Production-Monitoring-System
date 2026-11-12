@@ -1,6 +1,12 @@
-import { it, expect } from "vitest";
+import { it, expect, vi, beforeAll, afterAll } from "vitest";
 import { setSheetsIO, getAntrian, ditolakBelumUlang, menungguTelat, LEADER_SESSION } from "../src/lib/sheets/qa";
 import { FakeSheet } from "./fakeSheet";
+// Jam dikunci ke 5 Nov 2026 (jendela ditolak 7 hari dihitung dari hari ini).
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-05T09:00:00Z"));
+});
+afterAll(() => vi.useRealTimers());
 it("ditolak tanpa kiriman ulang tampil di tab Menunggu", async () => {
   const sh = new FakeSheet();
   const row = (r: number, id: string, member: string, st: string, dec: string, note = "") => {
