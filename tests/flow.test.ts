@@ -474,3 +474,26 @@ describe("tidak masuk (tab Kehadiran)", () => {
     expect((await buildToday(DATE)).missing.sort()).toEqual(["Harjuki", "Suharyanto"]);
   });
 });
+
+describe("batalkan persetujuan", () => {
+  it("baris Input dikosongkan, kiriman kembali Menunggu, kiriman lain tidak tersentuh", async () => {
+    const a = await qa.submitReport(payload());
+    const b = await qa.submitReport({ ...payload(), member: "Suharyanto" });
+    await qa.putuskan("Dian Kartika", "4139", [a.id, b.id], "ok", "");
+    await expect(qa.batalkanSetuju("Dian Kartika", "0000", a.id)).rejects.toThrow(/PIN salah/);
+    const r = await qa.batalkanSetuju("Dian Kartika", "4139", a.id, "lot salah");
+    expect(r).toMatchObject({ ok: true, member: "Harjuki", prod: 1, lt: 1 });
+    const prod = fs.data["Input - Production"];
+    expect(prod[6].slice(1, 14).every((v) => v === "" || v === undefined)).toBe(true);
+    expect(prod[7][2]).toBe("Suharyanto");
+    expect(fs.data["Input - Lost Time"][6].slice(1, 6).every((v) => v === "" || v === undefined)).toBe(true);
+    expect(fs.data["Input - Lost Time"][7][2]).toBe("Suharyanto");
+    const q = fs.data["Antrian Validasi"][1];
+    expect(q.slice(7, 10)).toEqual(["Menunggu", "", ""]);
+    expect(String(q[10])).toMatch(/^Persetujuan dibatalkan oleh Dian Kartika .*: lot salah$/);
+    // Sekarang bisa diedit & disetujui lagi; membatalkan yang belum disetujui ditolak.
+    await expect(qa.batalkanSetuju("Dian Kartika", "4139", a.id)).rejects.toThrow(/belum disetujui/);
+    await qa.editKiriman("Dian Kartika", "4139", a.id, { ...payload(), items: [{ ...payload().items[0], normalQty: "7000" }] });
+    expect(await qa.putuskan("Dian Kartika", "4139", [a.id], "ok", "")).toMatchObject({ ok: 1 });
+  });
+});

@@ -29,7 +29,7 @@ const MEMBER_FNS: Record<string, (args: unknown[]) => unknown> = {
 };
 
 /** Fungsi halaman leader: argumen 0 = nama leader, 1 = PIN. Wajib sesi leader/admin; nama diambil dari sesi. */
-const LEADER_FNS = new Set(["leaderLogin", "getAntrian", "putuskan", "editKiriman", "belumKirim", "ultahHariIni", "tandaiTidakMasuk", "batalTidakMasuk"]);
+const LEADER_FNS = new Set(["leaderLogin", "getAntrian", "putuskan", "editKiriman", "batalkanSetuju", "belumKirim", "ultahHariIni", "tandaiTidakMasuk", "batalTidakMasuk"]);
 /** Fungsi lain yang cukup butuh sesi apa saja (dulu terbuka tanpa login). */
 const SESSION_FNS = new Set(["getMasterData"]);
 

@@ -2019,7 +2019,7 @@ function renderQueue(){
       if(pend)h+='<div class="lacts" style="padding-bottom:0"><button class="btn line" onclick="editOne(\''+id+'\')">Edit kiriman ini</button></div>';
       h+='</div>';
       if(pend)h+='<div class="lacts"><button class="btn main '+(w.length?'grey':'green')+'" onclick="approveOne(\''+id+'\')">Setujui</button><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup':'Detail')+'</button><button class="btn soft" onclick="rejectOne(\''+id+'\')">Tolak</button></div>';
-      else h+='<div class="lacts" style="padding-top:0"><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup detail':'Lihat detail')+'</button></div>';
+      else h+='<div class="lacts" style="padding-top:0"><button class="btn line" onclick="toggleSc(\''+id+'\')">'+(open?'Tutup detail':'Lihat detail')+'</button>'+(s.status==='Disetujui'?'<button class="btn soft" onclick="batalSetuju(\''+id+'\')">Batalkan persetujuan</button>':'')+'</div>';
       h+='</div>';
     });
   }
@@ -2103,6 +2103,14 @@ function approveSel(){
 function rejectOne(id){
   var s=(L.data&&L.data.list||[]).filter(function(x){return x.id===id;})[0];
   ask({title:'Tolak kiriman ini?',msg:s?s.member+' • '+fmtDate(s.date):'',ok:'Tolak',danger:true,icon:'warn',input:{label:'Alasan penolakan (akan dilihat member)',placeholder:'Contoh: menit kerja belum sesuai',required:true}},function(note){decide([id],'no',note);});
+}
+// Batalkan persetujuan: baris di sheet Input dihapus, kiriman kembali Menunggu (bisa diedit leader / dikirim ulang member).
+function batalSetuju(id){
+  var s=(L.data&&L.data.list||[]).filter(function(x){return x.id===id;})[0];
+  ask({title:'Batalkan persetujuan?',msg:(s?s.member+' • '+fmtDate(s.date)+'. ':'')+'Data laporan ini dikeluarkan dari report dan kiriman kembali ke Menunggu, supaya bisa diperbaiki lalu disetujui lagi.',ok:'Batalkan persetujuan',danger:true,icon:'warn',input:{label:'Alasan (opsional, dilihat member)',placeholder:'Contoh: lot 629 JD1 salah',required:false}},function(note){
+    toast('Membatalkan persetujuan…');
+    call('batalkanSetuju',[L.name,L.pin,id,note||''],function(r){toast('Persetujuan '+(r&&r.member||'')+' dibatalkan, kembali ke Menunggu');loadQueue(true);},function(msg){toast('Gagal: '+msg);});
+  });
 }
 /* ---------- leader: edit kiriman ---------- */
 var E=null;

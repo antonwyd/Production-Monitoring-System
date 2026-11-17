@@ -913,6 +913,62 @@ export async function putuskanTanpaPin(name: string, ids: string[], action: stri
   });
 }
 
+/**
+ * Leader/admin membatalkan persetujuan: baris laporan itu di Input - Production & Input - Lost Time dikosongkan
+ * (rumus tetap), status kembali Menunggu sehingga bisa diedit/dikirim ulang lalu disetujui lagi.
+ * Baris dicari sebagai satu blok berurutan (persis seperti ditulis saat disetujui): tanggal + member + part/lot/qty
+ * (lost time: jenis/menit). Bila tidak ketemu, status tidak diubah.
+ */
+export async function batalkanSetuju(name: string, pin: string, id: string, alasan = "") {
+  await cekLeader(name, pin);
+  return locked(async () => {
+    const x = (await readQueue()).find((y) => y.id === id && y.status === ST_OK);
+    if (!x) throw new QaError("Kiriman ini tidak ditemukan atau belum disetujui.");
+    const [prod, lt] = await io.get([`${q(SHEET_PROD)}!B${FIRST_DATA_ROW}:K`, `${q(SHEET_LT)}!B${FIRST_DATA_ROW}:F`], "UNFORMATTED_VALUE");
+    const same = (a: unknown, b: unknown) => txt(a) === txt(b) || (txt(a) !== "" && Number(a) === Number(b) && !Number.isNaN(Number(a)));
+    const cari = (grid: Cell[][], keys: unknown[][], cols: number[]): number => {
+      if (!keys.length) return -1;
+      let found = -1;
+      for (let i = 0; i + keys.length <= grid.length; i++) {
+        let ok = true;
+        for (let k = 0; k < keys.length && ok; k++) {
+          const r = grid[i + k] ?? [];
+          ok = dayOf(r[0]) === x.date && txt(r[1]) === x.member && cols.every((c, j) => same(r[c], keys[k][j]));
+        }
+        if (ok) found = i; // ambil blok terakhir (persetujuan paling baru)
+      }
+      return found;
+    };
+    const items = x.items || [];
+    const lost = x.lostTimes || [];
+    const pi = cari(prod, items.map((it) => [it.part, it.normalQty || "", it.lot]), [3, 5, 9]);
+    const li = cari(lt, lost.map((l) => [l.type, l.minutes]), [2, 3]);
+    if ((items.length && pi < 0) || (lost.length && li < 0))
+      throw new QaError("Baris laporan ini di sheet Input tidak ditemukan (mungkin sudah diubah manual). Persetujuan tidak dibatalkan, hubungi admin.");
+    const kosong = (n: number, w: number) => Array.from({ length: n }, () => Array(w).fill(""));
+    const data: { range: string; values: Cell[][] }[] = [];
+    if (items.length) {
+      const a = FIRST_DATA_ROW + pi,
+        b = a + items.length - 1;
+      data.push(
+        { range: `${q(SHEET_PROD)}!B${a}:W${b}`, values: kosong(items.length, PROD_WIDTH) },
+        { range: `${q(SHEET_PROD)}!${PROD_EXTRA}${a}:${PROD_EXTRA_END}${b}`, values: kosong(items.length, 4) },
+        { range: `${q(SHEET_PROD)}!${PROD_NOTE}${a}:${PROD_NOTE}${b}`, values: kosong(items.length, 1) },
+      );
+    }
+    if (lost.length) {
+      const a = FIRST_DATA_ROW + li,
+        b = a + lost.length - 1;
+      data.push({ range: `${q(SHEET_LT)}!B${a}:F${b}`, values: kosong(lost.length, LT_WIDTH) }, { range: `${q(SHEET_LT)}!${LT_OT}${a}:${LT_OT}${b}`, values: kosong(lost.length, 1) });
+    }
+    const catatan = `Persetujuan dibatalkan oleh ${name} (${nowJakarta()})${s(alasan).trim() ? ": " + s(alasan).trim() : ""}`;
+    data.push({ range: `${q(SHEET_QUEUE)}!H${x.row}:K${x.row}`, values: [[ST_WAIT, "", "", asText(catatan)]] });
+    await io.update(data);
+    clearInputCache();
+    return { ok: true, member: x.member, date: x.date, prod: items.length, lt: lost.length };
+  });
+}
+
 /** Leader memperbaiki isi kiriman yang masih Menunggu. Data asli disimpan di JSON (original). */
 export async function editKiriman(name: string, pin: string, id: string, data: { items?: Item[]; lostTimes?: Item[]; op?: Op | null; date?: string }) {
   await cekLeader(name, pin);
@@ -1050,6 +1106,7 @@ export const RPC: Record<string, (...args: never[]) => Promise<unknown> | unknow
   getAntrian,
   putuskan,
   editKiriman,
+  batalkanSetuju,
   getScriptUrl,
   tandaiTidakMasuk,
   batalTidakMasuk,
