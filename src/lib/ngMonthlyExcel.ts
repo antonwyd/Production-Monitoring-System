@@ -206,7 +206,12 @@ function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
   ws.getCell(1, 1).font = { name: FONT, size: 14, bold: true };
   ws.getCell(1, 1).alignment = { horizontal: "center", vertical: "middle" };
   ws.mergeCells(1, 5, 1, AE);
-  ws.getCell(1, 5).value = `PRODUK JATUH   ·   Periode ${ddmmyyyy(d.from)} ~ ${ddmmyyyy(d.to)}`;
+  ws.getCell(1, 5).value = {
+    richText: [
+      { text: "PRODUK JATUH", font: { name: FONT, size: 20, bold: true } },
+      { text: `      Periode ${ddmmyyyy(d.from)} ~ ${ddmmyyyy(d.to)}`, font: { name: FONT, size: 11 } },
+    ],
+  };
   ws.getCell(1, 5).font = { name: FONT, size: 20, bold: true };
   ws.getCell(1, 5).alignment = { horizontal: "center", vertical: "middle" };
   ws.getRow(1).height = 36;
@@ -261,15 +266,18 @@ function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
     for (let x = start; x < r; x++) ws.getRow(x).height = 16;
     sectionTitle(ws, start, r - 1, s.title, s.plastic ? undefined : SEC);
     const end = r - 1;
-    frame(ws, r, 1, r, 3, { fill: TOT, bold: true }).value = "TOTAL";
-    frame(ws, r, 4, r, 4, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(D${start}:D${end})` };
-    frame(ws, r, 5, r, 5, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(E${start}:E${end})` };
+    // Baris TOTAL setinggi 2 baris seperti template.
+    const r2 = r + 1;
+    frame(ws, r, 1, r2, 3, { fill: TOT, bold: true }).value = "TOTAL";
+    frame(ws, r, 4, r2, 4, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(D${start}:D${end})` };
+    frame(ws, r, 5, r2, 5, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(E${start}:E${end})` };
     for (let p = 0; p < JATUH_PROC.length; p++) {
       const c = P0 + p * 3;
-      frame(ws, r, c, r, c + 2, { fill: TOT, bold: true, fmt: ACC }).value = { formula: `SUM(${col(c)}${start}:${col(c + 2)}${end})` };
+      frame(ws, r, c, r2, c + 2, { fill: TOT, bold: true, fmt: ACC }).value = { formula: `SUM(${col(c)}${start}:${col(c + 2)}${end})` };
     }
-    frame(ws, r, AD, r, AD, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(${col(AD)}${start}:${col(AD)}${end})` };
-    frame(ws, r, AE, r, AE, { fill: TOT, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(D${r},${col(AD)}${r}/D${r},"")` };
+    frame(ws, r, AD, r2, AD, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(${col(AD)}${start}:${col(AD)}${end})` };
+    frame(ws, r, AE, r2, AE, { fill: TOT, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(D${r},${col(AD)}${r}/D${r},"")` };
+    r++;
     ws.getRow(r).height = 20;
     r += 2;
   }

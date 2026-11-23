@@ -141,7 +141,10 @@ export function buildNgMonthlyFrom(master: MasterData, month: string, facts: Fac
   const jacc = new Map<string, JAcc>();
   for (const f of facts) {
     const plastic = isPlastic(f);
-    const { name, type } = partName(f);
+    const pn = partName(f);
+    const name = pn.name;
+    // Template Produk Jatuh hanya D1/D2: 629-J NC digabung ke D2.
+    const type = pn.type.replace(/\s*NC$/i, "");
     const k = `${plastic ? "P" : "I"}|${partKey(name)}|${type}`;
     const e = jacc.get(k) ?? { part: name, type, before: 0, proc: Array(JATUH_PROC.length).fill(0), plastic };
     if (isSenbetsu(f)) e.before += f.qty;
