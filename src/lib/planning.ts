@@ -388,6 +388,31 @@ export function assign(p: PPerson, seg: Seg): PPerson {
   const keep = seg.at <= START ? [] : p.segs.filter((s) => s.at < seg.at);
   return { ...p, segs: [...keep, { ...seg, at: Math.max(START, seg.at) }] };
 }
+/** Tugaskan orang hanya dari `seg.at` sampai `until`; sesudah `until` kembali ke tugas lamanya (atau cadangan). */
+export function assignRange(p: PPerson, seg: Seg, until: number, end: number): PPerson {
+  if (until >= end) return assign(p, seg);
+  const old = spans(p, end).find((s) => s.at <= until && until < s.to);
+  const pre = seg.at <= START ? [] : p.segs.filter((s) => s.at < seg.at);
+  const post = p.segs.filter((s) => s.at > until);
+  const back: Seg = old && old.cat ? { at: until, cat: old.cat, part: old.part, mcs: old.mcs } : { at: until, cat: "" };
+  const clean = (x: Seg): Seg => Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined)) as Seg;
+  return { ...p, segs: [...pre, { ...seg, at: Math.max(START, seg.at) }, clean(back), ...post] };
+}
+
+/** Naikkan lembur ke `ot`: orang lain tetap pulang di jam akhir lama (tidak ikut lembur otomatis). */
+export function extendOt(m: Pick<PMaster, "normalMin">, st: PlanState, ot: number): PlanState {
+  if (ot <= st.ot) return st;
+  const oldEnd = dayEnd(m, st.ot);
+  return {
+    ...st,
+    ot,
+    people: st.people.map((p) => {
+      const last = spans(p, oldEnd).at(-1);
+      return last && last.cat ? { ...p, segs: [...p.segs, { at: oldEnd, cat: "" }] } : p;
+    }),
+  };
+}
+
 /** Lepas orang (cadangan) mulai jam `at`. */
 export function release(p: PPerson, at: number): PPerson {
   if (at <= START) return { ...p, segs: [] };
@@ -459,4 +484,260 @@ export function describe(m: PMaster, p: PPerson, end: number): string {
       return `${toClock(s.at)} ${s.cat} ${what}`;
     })
     .join(" → ");
+}
+
+/** Daftar type yang bisa diberi PO (satu baris per key produk), label terpendek. */
+export function poTypes(m: Pick<PMaster, "parts" | "cats">): { key: string; label: string }[] {
+  const ok = new Set(m.cats.map((c) => c.name));
+  const out = new Map<string, string>();
+  for (const p of m.parts) {
+    if (!ok.has(p.category)) continue;
+    const cur = out.get(p.key);
+    if (!cur || p.label.length < cur.length) out.set(p.key, p.label);
+  }
+  return [...out].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, "id", { numeric: true }));
+}
+
+/**
+ * Baca PO yang ditempel dari Excel/WA: satu baris = nama type + jumlah.
+ * Contoh: "627-J D1   800.000", "GDD627*D1 J 800000", "629J D2\t300,000".
+ * Cocok bila nomor part (tanpa digit lain di sebelahnya), huruf varian (J/H) dan type (D1/D2) ada di baris.
+ */
+export function parsePo(text: string, m: Pick<PMaster, "parts" | "cats">): { po: Record<string, number>; miss: string[] } {
+  const types = poTypes(m).map((t) => {
+    const mm = /^(\d+[A-Z]?)-?([A-Z])?\s*(D\d)?/i.exec(t.label.replace(/\s+-/g, "-")) ?? [];
+    return { ...t, num: (mm[1] ?? "").toUpperCase(), suf: (mm[2] ?? "").toUpperCase(), typ: (mm[3] ?? "").toUpperCase() };
+  });
+  const po: Record<string, number> = {};
+  const miss: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const q = /(\d{1,3}(?:[.,]\d{3})+|\d+)\s*(?:pcs)?\s*$/i.exec(line);
+    if (!q) {
+      miss.push(line);
+      continue;
+    }
+    const qty = Number(q[1].replace(/[.,]/g, ""));
+    const head = line.slice(0, q.index).toUpperCase();
+    const hit = types
+      .filter((t) => t.num && new RegExp(`(?<!\\d)${t.num}(?![\\dA-Z]*\\d)`).test(head))
+      .filter((t) => !t.typ || new RegExp(`${t.typ}(?!\\d)`).test(head.replace(/\s+/g, "")))
+      .filter((t) => !t.suf || new RegExp(`${t.num}${t.suf}|${t.num}.*?(?<![A-Z])${t.suf}(?![A-Z0-9])`).test(head))
+      .sort((a, b) => b.num.length - a.num.length || b.label.length - a.label.length);
+    if (!hit.length || !qty) miss.push(line);
+    else po[hit[0].key] = (po[hit[0].key] ?? 0) + qty;
+  }
+  return { po, miss };
+}
+
+export type Move = { name: string; from: { cat: string; part: string } | null; to: { cat: string; part: string }; gain: number };
+
+/** Total kekurangan semua sel (type × proses) yang punya target, sampai jam T. */
+/**
+ * Alur PO (logika Anton 11 Nov): PF dan Seiretsu sama-sama sortir, hasil keduanya DIJUMLAH untuk memenuhi PO.
+ * Senbetsu (cek akhir) memeriksa semua hasil sortir, jadi juga harus = PO, dan tidak bisa melebihi hasil sortir.
+ */
+export type Flow = { key: string; po: number; pf: number; sei: number; sortir: number; sen: number; final: number; gapSortir: number; gapSen: number; gap: number; status: Status };
+export const poOf = (st: Pick<PlanState, "targets">): Record<string, number> => {
+  const o: Record<string, number> = {};
+  for (const [k, v] of Object.entries(st.targets)) {
+    const q = Math.max(0, ...Object.values(v).map((x) => x ?? 0));
+    if (q > 0) o[k] = q;
+  }
+  return o;
+};
+export function poFlow(res: Pick<Result, "rows">, po: Record<string, number>): Map<string, Flow> {
+  const est = (key: string, step: Step) => res.rows.find((r) => r.key === key && r.step === step)?.est ?? 0;
+  const out = new Map<string, Flow>();
+  for (const [key, q] of Object.entries(po)) {
+    const pf = est(key, "pf");
+    const sei = est(key, "seiretsu");
+    const sortir = pf + sei;
+    const sen = est(key, "senbetsu");
+    const final = Math.min(sen, sortir);
+    const status: Status = final >= q * (1 + SAFE_BUFFER) ? "SAFE" : final >= q ? "WARNING" : "CRITICAL";
+    out.set(key, { key, po: q, pf, sei, sortir, sen, final, gapSortir: Math.max(0, q - sortir), gapSen: Math.max(0, q - sen), gap: Math.max(0, q - final), status });
+  }
+  return out;
+}
+const flowCost = (f: Flow) => f.gapSortir + f.gap;
+
+/** Total kekurangan semua PO (sortir + hasil akhir) sampai jam T. */
+export function shortfall(m: PMaster, st: PlanState, T: number, now = START): number {
+  let t = 0;
+  for (const f of poFlow(compute(m, st, T, now), poOf(st)).values()) t += flowCost(f);
+  return t;
+}
+
+/**
+ * Usulan "Seimbangkan": pindahkan orang (proses manual, bukan operator MC) mulai jam `at`
+ * ke sel yang kurang, hanya bila total kekurangan semua sel turun. Rakus: sel paling kurang dulu.
+ */
+export function balance(m: PMaster, st: PlanState, at: number, T: number, now = START, maxMoves = 20): Move[] {
+  const catOf = new Map(m.cats.map((c) => [c.name, c]));
+  const end = dayEnd(m, st.ot);
+  const nowSeg = (p: PPerson) => spans(p, end).find((s) => s.at <= at && at < s.to);
+  const po = poOf(st);
+  const manualPart = (key: string, step: Step) => m.parts.find((p) => p.key === key && catOf.get(p.category)?.step === step && !catOf.get(p.category)?.mc);
+  const moves: Move[] = [];
+  const stuck = new Set<string>();
+  let cur = st;
+  let flows = poFlow(compute(m, cur, T, now), po);
+  let obj = [...flows.values()].reduce((a, f) => a + flowCost(f), 0);
+  for (let guard = 0; moves.length < maxMoves && obj > 0 && guard < 80; guard++) {
+    // Sel tujuan: sortir kurang -> Seiretsu type itu; sortir cukup tapi cek akhir kurang -> Senbetsu.
+    const cells = [...flows.values()]
+      .flatMap((f) => {
+        const out: { key: string; step: Step; gap: number }[] = [];
+        if (f.gapSortir > 0) out.push({ key: f.key, step: "seiretsu", gap: f.gapSortir });
+        if (f.gapSen > 0 && f.sen < f.sortir) out.push({ key: f.key, step: "senbetsu", gap: f.gapSen });
+        return out;
+      })
+      .filter((c) => !stuck.has(`${c.key}#${c.step}`) && manualPart(c.key, c.step))
+      .sort((a, b) => b.gap - a.gap);
+    if (!cells.length) break;
+    const cell = cells[0];
+    const part = manualPart(cell.key, cell.step)!;
+    let best: { st: PlanState; obj: number; flows: Map<string, Flow>; move: Move } | null = null;
+    // Yang belum bekerja dicoba dulu, jadi dipilih bila hasilnya sama.
+    const order = [...cur.people].sort((a, b) => Number(!!nowSeg(a)?.cat) - Number(!!nowSeg(b)?.cat));
+    for (const p of order) {
+      if (p.absent || moves.some((x) => x.name === p.name)) continue; // satu orang dipindah sekali saja
+      const s = nowSeg(p);
+      if (s?.cat && (catOf.get(s.cat)?.mc ?? true)) continue; // operator MC / kategori lain tidak dipindah
+      if (s?.cat === part.category && s.part === part.id) continue;
+      const next = { ...cur, people: cur.people.map((x) => (x.name === p.name ? assign(x, { at, cat: part.category, part: part.id }) : x)) };
+      const nf = poFlow(compute(m, next, T, now), po);
+      const o = [...nf.values()].reduce((a, f) => a + flowCost(f), 0);
+      // Type asal tidak boleh jadi lebih kurang (hanya ambil dari yang lebih / tanpa PO).
+      const srcKey = s?.part ? m.parts.find((x) => x.id === s.part)?.key : undefined;
+      if (srcKey && srcKey !== cell.key && flows.get(srcKey) && flowCost(nf.get(srcKey)!) > flowCost(flows.get(srcKey)!)) continue;
+      if (o < obj - 1 && (!best || o < best.obj))
+        best = { st: next, obj: o, flows: nf, move: { name: p.name, from: s?.cat ? { cat: s.cat, part: s.part ?? "" } : null, to: { cat: part.category, part: part.id }, gain: Math.round(obj - o) } };
+    }
+    if (!best) {
+      stuck.add(`${cell.key}#${cell.step}`);
+      continue;
+    }
+    moves.push(best.move);
+    cur = best.st;
+    obj = best.obj;
+    flows = best.flows;
+  }
+  return moves;
+}
+
+/**
+ * Jam PO tercapai (simulasi): sortir = PF + Seiretsu >= PO, cek akhir = min(Senbetsu, sortir) >= PO.
+ * Dihitung tiap `stepMin` menit sampai akhir hari rencana lalu diinterpolasi; null = tidak tercapai.
+ */
+export function finishTimes(m: PMaster, st: PlanState, now = START, stepMin = 30): Map<string, { sortir: number | null; sen: number | null }> {
+  const po = poOf(st);
+  const end = dayEnd(m, st.ot);
+  const pts: number[] = [START];
+  for (let t = START + stepMin; t < end; t += stepMin) pts.push(t);
+  pts.push(end);
+  const series = pts.map((t) => (t === START ? new Map<string, Flow>() : poFlow(compute(m, st, t, now), po)));
+  const at = (vals: number[], q: number) => {
+    for (let i = 1; i < vals.length; i++)
+      if (vals[i] >= q) {
+        const a = vals[i - 1];
+        const b = vals[i];
+        return Math.round(pts[i - 1] + ((q - a) / Math.max(1e-9, b - a)) * (pts[i] - pts[i - 1]));
+      }
+    return null;
+  };
+  const out = new Map<string, { sortir: number | null; sen: number | null }>();
+  for (const [key, q] of Object.entries(po)) {
+    const so = series.map((s) => s.get(key)?.sortir ?? 0);
+    const fi = series.map((s) => s.get(key)?.final ?? 0);
+    out.set(key, { sortir: at(so, q), sen: at(fi, q) });
+  }
+  return out;
+}
+
+/** Orang selesai di jam `t` lalu bebas (rencana sesudahnya tetap). */
+export function freeAt(p: PPerson, t: number): PPerson {
+  return { ...p, segs: [...p.segs.filter((s) => s.at < t), { at: t, cat: "" }, ...p.segs.filter((s) => s.at > t)] };
+}
+
+/**
+ * Ringkasan PO total untuk jam normal: berapa yang jadi dengan orang yang ada, kapan selesai / sisa waktu,
+ * dan bila kurang: berapa kurangnya, lembur sampai jam berapa, atau tambah berapa orang (mulai jam `from`).
+ */
+export type Ringkas = {
+  po: number;
+  normal: number;
+  kurang: number;
+  orang: number;
+  selesai: number | null;
+  sisaMin: number;
+  lemburSampai: number | null;
+  kurangMaxOt: number;
+  tambah: { step: Step; pcs: number; orang: number | null }[];
+};
+export function ringkasan(m: PMaster, st: PlanState, from = START, now = START): Ringkas {
+  const po = poOf(st);
+  const NE = normalEnd(m);
+  const total = Object.values(po).reduce((a, b) => a + b, 0);
+  const resN = compute(m, st, NE, now);
+  const fl = poFlow(resN, po);
+  let normal = 0;
+  for (const f of fl.values()) normal += Math.min(f.po, f.final);
+  const orang = st.people.filter((p) => !p.absent && spans(p, NE).some((s) => s.cat && s.at < NE)).length;
+  const lastDone = (ft: Map<string, { sen: number | null }>) => {
+    let t = START;
+    for (const v of ft.values()) {
+      if (v.sen === null) return null;
+      t = Math.max(t, v.sen);
+    }
+    return t;
+  };
+  const kurang = Math.max(0, Math.round(total - normal));
+  const selesaiAll = total > 0 ? lastDone(finishTimes(m, { ...st, ot: 0 }, now)) : null;
+  const selesai = selesaiAll !== null && selesaiAll <= NE && !kurang ? selesaiAll : null;
+  // Lembur: semua yang masih bekerja di jam pulang lanjut sampai PO selesai (maks batas lembur).
+  let lemburSampai: number | null = null;
+  let kurangMaxOt = 0;
+  if (kurang) {
+    const stx: PlanState = {
+      ...st,
+      ot: m.otLimitMin,
+      // Penanda pulang di jam normal dibuang supaya yang bekerja sampai 16:00 ikut lembur.
+      people: st.people.map((p) => ({ ...p, segs: p.segs.filter((s) => !(s.at === NE && !s.cat)) })),
+    };
+    lemburSampai = lastDone(finishTimes(m, stx, now, 15));
+    if (lemburSampai === null) {
+      for (const f of poFlow(compute(m, stx, dayEnd(m, m.otLimitMin), now), po).values()) kurangMaxOt += f.gap;
+      kurangMaxOt = Math.round(kurangMaxOt);
+    }
+  }
+  // Tambah orang manual (Seiretsu untuk sortir, Senbetsu untuk cek akhir) dari jam `from` s/d jam normal.
+  const h = prodBetween(m, 0, Math.max(from, now), NE) / 60;
+  const rateOf = (key: string, step: Step) => {
+    const row = resN.rows.find((r) => r.key === key && r.step === step && r.unit > 0 && !r.mcs.length);
+    if (row) return row.unit;
+    const cats = new Map(m.cats.map((c) => [c.name, c]));
+    const p = m.parts.find((x) => x.key === key && x.rate > 0 && cats.get(x.category)?.step === step && !cats.get(x.category)?.mc);
+    return p ? p.rate * (m.eff[p.category] ?? 1) : 0;
+  };
+  const tambah: Ringkas["tambah"] = [];
+  if (kurang) {
+    for (const step of ["seiretsu", "senbetsu"] as Step[]) {
+      let pcs = 0;
+      let need = 0;
+      let unknown = false;
+      for (const f of fl.values()) {
+        const g = step === "seiretsu" ? f.gapSortir : f.gapSen;
+        if (g <= 0) continue;
+        pcs += g;
+        const r = rateOf(f.key, step);
+        if (!r || h <= 0) unknown = true;
+        else need += g / (r * h);
+      }
+      if (pcs > 0) tambah.push({ step, pcs: Math.round(pcs), orang: unknown ? null : Math.ceil(need - 1e-6) });
+    }
+  }
+  return { po: total, normal: Math.round(normal), kurang, orang, selesai, sisaMin: selesai !== null ? prodBetween(m, 0, selesai, NE) : 0, lemburSampai, kurangMaxOt, tambah };
 }

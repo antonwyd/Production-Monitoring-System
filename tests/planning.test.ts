@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assign, buildMaster, compute, machineOpts, mcHolders, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
+import { assign, assignRange, balance, buildMaster, finishTimes, ringkasan, poFlow, poOf, shortfall, extendOt, compute, machineOpts, mcHolders, parsePo, prodBetween, release, suggest, toMin, type PlanState } from "@/lib/planning";
 
 const m = buildMaster({
   categories: [
@@ -112,5 +112,88 @@ describe("Perencanaan: status & saran", () => {
   it("kelebihan orang terdeteksi", () => {
     const people = ["A", "B", "C"].map((name) => ({ name, segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }));
     expect(row(compute(m, base(people, { [KEY]: { seiretsu: 4000 } }), 960), "seiretsu").surplus).toBe(2);
+  });
+});
+
+describe("Perencanaan: jam dari-sampai", () => {
+  it("PF 07-11 lalu kembali ke Seiretsu", () => {
+    const p = assignRange({ name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }, { at: 420, cat: "PF Iron Cage", mcs: ["MC 12"] }, toMin("11:00"), 960);
+    expect(p.segs).toEqual([{ at: 420, cat: "PF Iron Cage", mcs: ["MC 12"] }, { at: 660, cat: "Seiretsu Iron Cage", part: S }]);
+    const r = compute(m, base([p]), 960);
+    expect(row(r, "pf").est).toBe(Math.round(1000 * (220 / 60))); // 07:20-11:00
+  });
+  it("lembur satu orang tidak membuat semua orang ikut lembur", () => {
+    const st = base([
+      { name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+    ]);
+    const st2 = extendOt(m, st, 120);
+    const end = toMin("18:00");
+    st2.people[0] = assignRange(st2.people[0], { at: toMin("16:00"), cat: "Seiretsu Iron Cage", part: S }, end, end);
+    expect(row(compute(m, st2, end), "seiretsu").est).toBe(4600 * 2 + 1200);
+  });
+});
+
+describe("Perencanaan: tempel PO", () => {
+  it("membaca berbagai format baris PO", () => {
+    const r = parsePo("627-J D1\t800.000\nGDD629*D2  J 300,000\n6901J D2 5000 pcs\nBaris aneh\n629-J D3 100", m);
+    expect(r.po).toEqual({ "iron|627J|D1": 800000, "iron|629J|D2": 300000, "iron|6901J|D2": 5000 });
+    expect(r.miss).toEqual(["Baris aneh", "629-J D3 100"]);
+  });
+});
+
+describe("Perencanaan: alur PO (sortir PF+Seiretsu, cek akhir Senbetsu)", () => {
+  it("sortir = PF + Seiretsu; hasil akhir = min(Senbetsu, sortir)", () => {
+    const people = [
+      { name: "P", segs: [{ at: 420, cat: "PF Iron Cage", mcs: ["MC 12", "MC 13"] }] },
+      { name: "S", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Senbetsu Iron Cage", part: "Senbetsu Iron Cage|629-J|D2" }] },
+    ];
+    const st = base(people, { [KEY]: { pf: 10000, seiretsu: 10000, senbetsu: 10000 } });
+    const r = compute(m, st, 960);
+    const f = poFlow(r, poOf(st)).get(KEY)!;
+    expect(f.sortir).toBeCloseTo(row(r, "pf").est + row(r, "seiretsu").est);
+    expect(f.final).toBeCloseTo(Math.min(row(r, "senbetsu").est, f.sortir));
+    expect(f.gap).toBeCloseTo(Math.max(0, 10000 - f.final));
+  });
+  it("seimbangkan: yang belum bekerja dulu, tiap orang sekali, kekurangan turun", () => {
+    const people = ["A", "B", "C"].map((name) => ({ name, segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }));
+    const st = base([...people, { name: "Pool", segs: [] }], { [KEY]: { pf: 6000, seiretsu: 6000, senbetsu: 6000 } });
+    const mv = balance(m, st, 420, 960);
+    expect(mv.length).toBeGreaterThan(0);
+    expect(mv[0].name).toBe("Pool");
+    expect(new Set(mv.map((x) => x.name)).size).toBe(mv.length);
+    let s2 = st;
+    for (const x of mv) s2 = { ...s2, people: s2.people.map((p) => (p.name === x.name ? assign(p, { at: 420, ...x.to }) : p)) };
+    expect(shortfall(m, s2, 960)).toBeLessThan(shortfall(m, st, 960));
+    expect(poFlow(compute(m, s2, 960), poOf(s2)).get(KEY)!.gap).toBe(0);
+  });
+});
+
+describe("Perencanaan: jam PO tercapai", () => {
+  it("1 orang Seiretsu 600/jam, PO 1200 → selesai ±2 jam setelah 07:20", () => {
+    const st = base([{ name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] }], { [KEY]: { seiretsu: 1200 } });
+    const f = finishTimes(m, st, 420, 10).get(KEY)!;
+    expect(f.sortir).toBeGreaterThanOrEqual(toMin("09:15"));
+    expect(f.sortir).toBeLessThanOrEqual(toMin("09:25"));
+    expect(f.sen).toBeNull();
+  });
+});
+
+describe("Perencanaan: ringkasan PO jam normal", () => {
+  it("PO kecil selesai sebelum 16:00 → sisa waktu; PO besar → kurang + lembur/tambah orang", () => {
+    const people = [
+      { name: "A", segs: [{ at: 420, cat: "Seiretsu Iron Cage", part: S }] },
+      { name: "B", segs: [{ at: 420, cat: "Senbetsu Iron Cage", part: "Senbetsu Iron Cage|629-J|D2" }] },
+    ];
+    const kecil = ringkasan(m, base(people, { [KEY]: { seiretsu: 1200 } }));
+    expect(kecil.kurang).toBe(0);
+    expect(kecil.normal).toBe(1200);
+    const besar = ringkasan(m, base(people, { [KEY]: { seiretsu: 10000 } }));
+    expect(besar.kurang).toBeGreaterThan(0);
+    expect(besar.normal + besar.kurang).toBe(10000);
+    expect(besar.tambah.find((t) => t.step === "seiretsu")?.orang).toBeGreaterThan(0);
+    expect(kecil.selesai).not.toBeNull();
+    expect(kecil.sisaMin).toBeGreaterThan(0);
   });
 });
