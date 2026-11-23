@@ -4,28 +4,28 @@ import { IRON_NG, IRON_NG_JA, JATUH_PROC, PLASTIC_NG, type NgMonthly } from "./n
 // Excel Laporan NG bulanan dengan susunan sama seperti template QC ("Laporan NG.xlsx"):
 // angka diisi dari web, kolom After / Total / Percentage tetap rumus Excel supaya bisa dikoreksi manual.
 
-const FONT = "Meiryo UI";
-const HEAD = "FFF2F2F2";
-const SEC = "FFFCE4D6";
-const TOT = "FFFFF2CC";
+export const FONT = "Meiryo UI";
+export const HEAD = "FFF2F2F2";
+export const SEC = "FFFCE4D6";
+export const TOT = "FFFFF2CC";
 const LOT_ROWS = 10;
-const ACC = "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(@_)";
+export const ACC = "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(@_)";
 const med = { style: "medium" as const };
 const thin = { style: "thin" as const };
-const fill = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+export const fill = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
 
-const col = (n: number) => {
+export const col = (n: number) => {
   let s = "";
   for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
   return s;
 };
 
-function ddmmyyyy(d: string) {
+export function ddmmyyyy(d: string) {
   return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
 }
 
 /** Gaya dasar + border kotak untuk rentang. */
-function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number, opts: { fill?: string; bold?: boolean; size?: number; rotate?: boolean; fmt?: string; align?: "center" | "left" | "right"; light?: boolean } = {}) {
+export function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number, opts: { fill?: string; bold?: boolean; size?: number; rotate?: boolean; fmt?: string; align?: "center" | "left" | "right"; light?: boolean } = {}) {
   if (r1 !== r2 || c1 !== c2) ws.mergeCells(r1, c1, r2, c2);
   const cell = ws.getCell(r1, c1);
   cell.font = { name: FONT, size: opts.size ?? 10, bold: opts.bold };
@@ -43,13 +43,13 @@ function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: nu
 }
 
 /** Judul section di kolom A: diputar 90° bila barisnya cukup, kalau pendek ditulis mendatar kecil. */
-function sectionTitle(ws: ExcelJS.Worksheet, r1: number, r2: number, title: string, fillArgb?: string) {
+export function sectionTitle(ws: ExcelJS.Worksheet, r1: number, r2: number, title: string, fillArgb?: string) {
   const n = r2 - r1 + 1;
   const rotate = n * 16 >= title.length * 7;
   frame(ws, r1, 1, r2, 1, { rotate, size: rotate ? (n >= 12 ? 14 : 10) : 7, bold: true, fill: fillArgb }).value = title;
 }
 
-function setupSheet(ws: ExcelJS.Worksheet, lastCol: number, freezeRow: number, freezeCol: number) {
+export function setupSheet(ws: ExcelJS.Worksheet, lastCol: number, freezeRow: number, freezeCol: number) {
   ws.views = [{ state: "frozen", xSplit: freezeCol, ySplit: freezeRow, zoomScale: 80 }];
   ws.pageSetup = { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
   ws.pageSetup.printTitlesRow = `1:${freezeRow}`;
@@ -58,7 +58,7 @@ function setupSheet(ws: ExcelJS.Worksheet, lastCol: number, freezeRow: number, f
 }
 
 /** Sheet 1: QC Result. Kolom: A section, B part, C D1/D2, D lot, E before, F after, G..AJ 10 NG (3 kolom), AK total, AL persen. */
-function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
+export function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
   const ws = wb.addWorksheet("QC Result", { properties: { defaultRowHeight: 16 } });
   const NG0 = 7; // G
   const AK = NG0 + 30; // 37
@@ -186,7 +186,7 @@ function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
 }
 
 /** Sheet 2: Produk Jatuh. Kolom: A section, B part, C D1/D2, D total, E produksi, F..AC 8 proses (3 kolom), AD total, AE persen. */
-function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
+export function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
   const ws = wb.addWorksheet("Produk Jatuh", { properties: { defaultRowHeight: 16 } });
   const P0 = 6; // F
   const AD = P0 + JATUH_PROC.length * 3; // 30
@@ -230,6 +230,7 @@ function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
   for (let r = 2; r <= 5; r++) ws.getRow(r).height = 18;
 
   let r = 6;
+  const totRows: number[] = [];
   for (const s of d.jatuh) {
     if (s.plastic) {
       frame(ws, r, 1, r + 1, 1, { fill: HEAD });
@@ -277,13 +278,30 @@ function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
     }
     frame(ws, r, AD, r2, AD, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(${col(AD)}${start}:${col(AD)}${end})` };
     frame(ws, r, AE, r2, AE, { fill: TOT, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(D${r},${col(AD)}${r}/D${r},"")` };
+    totRows.push(r);
     r++;
     ws.getRow(r).height = 20;
     r += 2;
   }
+  // Ringkasan per section/proses (dipakai sheet "Perbandingan produk jatuh"), seperti baris 77-81 template.
+  const pos = { ngRow: r, prodRow: r + 2, pctRow: r + 4, cols: JATUH_PROC.map((_, p) => P0 + p * 3) };
+  const KOSONG = new Set([0, 1, 2, 7]); // Press, Molding, Barrel, Washing: tidak ada laporan QA.
+  frame(ws, r, 1, r + 1, 5, { fill: TOT, bold: true }).value = "Total NG per section";
+  frame(ws, r + 2, 1, r + 3, 5, { fill: HEAD, bold: true }).value = "Total produksi 1 bulan";
+  frame(ws, r + 4, 1, r + 5, 5, { fill: HEAD, bold: true }).value = "Percentage";
+  JATUH_PROC.forEach((_, p) => {
+    const c = P0 + p * 3;
+    const a = col(c);
+    frame(ws, r, c, r + 1, c + 2, { fill: TOT, bold: true, fmt: ACC }).value = { formula: totRows.map((t) => `${a}${t}`).join("+") || "0" };
+    frame(ws, r + 2, c, r + 3, c + 2, { fmt: ACC }).value = KOSONG.has(p) ? null : d.jatuhProd?.[p] || 0;
+    frame(ws, r + 4, c, r + 5, c + 2, { fmt: "0.000%" }).value = { formula: `IF(${a}${r + 2},${a}${r}/${a}${r + 2},"")` };
+  });
+  frame(ws, r, AD, r + 1, AD, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: totRows.map((t) => `${col(AD)}${t}`).join("+") || "0" };
+  r += 7;
   ws.getCell(r, 1).value =
-    "Catatan: Part jatuh = NG kode 9 dari laporan tiap proses (juga ada di sheet QC Result). Produksi dalam 1 bulan = hasil laporan Senbetsu. Kolom Press, Molding, Barrel dan Washing dikosongkan (laporan ini khusus QA: PF, Seiretsu, Senbetsu). NG plastik tidak punya kode Part jatuh.";
+    "Catatan: Part jatuh = NG kode 9 dari laporan tiap proses (juga ada di sheet QC Result). Produksi dalam 1 bulan = hasil laporan Senbetsu. Total produksi 1 bulan per section = total qty laporan proses itu. Kolom Press, Molding, Barrel dan Washing dikosongkan (laporan ini khusus QA: PF, Seiretsu, Senbetsu). NG plastik tidak punya kode Part jatuh.";
   ws.getCell(r, 1).font = { name: FONT, size: 9, italic: true, color: { argb: "FF64748B" } };
+  return pos;
 }
 
 export async function ngMonthlyToXlsx(d: NgMonthly): Promise<Buffer> {
