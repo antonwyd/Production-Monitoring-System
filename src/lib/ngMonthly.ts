@@ -4,7 +4,7 @@
 // Aturan (disepakati 23 Nov 2026):
 //  - Qty (Total Before Senbetsu) hanya dari laporan kategori proses Senbetsu.
 //  - NG dari SEMUA proses (Seiretsu, PF, Drum PF, Senbetsu) untuk part + D1/D2 + lot yang sama.
-//  - Total After = Before − Total NG.
+//  - Total After = Before − Total NG. Lot tanpa laporan Senbetsu: Before = total NG, After kosong (100%).
 //  - Jenis NG dipetakan menurut nomor kode (NG1..NG10 = kolom 1..10; grup plastik = kolom 11..20).
 //  - Press JAPAN = lot diawali 01, Press INDONESIA (PT) = lot diawali 31 atau 33.
 //  - Part jatuh = NG nomor 9 (grup Iron Cage), masuk di kedua sheet.
@@ -19,7 +19,8 @@ export const JATUH_PROC = ["Press", "Molding", "Barrel", "Seiretsu / PF Iron", "
 /** Indeks NG "Part jatuh" di grup Iron Cage (kode 9). */
 export const JATUH_IDX = 8;
 
-export type NgLotRow = { lot: string; before: number; ng: number[] };
+/** noSenbetsu: lot belum ada di laporan Senbetsu, Before diisi = total NG (100%) seperti template. */
+export type NgLotRow = { lot: string; before: number; ng: number[]; noSenbetsu?: boolean };
 export type NgTypeBlock = { type: string; lots: NgLotRow[] };
 export type NgPartBlock = { part: string; types: NgTypeBlock[] };
 export type NgSection = { title: string; plastic: boolean; parts: NgPartBlock[] };
@@ -96,7 +97,7 @@ export function buildNgMonthlyFrom(master: MasterData, month: string, facts: Fac
         lots: pr
           .filter((r) => r.type === type)
           .sort((a, b) => a.lot.localeCompare(b.lot))
-          .map((r) => ({ lot: r.lot, before: r.before, ng: r.ng })),
+          .map((r) => (r.before > 0 ? { lot: r.lot, before: r.before, ng: r.ng } : { lot: r.lot, before: sum(r.ng), ng: r.ng, noSenbetsu: true })),
       }));
       return { part, types };
     });

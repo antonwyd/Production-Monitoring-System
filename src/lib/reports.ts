@@ -1575,7 +1575,7 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
         for (const ty of p.types)
           for (const l of ty.lots) {
             const tot = l.ng.reduce((a, v) => a + v, 0);
-            const r: Row = { section: plastic ? "Plastic" : s.title.replace("CAGE BEARING PRESS ", "Press "), part: p.part, type: ty.type || "-", lot: l.lot || "-", before: l.before, after: l.before ? l.before - tot : null, total: tot, pct: l.before ? tot / l.before : null };
+            const r: Row = { section: plastic ? "Plastic" : s.title.replace("CAGE BEARING PRESS ", "Press "), part: p.part, type: ty.type || "-", lot: l.lot || "-", before: l.before, after: l.before && !l.noSenbetsu ? l.before - tot : null, total: tot, pct: l.before ? tot / l.before : null };
             l.ng.forEach((n, i) => (r[`n${i}`] = n || null));
             rows.push(r);
           }

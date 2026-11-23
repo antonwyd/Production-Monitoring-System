@@ -46,7 +46,8 @@ describe("Laporan NG bulanan (format QC)", () => {
     expect(h.before).toBe(6750);
     expect(h.ng[6]).toBe(176);
     const s6900 = jpn.parts.find((p) => p.part === "6900-J")!.types[0].lots[0];
-    expect(s6900.before).toBe(0); // hanya laporan Seiretsu
+    expect(s6900.before).toBe(26); // hanya laporan Seiretsu: Before = total NG
+    expect(s6900.noSenbetsu).toBe(true);
     expect(s6900.ng[6]).toBe(26);
     const pt = d.qc[1].parts.find((p) => p.part === "627-J")!;
     expect(pt.types.map((t) => t.type)).toEqual(["D1", "D2"]);
@@ -68,6 +69,8 @@ describe("Laporan NG bulanan (format QC)", () => {
     const ws = wb.getWorksheet("QC Result")!;
     expect(ws.getCell("A1").value).toBe("PT. TAKAI SEIKI INDONESIA");
     expect(ws.getCell("AE1").value).toBe("Periode 01/11/2026 ~ 30/11/2026");
-    expect(ws.getCell("F8").value).toMatchObject({ formula: "IF(E8,E8-AK8,\"\")" });
+    expect(ws.getCell("E8").value).toMatchObject({ formula: "F8+AK8" }); // 6900-J tanpa Senbetsu
+    expect(ws.getCell("F8").value).toBeNull();
+    expect(ws.getCell("F9").value).toMatchObject({ formula: "IF(E9,E9-AK9,\"\")" });
   });
 });

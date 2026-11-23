@@ -128,7 +128,11 @@ function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
           ws.getCell(r, 4).numFmt = "@";
           const e = frame(ws, r, 5, r, 5, { fmt: ACC, align: "right" });
           e.value = l.before || null;
-          frame(ws, r, 6, r, 6, { fmt: ACC, align: "right" }).value = { formula: `IF(E${r},E${r}-${col(AK)}${r},"")` };
+          // Tanpa qty Senbetsu: After kosong dan Before = F + Total (rumus template), jadi 100%.
+          if (l.noSenbetsu) {
+            frame(ws, r, 6, r, 6, { fmt: ACC, align: "right" });
+            e.value = { formula: `F${r}+${col(AK)}${r}` };
+          } else frame(ws, r, 6, r, 6, { fmt: ACC, align: "right" }).value = { formula: `IF(E${r},E${r}-${col(AK)}${r},"")` };
           l.ng.forEach((n, i) => (frame(ws, r, NG0 + i * 3, r, NG0 + i * 3 + 2, { fmt: ACC }).value = n || null));
           frame(ws, r, AK, r, AK, { fmt: ACC, align: "right" }).value = { formula: `SUM(${col(NG0)}${r}:${col(AK - 1)}${r})` };
           frame(ws, r, AL, r, AL, { fmt: "0.00%", align: "right" }).value = { formula: `IF(E${r},${col(AK)}${r}/E${r},"")` };
@@ -268,7 +272,7 @@ function jatuhSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
     r += 2;
   }
   ws.getCell(r, 1).value =
-    "Catatan: Part jatuh = NG kode 9 dari laporan tiap proses (juga ada di sheet QC Result). Produksi dalam 1 bulan = hasil laporan Senbetsu. Press, Molding, Barrel dan Washing belum ada laporannya di web. NG plastik tidak punya kode Part jatuh.";
+    "Catatan: Part jatuh = NG kode 9 dari laporan tiap proses (juga ada di sheet QC Result). Produksi dalam 1 bulan = hasil laporan Senbetsu. Kolom Press, Molding, Barrel dan Washing dikosongkan (laporan ini khusus QA: PF, Seiretsu, Senbetsu). NG plastik tidak punya kode Part jatuh.";
   ws.getCell(r, 1).font = { name: FONT, size: 9, italic: true, color: { argb: "FF64748B" } };
 }
 
