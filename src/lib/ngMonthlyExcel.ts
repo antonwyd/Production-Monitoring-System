@@ -8,6 +8,7 @@ const FONT = "Meiryo UI";
 const HEAD = "FFF2F2F2";
 const SEC = "FFFCE4D6";
 const TOT = "FFFFF2CC";
+const LOT_ROWS = 10;
 const ACC = "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(@_)";
 const med = { style: "medium" as const };
 const thin = { style: "thin" as const };
@@ -24,7 +25,7 @@ function ddmmyyyy(d: string) {
 }
 
 /** Gaya dasar + border kotak untuk rentang. */
-function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number, opts: { fill?: string; bold?: boolean; size?: number; rotate?: boolean; fmt?: string; align?: "center" | "left" | "right" } = {}) {
+function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number, opts: { fill?: string; bold?: boolean; size?: number; rotate?: boolean; fmt?: string; align?: "center" | "left" | "right"; light?: boolean } = {}) {
   if (r1 !== r2 || c1 !== c2) ws.mergeCells(r1, c1, r2, c2);
   const cell = ws.getCell(r1, c1);
   cell.font = { name: FONT, size: opts.size ?? 10, bold: opts.bold };
@@ -34,7 +35,8 @@ function frame(ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: nu
   for (let r = r1; r <= r2; r++)
     for (let c = c1; c <= c2; c++) {
       const x = ws.getCell(r, c);
-      x.border = { top: r === r1 ? med : undefined, bottom: r === r2 ? med : undefined, left: c === c1 ? med : undefined, right: c === c2 ? med : undefined };
+      const b = opts.light ? thin : med;
+      x.border = { top: r === r1 ? b : undefined, bottom: r === r2 ? b : undefined, left: c === c1 ? b : undefined, right: c === c2 ? b : undefined };
       if (opts.fill) x.fill = fill(opts.fill);
     }
   return cell;
@@ -123,19 +125,19 @@ function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
       const pStart = r;
       for (const t of p.types) {
         const tStart = r;
-        for (const l of t.lots) {
-          frame(ws, r, 4, r, 4, {}).value = l.lot || "-";
+        // Template menyediakan 10 baris lot per type (plastik 1 baris per part); lebih dari itu ditambah.
+        const n = Math.max(t.lots.length, s.plastic ? 1 : LOT_ROWS);
+        for (let i = 0; i < n; i++) {
+          const l = t.lots[i];
+          const lt = { light: true };
+          frame(ws, r, 4, r, 4, lt).value = l?.lot || null;
           ws.getCell(r, 4).numFmt = "@";
-          const e = frame(ws, r, 5, r, 5, { fmt: ACC, align: "right" });
-          e.value = l.before || null;
-          // Tanpa qty Senbetsu: After kosong dan Before = F + Total (rumus template), jadi 100%.
-          if (l.noSenbetsu) {
-            frame(ws, r, 6, r, 6, { fmt: ACC, align: "right" });
-            e.value = { formula: `F${r}+${col(AK)}${r}` };
-          } else frame(ws, r, 6, r, 6, { fmt: ACC, align: "right" }).value = { formula: `IF(E${r},E${r}-${col(AK)}${r},"")` };
-          l.ng.forEach((n, i) => (frame(ws, r, NG0 + i * 3, r, NG0 + i * 3 + 2, { fmt: ACC }).value = n || null));
-          frame(ws, r, AK, r, AK, { fmt: ACC, align: "right" }).value = { formula: `SUM(${col(NG0)}${r}:${col(AK - 1)}${r})` };
-          frame(ws, r, AL, r, AL, { fmt: "0.00%", align: "right" }).value = { formula: `IF(E${r},${col(AK)}${r}/E${r},"")` };
+          // Before = After + Total NG, After = hasil Senbetsu, % = NG / After (rumus template).
+          frame(ws, r, 5, r, 5, { ...lt, fmt: ACC, align: "right" }).value = { formula: `F${r}+${col(AK)}${r}` };
+          frame(ws, r, 6, r, 6, { ...lt, fmt: ACC, align: "right" }).value = l?.after ?? null;
+          for (let k = 0; k < 10; k++) frame(ws, r, NG0 + k * 3, r, NG0 + k * 3 + 2, { ...lt, fmt: ACC }).value = l?.ng[k] || null;
+          frame(ws, r, AK, r, AK, { ...lt, fmt: ACC, align: "right" }).value = { formula: `SUM(${col(NG0)}${r}:${col(AK - 1)}${r})` };
+          frame(ws, r, AL, r, AL, { ...lt, fmt: "0.00%", align: "right" }).value = { formula: `IF(F${r},${col(AK)}${r}/F${r},"")` };
           r++;
         }
         // Plastik tidak punya D1/D2: kolom part B:C digabung.
@@ -163,23 +165,23 @@ function qcSheet(wb: ExcelJS.Workbook, d: NgMonthly) {
       frame(ws, r, c, r, c + 2, { fill: TOT, bold: true, fmt: ACC }).value = { formula: `SUM(${col(c)}${start}:${col(c + 2)}${end})` };
     }
     frame(ws, r, AK, r, AK, { fill: TOT, bold: true, fmt: ACC, align: "right" }).value = { formula: `SUM(${col(AK)}${start}:${col(AK)}${end})` };
-    frame(ws, r, AL, r, AL, { fill: TOT, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(E${r},${col(AK)}${r}/E${r},"")` };
+    frame(ws, r, AL, r, AL, { fill: TOT, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(F${r},${col(AK)}${r}/F${r},"")` };
     ws.getRow(r).height = 20;
-    grand.before.push(`E${r}`);
+    grand.before.push(`F${r}`);
     grand.ng.push(`${col(AK)}${r}`);
     r += 2;
   }
   // Total keseluruhan.
   frame(ws, r, 1, r, 4, { fill: SEC, bold: true }).value = "GRAND TOTAL";
-  frame(ws, r, 5, r, 5, { fill: SEC, bold: true, fmt: ACC, align: "right" }).value = { formula: grand.before.join("+") || "0" };
-  frame(ws, r, 6, r, 6, { fill: SEC, bold: true, fmt: ACC, align: "right" }).value = { formula: `E${r}-${col(AK)}${r}` };
+  frame(ws, r, 5, r, 5, { fill: SEC, bold: true, fmt: ACC, align: "right" }).value = { formula: `F${r}+${col(AK)}${r}` };
+  frame(ws, r, 6, r, 6, { fill: SEC, bold: true, fmt: ACC, align: "right" }).value = { formula: grand.before.join("+") || "0" };
   frame(ws, r, NG0, r, AK - 1, { fill: SEC });
   frame(ws, r, AK, r, AK, { fill: SEC, bold: true, fmt: ACC, align: "right" }).value = { formula: grand.ng.join("+") || "0" };
-  frame(ws, r, AL, r, AL, { fill: SEC, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(E${r},${col(AK)}${r}/E${r},"")` };
+  frame(ws, r, AL, r, AL, { fill: SEC, bold: true, fmt: "0.00%", align: "right" }).value = { formula: `IF(F${r},${col(AK)}${r}/F${r},"")` };
   ws.getRow(r).height = 20;
   r += 2;
   ws.getCell(r, 1).value =
-    "Catatan: Total Before Senbetsu = hasil laporan kategori Senbetsu; NG dari semua proses (Seiretsu, PF, Senbetsu) untuk part, D1/D2 dan lot yang sama; Total After = Before − Total NG. Press JAPAN = lot 01…, Press INDONESIA = lot 31… / 33….";
+    "Catatan: Total After Senbetsu = hasil laporan kategori Senbetsu; NG dari semua proses (Seiretsu, PF, Senbetsu) untuk part, D1/D2 dan lot yang sama; Total Before = After + Total NG; Percentage = Total NG / After. Press JAPAN = lot 01…, Press INDONESIA = lot 31… / 33….";
   ws.getCell(r, 1).font = { name: FONT, size: 9, italic: true, color: { argb: "FF64748B" } };
 }
 

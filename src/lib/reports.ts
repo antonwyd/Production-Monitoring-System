@@ -1565,27 +1565,27 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
   const ngCols = (names: string[]): Column[] => names.map((n, i) => ({ key: `n${i}`, label: short(n), format: "int" as const }));
   const qcTable = (plastic: boolean): Table => {
     const rows: Row[] = [];
-    let before = 0;
+    let after = 0;
     const ng = Array(10).fill(0) as number[];
     for (const s of d.qc.filter((x) => x.plastic === plastic)) {
       const t = sectionTotals(s);
-      before += t.before;
+      after += t.after;
       t.ng.forEach((n, i) => (ng[i] += n));
       for (const p of s.parts)
         for (const ty of p.types)
           for (const l of ty.lots) {
             const tot = l.ng.reduce((a, v) => a + v, 0);
-            const r: Row = { section: plastic ? "Plastic" : s.title.replace("CAGE BEARING PRESS ", "Press "), part: p.part, type: ty.type || "-", lot: l.lot || "-", before: l.before, after: l.before && !l.noSenbetsu ? l.before - tot : null, total: tot, pct: l.before ? tot / l.before : null };
+            const r: Row = { section: plastic ? "Plastic" : s.title.replace("CAGE BEARING PRESS ", "Press "), part: p.part, type: ty.type || "-", lot: l.lot || "-", before: (l.after ?? 0) + tot, after: l.after, total: tot, pct: l.after ? tot / l.after : null };
             l.ng.forEach((n, i) => (r[`n${i}`] = n || null));
             rows.push(r);
           }
     }
     const tot = ng.reduce((a, v) => a + v, 0);
-    const total: Row = { section: "TOTAL", part: "", type: "", lot: "", before, after: before - tot, total: tot, pct: before ? tot / before : null };
+    const total: Row = { section: "TOTAL", part: "", type: "", lot: "", before: after + tot, after, total: tot, pct: after ? tot / after : null };
     ng.forEach((n, i) => (total[`n${i}`] = n));
     return {
       title: plastic ? "QC Result · Plastic" : "QC Result · Cage Bearing Press (Iron)",
-      note: "Before = hasil Senbetsu · NG dari semua proses · After = Before − NG",
+      note: "After = hasil Senbetsu · NG dari semua proses · Before = After + NG · % = NG / After",
       columns: [
         { key: "section", label: plastic ? "Grup" : "Press" },
         { key: "part", label: "Part" },
@@ -1607,6 +1607,8 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
   for (const s of d.jatuh)
     for (const r of s.rows) {
       const t = r.proc.reduce((a, v) => a + v, 0);
+      // Di web hanya baris yang ada datanya; Excel tetap menampilkan semua part template.
+      if (!r.before && !t) continue;
       jBefore += r.before;
       r.proc.forEach((n, i) => (jTot[i] += n));
       const row: Row = { part: r.part, type: r.type || "-", total: r.before + t, before: r.before || null, jatuh: t, pct: r.before + t ? t / (r.before + t) : null };
@@ -1618,7 +1620,7 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
   jTot.forEach((n, i) => (jTotal[`p${i}`] = n));
   const iron = qcTable(false);
   const plastic = qcTable(true);
-  const allBefore = Number(iron.total!.before) + Number(plastic.total!.before);
+  const allAfter = Number(iron.total!.after) + Number(plastic.total!.after);
   const allNg = Number(iron.total!.total) + Number(plastic.total!.total);
   const [y, m] = month.split("-").map(Number);
   const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("id-ID", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -1627,9 +1629,9 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
     title: REPORT_TITLES["ng-bulanan"],
     subtitle: `Periode ${label} (${formatDateId(d.from)} – ${formatDateId(d.to)})`,
     kpis: [
-      { label: "Before Senbetsu (pcs)", value: allBefore, format: "int" },
+      { label: "After Senbetsu (pcs)", value: allAfter, format: "int" },
       { label: "Total NG (pcs)", value: allNg, format: "int" },
-      { label: "NG %", value: allBefore ? allNg / allBefore : null, format: "pct" },
+      { label: "NG % (NG / After)", value: allAfter ? allNg / allAfter : null, format: "pct" },
       { label: "Part jatuh (pcs)", value: jSum, format: "int" },
     ],
     charts: [],
