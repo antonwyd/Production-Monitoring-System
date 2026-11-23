@@ -8,9 +8,10 @@ import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
 import { uraiOiban } from "./sheets/qa";
+import { buildNgMonthly, IRON_NG, JATUH_PROC, PLASTIC_NG, sectionTotals } from "./ngMonthly";
 import { isQaMember, type MasterData, type Settings } from "./types";
 
-export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-part", "ng-lot", "monthly", "waktu", "disiplin"] as const;
+export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-part", "ng-lot", "ng-bulanan", "monthly", "waktu", "disiplin"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
@@ -22,6 +23,7 @@ export const REPORT_TITLES: Record<ReportKind, string> = {
   "ng-type": "Laporan Kualitas (NG)",
   "ng-part": "Laporan NG per Part",
   "ng-lot": "Laporan NG per Lot",
+  "ng-bulanan": "Laporan NG Bulanan (QC Result)",
   monthly: "Production Report · Rekap Bulanan",
   waktu: "Laporan Waktu & Lost Time",
   disiplin: "Laporan Disiplin Lapor",
@@ -300,13 +302,13 @@ export function add(a: Agg, f: Fact) {
   a.count++;
 }
 
-/** Kelompok NG rate untuk laporan atasan: Plastik (kategori berisi "Plastik"), lalu lot material 31... = Press PT, 01... = Press JPN. */
+/** Kelompok NG rate untuk laporan atasan: Plastik (kategori berisi "Plastik"), lalu lot material 31.../33... = Press PT, 01... = Press JPN. */
 export const BAHAN = ["Press PT", "Press JPN", "Plastik"] as const;
 export type BahanRate = { name: (typeof BAHAN)[number]; qty: number; ng: number; rate: number | null };
 export function bahanOf(f: Pick<Fact, "categoryName" | "lot">): (typeof BAHAN)[number] | null {
   if (/plastik/i.test(f.categoryName)) return "Plastik";
   const lot = f.lot.trim();
-  if (lot.startsWith("31")) return "Press PT";
+  if (lot.startsWith("31") || lot.startsWith("33")) return "Press PT";
   if (lot.startsWith("01")) return "Press JPN";
   return null;
 }
@@ -1151,6 +1153,8 @@ export async function buildReport(kind: ReportKind, p: ReportParams, today: stri
     };
   }
 
+  if (kind === "ng-bulanan") return ngMonthlyReport(master, p.month && /^\d{4}-\d{2}$/.test(p.month) ? p.month : today.slice(0, 7));
+
   if (kind === "ng-lot") {
     const { facts } = await loadFacts(master, from, to, p.categoryId, undefined, p.partId);
     const rows = [...groupBy(facts, (f) => `${f.partId}|${f.lot}`).values()]
@@ -1551,5 +1555,102 @@ export function parseReportParams(sp: URLSearchParams | Record<string, string | 
     fm: get("fm")?.slice(0, 80) || undefined,
     fr: [1, 7, 30].includes(Number(get("fr"))) ? Number(get("fr")) : undefined,
     view: get("view") === "grafik" || get("view") === "heatmap" ? get("view") : undefined,
+  };
+}
+
+/** Tampilan web + PDF Laporan NG bulanan. Excel memakai format template QC (ngMonthlyExcel.ts). */
+async function ngMonthlyReport(master: MasterData, month: string): Promise<Report> {
+  const d = await buildNgMonthly(master, month);
+  const short = (s: string) => s.replace(/^\d+\./, "").trim();
+  const ngCols = (names: string[]): Column[] => names.map((n, i) => ({ key: `n${i}`, label: short(n), format: "int" as const }));
+  const qcTable = (plastic: boolean): Table => {
+    const rows: Row[] = [];
+    let before = 0;
+    const ng = Array(10).fill(0) as number[];
+    for (const s of d.qc.filter((x) => x.plastic === plastic)) {
+      const t = sectionTotals(s);
+      before += t.before;
+      t.ng.forEach((n, i) => (ng[i] += n));
+      for (const p of s.parts)
+        for (const ty of p.types)
+          for (const l of ty.lots) {
+            const tot = l.ng.reduce((a, v) => a + v, 0);
+            const r: Row = { section: plastic ? "Plastic" : s.title.replace("CAGE BEARING PRESS ", "Press "), part: p.part, type: ty.type || "-", lot: l.lot || "-", before: l.before, after: l.before ? l.before - tot : null, total: tot, pct: l.before ? tot / l.before : null };
+            l.ng.forEach((n, i) => (r[`n${i}`] = n || null));
+            rows.push(r);
+          }
+    }
+    const tot = ng.reduce((a, v) => a + v, 0);
+    const total: Row = { section: "TOTAL", part: "", type: "", lot: "", before, after: before - tot, total: tot, pct: before ? tot / before : null };
+    ng.forEach((n, i) => (total[`n${i}`] = n));
+    return {
+      title: plastic ? "QC Result · Plastic" : "QC Result · Cage Bearing Press (Iron)",
+      note: "Before = hasil Senbetsu · NG dari semua proses · After = Before − NG",
+      columns: [
+        { key: "section", label: plastic ? "Grup" : "Press" },
+        { key: "part", label: "Part" },
+        ...(plastic ? [] : [{ key: "type", label: "Type" }]),
+        { key: "lot", label: "Lot" },
+        { key: "before", label: "Before Senbetsu", format: "int" },
+        { key: "after", label: "After Senbetsu", format: "int" },
+        ...ngCols(plastic ? PLASTIC_NG : IRON_NG),
+        { key: "total", label: "Total NG", format: "int" },
+        { key: "pct", label: "%", format: "pct" },
+      ],
+      rows,
+      total,
+    };
+  };
+  const jRows: Row[] = [];
+  const jTot = Array(JATUH_PROC.length).fill(0) as number[];
+  let jBefore = 0;
+  for (const s of d.jatuh)
+    for (const r of s.rows) {
+      const t = r.proc.reduce((a, v) => a + v, 0);
+      jBefore += r.before;
+      r.proc.forEach((n, i) => (jTot[i] += n));
+      const row: Row = { part: r.part, type: r.type || "-", total: r.before + t, before: r.before || null, jatuh: t, pct: r.before + t ? t / (r.before + t) : null };
+      r.proc.forEach((n, i) => (row[`p${i}`] = n || null));
+      jRows.push(row);
+    }
+  const jSum = jTot.reduce((a, v) => a + v, 0);
+  const jTotal: Row = { part: "TOTAL", type: "", total: jBefore + jSum, before: jBefore, jatuh: jSum, pct: jBefore + jSum ? jSum / (jBefore + jSum) : null };
+  jTot.forEach((n, i) => (jTotal[`p${i}`] = n));
+  const iron = qcTable(false);
+  const plastic = qcTable(true);
+  const allBefore = Number(iron.total!.before) + Number(plastic.total!.before);
+  const allNg = Number(iron.total!.total) + Number(plastic.total!.total);
+  const [y, m] = month.split("-").map(Number);
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("id-ID", { month: "long", year: "numeric", timeZone: "UTC" });
+  return {
+    kind: "ng-bulanan",
+    title: REPORT_TITLES["ng-bulanan"],
+    subtitle: `Periode ${label} (${formatDateId(d.from)} – ${formatDateId(d.to)})`,
+    kpis: [
+      { label: "Before Senbetsu (pcs)", value: allBefore, format: "int" },
+      { label: "Total NG (pcs)", value: allNg, format: "int" },
+      { label: "NG %", value: allBefore ? allNg / allBefore : null, format: "pct" },
+      { label: "Part jatuh (pcs)", value: jSum, format: "int" },
+    ],
+    charts: [],
+    tables: [
+      iron,
+      plastic,
+      {
+        title: "Produk Jatuh (NG 9. Part jatuh per proses)",
+        note: "Total = Produksi (hasil Senbetsu) + part jatuh",
+        columns: [
+          { key: "part", label: "Part" },
+          { key: "type", label: "Type" },
+          { key: "total", label: "Total", format: "int" },
+          { key: "before", label: "Produksi 1 bulan", format: "int" },
+          ...JATUH_PROC.map((n, i) => ({ key: `p${i}`, label: n, format: "int" as const })),
+          { key: "jatuh", label: "Total jatuh", format: "int" },
+          { key: "pct", label: "%", format: "pct" },
+        ],
+        rows: jRows,
+        total: jTotal,
+      },
+    ],
   };
 }

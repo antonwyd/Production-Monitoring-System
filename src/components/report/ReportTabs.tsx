@@ -11,6 +11,7 @@ export const REPORT_GROUPS: { key: string; tabs: Tab[] }[] = [
       { kind: "ng-type", label: "Per jenis NG", desc: "Jenis cacat terbanyak", color: "rose", icon: "alert" },
       { kind: "ng-part", label: "Per part", desc: "NG per part & proses", color: "red", icon: "layers" },
       { kind: "ng-lot", label: "Per lot", desc: "NG per lot & oiban", color: "amber", icon: "box" },
+      { kind: "ng-bulanan", label: "Laporan bulanan", desc: "QC Result + Produk Jatuh, Excel", color: "violet", icon: "month" },
     ],
   },
   {
