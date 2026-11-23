@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import { FEATURES } from "@/lib/features";
 import PlanBoard from "@/components/planning/PlanBoard";
 import { requirePageRole } from "@/lib/auth";
 import { isValidDate, todayJakarta } from "@/lib/dates";
@@ -8,6 +10,7 @@ export const metadata = { title: "Rencana Hari Ini · QA Production" };
 export const dynamic = "force-dynamic";
 
 export default async function PerencanaanPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
+  if (!FEATURES.planning) redirect("/hari-ini"); // disembunyikan sementara, lihat lib/features.ts
   const session = await requirePageRole(["leader", "manager", "admin"]);
   const today = todayJakarta();
   const q = (await searchParams).date;
