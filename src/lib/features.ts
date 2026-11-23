@@ -9,8 +9,8 @@ export const FEATURES = {
   overtime: false,
   /** Forecast vs PO customer (/forecast). */
   forecast: true,
-  /** Perencanaan > Rencana Hari Ini (/perencanaan): alokasi orang & mesin pagi hari. */
-  planning: true,
+  /** Perencanaan > Rencana Hari Ini (/perencanaan): alokasi orang & mesin pagi hari. Disembunyikan 23 Nov 2026 (belum dipakai). */
+  planning: false,
 };
 
 export const REPORT_HOME = FEATURES.planActual ? "/production-report" : "/production-report/rekap";
