@@ -34,7 +34,7 @@ export const TEMPLATE_PARTS: Record<"JPN" | "PT" | "PLASTIC" | "JATUH", [string,
   JATUH: T("625-H,626-BH,688-AH,695JC-H,626-J,627-J,627-H,628-J,629-J,6800-J,6900-J,6901-J,6902-J,6903-J,698-J,6803-J,608-JCL,6802-H,6801-J,6802 KDC-J"),
 };
 /** Nama part dibandingkan tanpa spasi/strip; beberapa nama Master Data beda tulisan dengan template. */
-const ALIAS: Record<string, string> = { "608JCL1J": "608JCL", "695H": "695JCH", ML50095: "ML5009" };
+const ALIAS: Record<string, string> = { "608JCL1J": "608JCL", "695H": "695JCH", "695AH": "695JCH", ML50095: "ML5009" };
 export function partKey(name: string) {
   const k = name.toUpperCase().replace(/[\s\-]/g, "").replace(/TIX/g, "T1X");
   return ALIAS[k] ?? k;
@@ -51,7 +51,8 @@ export type NgPartBlock = { part: string; types: NgTypeBlock[] };
 export type NgSection = { title: string; plastic: boolean; parts: NgPartBlock[] };
 export type JatuhRow = { part: string; type: string; before: number; proc: number[] };
 export type JatuhSection = { title: string; plastic: boolean; rows: JatuhRow[] };
-export type NgMonthly = { month: string; from: string; to: string; qc: NgSection[]; jatuh: JatuhSection[] };
+/** jatuhProd = total qty laporan per kolom proses Produk Jatuh (untuk persen jatuh per section). */
+export type NgMonthly = { month: string; from: string; to: string; qc: NgSection[]; jatuh: JatuhSection[]; jatuhProd: number[] };
 
 const isPlastic = (f: Pick<Fact, "categoryName">) => /plastik|plastic/i.test(f.categoryName);
 
@@ -139,7 +140,9 @@ export function buildNgMonthlyFrom(master: MasterData, month: string, facts: Fac
   // ---- Produk Jatuh: per part|type, semua press digabung.
   type JAcc = JatuhRow & { plastic: boolean };
   const jacc = new Map<string, JAcc>();
+  const jatuhProd = Array(JATUH_PROC.length).fill(0) as number[];
   for (const f of facts) {
+    jatuhProd[jatuhProcOf(f.categoryName, procOfCat.get(f.categoryName) ?? "")] += f.qty;
     const plastic = isPlastic(f);
     const pn = partName(f);
     const name = pn.name;
@@ -173,7 +176,7 @@ export function buildNgMonthlyFrom(master: MasterData, month: string, facts: Fac
     }
     return { title: plastic ? "PLASTIC" : "CAGE BEARING PRESS", plastic, rows };
   });
-  return { month, from, to, qc, jatuh };
+  return { month, from, to, qc, jatuh, jatuhProd };
 }
 
 export async function buildNgMonthly(master: MasterData, month: string): Promise<NgMonthly> {

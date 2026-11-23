@@ -8,7 +8,8 @@ import { achievement, fmt, grade, ngRate, partLabel } from "./rules";
 import { addDays, formatDateId, monthEnd, monthStart } from "./dates";
 import { loadMaster } from "./service";
 import { uraiOiban } from "./sheets/qa";
-import { buildNgMonthly, IRON_NG, JATUH_PROC, PLASTIC_NG, sectionTotals } from "./ngMonthly";
+import { IRON_NG, JATUH_PROC, PLASTIC_NG, sectionTotals } from "./ngMonthly";
+import { buildNgReport } from "./ngReport";
 import { isQaMember, type MasterData, type Settings } from "./types";
 
 export const REPORT_KINDS = ["dashboard", "daily", "member", "category", "machine", "ng-type", "ng-part", "ng-lot", "ng-bulanan", "monthly", "waktu", "disiplin"] as const;
@@ -1560,7 +1561,7 @@ export function parseReportParams(sp: URLSearchParams | Record<string, string | 
 
 /** Tampilan web + PDF Laporan NG bulanan. Excel memakai format template QC (ngMonthlyExcel.ts). */
 async function ngMonthlyReport(master: MasterData, month: string): Promise<Report> {
-  const d = await buildNgMonthly(master, month);
+  const d = await buildNgReport(master, month);
   const short = (s: string) => s.replace(/^\d+\./, "").trim();
   const ngCols = (names: string[]): Column[] => names.map((n, i) => ({ key: `n${i}`, label: short(n), format: "int" as const }));
   const qcTable = (plastic: boolean): Table => {
@@ -1652,6 +1653,23 @@ async function ngMonthlyReport(master: MasterData, month: string): Promise<Repor
         ],
         rows: jRows,
         total: jTotal,
+      },
+      {
+        title: `NG Rate per bulan (tahun ${d.fy.label}, April–Maret)`,
+        note: "NG Rate = Total NG / Total Senbetsu · April–September dari file QC (manual), mulai November dari aplikasi",
+        columns: [{ key: "grp", label: "Grup" }, ...d.fy.months.map((m) => ({ key: m.month, label: m.label, format: "pct" as const })), { key: "tot", label: "Total", format: "pct" as const }],
+        rows: (["jpn", "idn", "pla"] as const).map((k) => {
+          const row: Row = { grp: { jpn: "Cage Japan (target 1.21%)", idn: "Cage Indonesia (target 0.14%)", pla: "Plastic (target 0.50%)" }[k] };
+          let ng = 0;
+          let sen = 0;
+          for (const m of d.fy.months) {
+            const v = m[k];
+            row[m.month] = v && v.sen ? v.ng / v.sen : null;
+            if (v) (ng += v.ng), (sen += v.sen);
+          }
+          row.tot = sen ? ng / sen : null;
+          return row;
+        }),
       },
     ],
   };

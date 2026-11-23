@@ -116,7 +116,7 @@ export default function ReportView({
               : undefined
         }
         downloads={k === "ng-bulanan" ? [
-          { label: "Excel format QC (.xlsx)", hint: "Sheet QC Result + Produk Jatuh, susunan sama seperti template", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
+          { label: "Excel laporan lengkap (.xlsx)", hint: "Semua sheet: QC Result, Produk Jatuh, Page 1, NG% 1 Bulan, NG Rate, grafik perbandingan", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
           { label: "PDF", hint: "Ringkasan tabel untuk dicetak", href: `/api/export/${k}.pdf${qs ? `?${qs}` : ""}` },
         ] : [
           { label: "Excel (.xlsx)", hint: "Kop + angka vs target + semua tabel, siap cetak A4", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
