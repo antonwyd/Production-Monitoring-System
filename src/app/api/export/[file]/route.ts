@@ -5,6 +5,9 @@ import { reportToXlsx } from "@/lib/excel";
 import { reportToPdf } from "@/lib/pdf";
 import { buildReport, parseReportParams, REPORT_KINDS, type ReportKind } from "@/lib/reports";
 import { langFromCookieHeader } from "@/lib/i18n";
+import { buildNgMonthly } from "@/lib/ngMonthly";
+import { ngMonthlyToXlsx } from "@/lib/ngMonthlyExcel";
+import { loadMaster } from "@/lib/service";
 import { buildLaporan, buildToday, laporanToReport, todayToReport } from "@/lib/views";
 
 /** GET /api/export/{jenis}.xlsx atau {jenis}.pdf ?from=&to=&category= */
@@ -19,6 +22,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ file: string }>
     // Sama dengan halaman: tanpa tanggal, laporan sampai kemarin.
     const base = addDays(today, -1);
     const params = parseReportParams(new URL(req.url).searchParams);
+    if (kind === "ng-bulanan" && !pdf) {
+      // Format template QC (QC Result + Produk Jatuh), bukan format report umum.
+      const month = params.month && /^\d{4}-\d{2}$/.test(params.month) ? params.month : base.slice(0, 7);
+      const buf = await ngMonthlyToXlsx(await buildNgMonthly(await loadMaster(), month));
+      return new Response(new Uint8Array(buf), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="Laporan-NG-${month}.xlsx"`,
+        },
+      });
+    }
     const report =
       kind === "laporan"
         ? laporanToReport(await buildLaporan({ from: params.from, to: params.to, categoryId: params.categoryId }, base))

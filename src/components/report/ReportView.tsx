@@ -34,8 +34,8 @@ export default function ReportView({
   asOf?: number;
 }) {
   const k = report.kind;
-  const mode = k === "daily" ? "date" : k === "monthly" ? "month" : "range";
-  const usesCategory = k !== "member" && k !== "disiplin";
+  const mode = k === "daily" ? "date" : k === "monthly" || k === "ng-bulanan" ? "month" : "range";
+  const usesCategory = k !== "member" && k !== "disiplin" && k !== "ng-bulanan";
   const qs = new URLSearchParams(query).toString();
   const selects: FilterSelect[] = [];
   const quality = k === "ng-type" || k === "ng-part";
@@ -115,7 +115,10 @@ export default function ReportView({
               ? { name: "q", label: "Cari part", placeholder: "Cari part, mis. 627D1", value: params.q ?? "" }
               : undefined
         }
-        downloads={[
+        downloads={k === "ng-bulanan" ? [
+          { label: "Excel format QC (.xlsx)", hint: "Sheet QC Result + Produk Jatuh, susunan sama seperti template", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
+          { label: "PDF", hint: "Ringkasan tabel untuk dicetak", href: `/api/export/${k}.pdf${qs ? `?${qs}` : ""}` },
+        ] : [
           { label: "Excel (.xlsx)", hint: "Kop + angka vs target + semua tabel, siap cetak A4", href: `/api/export/${k}.xlsx${qs ? `?${qs}` : ""}` },
           { label: "PDF", hint: "Untuk dikirim atau dicetak, dengan kotak tanda tangan", href: `/api/export/${k}.pdf${qs ? `?${qs}` : ""}` },
         ]}
